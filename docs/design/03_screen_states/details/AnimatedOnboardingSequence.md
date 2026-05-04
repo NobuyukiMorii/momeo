@@ -1,7 +1,7 @@
-# Animated Splash Sequence
+# Animated Onboarding Sequence
 
 **UIプレビュー:**
-![Splash 01](../../00_raw_assets/screenshots/AnimatedSplashView-01.png)
+![Onboarding 01](../../00_raw_assets/screenshots/AnimatedOnboardingView-01.png)
 
 ---
 
