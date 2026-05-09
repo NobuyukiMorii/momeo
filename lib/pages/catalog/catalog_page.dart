@@ -5,6 +5,7 @@ import 'package:momeo/pages/catalog/sections/foundation/foundation_app_text_styl
 import 'package:momeo/pages/catalog/sections/foundation/foundation_app_spacing_section.dart';
 import 'package:momeo/pages/catalog/sections/foundation/foundation_app_radius_section.dart';
 import 'package:momeo/pages/catalog/sections/foundation/foundation_app_theme_section.dart';
+import 'package:momeo/pages/catalog/sections/widgets/widgets_intro_setting_layout_section.dart';
 
 // ---------------------------------
 // データ定義
@@ -34,7 +35,9 @@ const _sections = [
     _Item(title: 'Radius',      body: FoundationAppRadiusSection()),
     _Item(title: 'Theme',       body: FoundationAppThemeSection()),
   ]),
-  _Section(title: 'Widgets', items: []),
+  _Section(title: 'Widgets', items: [
+    _Item(title: 'IntroSettingLayout', body: WidgetsIntroSettingLayoutSection()),
+  ]),
 ];
 
 // ---------------------------------
