@@ -6,6 +6,7 @@ abstract final class AppTheme {
     return ThemeData(
       useMaterial3: true,
       colorScheme: AppColors.colorScheme,
+      scaffoldBackgroundColor: AppColors.surface,
     );
   }
 }
