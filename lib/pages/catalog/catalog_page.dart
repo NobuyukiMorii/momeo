@@ -7,6 +7,7 @@ import 'package:momeo/pages/catalog/sections/foundation/foundation_app_radius_se
 import 'package:momeo/pages/catalog/sections/foundation/foundation_app_theme_section.dart';
 import 'package:momeo/pages/catalog/sections/widgets/widgets_intro_setting_layout_section.dart';
 import 'package:momeo/pages/catalog/sections/widgets/widgets_voice_icon_section.dart';
+import 'package:momeo/pages/catalog/sections/widgets/widgets_voice_card_section.dart';
 
 // ---------------------------------
 // データ定義
@@ -39,6 +40,7 @@ const _sections = [
   _Section(title: 'Widgets', items: [
     _Item(title: 'IntroSettingLayout', body: WidgetsIntroSettingLayoutSection()),
     _Item(title: 'VoiceIcon', body: WidgetsVoiceIconSection()),
+    _Item(title: 'VoiceCard', body: WidgetsVoiceCardSection()),
   ]),
 ];
 
