@@ -4,6 +4,7 @@ import 'package:momeo/pages/catalog/sections/foundation/foundation_app_colors_se
 import 'package:momeo/pages/catalog/sections/foundation/foundation_app_text_styles_section.dart';
 import 'package:momeo/pages/catalog/sections/foundation/foundation_app_spacing_section.dart';
 import 'package:momeo/pages/catalog/sections/foundation/foundation_app_radius_section.dart';
+import 'package:momeo/pages/catalog/sections/foundation/foundation_app_theme_section.dart';
 
 // ---------------------------------
 // データ定義
@@ -31,6 +32,7 @@ const _sections = [
     _Item(title: 'Text Styles', body: FoundationAppTextStylesSection()),
     _Item(title: 'Spacing',     body: FoundationAppSpacingSection()),
     _Item(title: 'Radius',      body: FoundationAppRadiusSection()),
+    _Item(title: 'Theme',       body: FoundationAppThemeSection()),
   ]),
   _Section(title: 'Widgets', items: []),
 ];
