@@ -1,12 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:momeo/constants/preferences_keys.dart';
 import 'package:momeo/foundation/app_colors.dart';
 import 'package:momeo/foundation/app_text_styles.dart';
 import 'package:momeo/widgets/animated_text_sequence.dart';
 import 'package:momeo/widgets/intro_setting_layout.dart';
-
-// SharedPreferences のキー
-const _keyIsFirstLaunch = 'is_first_launch';
 
 // 初回起動時に表示するフルシーケンス
 const _splashFullTexts = [
@@ -53,7 +51,7 @@ class _SplashPageState extends State<SplashPage> {
     // SharedPreferences を読んで初回起動かどうかを判断
     // ---------------------------------
     final prefs = await SharedPreferences.getInstance();
-    final isFirstLaunch = prefs.getBool(_keyIsFirstLaunch) ?? true;
+    final isFirstLaunch = prefs.getBool(PreferencesKeys.isFirstLaunch) ?? true;
 
     // ---------------------------------
     // マウントされていない場合は何もしない
@@ -73,7 +71,7 @@ class _SplashPageState extends State<SplashPage> {
   // ---------------------------------
   Future<void> _onSequenceFinished() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_keyIsFirstLaunch, false);
+    await prefs.setBool(PreferencesKeys.isFirstLaunch, false);
 
     widget.onFinished?.call();
   }
