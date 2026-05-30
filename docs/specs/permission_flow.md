@@ -25,7 +25,7 @@ momeoはライブ音声入力を前提とする音声ファーストのメモア
 **iOS:**
 ```text
 App Start
-→ Onboarding if needed
+→ Splash
 → Check permissions
 → Microphone permission if needed
 → Speech Recognition permission if needed
@@ -35,7 +35,7 @@ App Start
 **Android:**
 ```text
 App Start
-→ Onboarding if needed
+→ Splash
 → Check permissions
 → Microphone permission if needed
 → Listening Screen
