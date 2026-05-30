@@ -14,7 +14,7 @@ class WidgetsAnimatedTextSequenceSection extends StatelessWidget {
   Widget build(BuildContext context) {
     const items = [
       (
-        label: 'オンボーディング（デフォルト設定）',
+        label: 'スプラッシュ（デフォルト設定）',
         texts: ['momeo', 'Open. Speak. Saved.', 'Auto-start', 'Auto-stop'],
       ),
     ];
