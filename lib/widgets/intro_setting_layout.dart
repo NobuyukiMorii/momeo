@@ -13,7 +13,7 @@ class IntroSettingLayout extends StatelessWidget {
   });
 
   final String? step;
-  final String title;
+  final Widget title;
   final String? actionLabel;
   final VoidCallback? onAction;
 
@@ -41,16 +41,11 @@ class IntroSettingLayout extends StatelessWidget {
             const Spacer(),
 
             // ---------------------------------
-            // 見出しテキスト
+            // 見出しエリア
             // ---------------------------------
             SizedBox(
               width: double.infinity,
-              child: Text(
-                title,
-                style: AppTextStyles.headline.copyWith(
-                  color: AppColors.onSurface,
-                ),
-              ),
+              child: title,
             ),
 
             const SizedBox(height: AppSpacing.l),
