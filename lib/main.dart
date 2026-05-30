@@ -1,5 +1,7 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:momeo/foundation/app_theme.dart';
+import 'package:momeo/pages/console/console_page.dart';
 import 'package:momeo/pages/my_home_page.dart';
 import 'package:momeo/pages/catalog/catalog_page.dart';
 import 'package:momeo/pages/splash_page.dart';
@@ -53,11 +55,15 @@ class _RootViewState extends State<RootView> {
 
     // ---------------------------------
     // メインコンテンツ
+    // kDebugMode 時は ConsolePage が index 0 に入るため、
+    // initialPage で MyHomePage の位置を指定する
     // ---------------------------------
     return PageView(
-      children: const [
-        MyHomePage(title: 'Flutter Demo Home Page'),
-        CatalogPage(),
+      controller: PageController(initialPage: kDebugMode ? 1 : 0),
+      children: [
+        if (kDebugMode) const ConsolePage(),
+        const MyHomePage(title: 'Flutter Demo Home Page'),
+        if (kDebugMode) const CatalogPage(),
       ],
     );
   }
