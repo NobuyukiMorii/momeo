@@ -9,6 +9,7 @@ import 'package:momeo/pages/dev/catalog/sections/widgets/widgets_animated_text_s
 import 'package:momeo/pages/dev/catalog/sections/widgets/widgets_intro_setting_layout_section.dart';
 import 'package:momeo/pages/dev/catalog/sections/widgets/widgets_voice_icon_section.dart';
 import 'package:momeo/pages/dev/catalog/sections/widgets/widgets_voice_card_section.dart';
+import 'package:momeo/pages/dev/catalog/sections/packages/packages_speech_to_text_section.dart';
 
 // ---------------------------------
 // データ定義
@@ -43,6 +44,9 @@ const _sections = [
     _Item(title: 'VoiceIcon', body: WidgetsVoiceIconSection()),
     _Item(title: 'VoiceCard', body: WidgetsVoiceCardSection()),
     _Item(title: 'AnimatedTextSequence', body: WidgetsAnimatedTextSequenceSection()),
+  ]),
+  _Section(title: 'Packages', items: [
+    _Item(title: 'speech_to_text', body: PackagesSpeechToTextSection()),
   ]),
 ];
 
