@@ -4,6 +4,7 @@ import 'package:momeo/foundation/app_theme.dart';
 import 'package:momeo/pages/dev/console/console_page.dart';
 import 'package:momeo/pages/my_home_page.dart';
 import 'package:momeo/pages/dev/catalog/catalog_page.dart';
+import 'package:momeo/pages/permissions/permission_flow_page.dart';
 import 'package:momeo/pages/splash_page.dart';
 
 void main() {
@@ -25,7 +26,7 @@ class MyApp extends StatelessWidget {
 
 // ---------------------------------
 // RootView — アプリのルート画面
-// 起動時は SplashPage を表示し、完了後にメインコンテンツへ切り替える
+// Splash → Permission → メインコンテンツ の順に遷移する
 // ---------------------------------
 class RootView extends StatefulWidget {
   const RootView({super.key});
@@ -36,6 +37,7 @@ class RootView extends StatefulWidget {
 
 class _RootViewState extends State<RootView> {
   bool _splashFinished = false;
+  bool _permissionFinished = false;
 
   @override
   Widget build(BuildContext context) {
@@ -46,9 +48,18 @@ class _RootViewState extends State<RootView> {
     if (!_splashFinished) {
       return SplashPage(
         onFinished: () {
-          setState(() {
-            _splashFinished = true;
-          });
+          setState(() => _splashFinished = true);
+        },
+      );
+    }
+
+    // ---------------------------------
+    // 権限フロー画面
+    // ---------------------------------
+    if (!_permissionFinished) {
+      return PermissionFlowPage(
+        onFinished: () {
+          setState(() => _permissionFinished = true);
         },
       );
     }

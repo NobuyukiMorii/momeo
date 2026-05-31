@@ -73,6 +73,15 @@ App Start
 - docs/design/03_screen_states/details/PermissionSpeechRecognitionSettings.md
 - docs/design/03_screen_states/details/PermissionSpeechRecognitionUnavailable.md
 
+## iOSで権限をoffにした時の挙動
+
+iOSの設定アプリでマイク等のプライバシー権限をoffにすると、**iOSがアプリを即座に強制終了（SIGKILL）します。** これはiOSの意図的な仕様です（Apple DTS公式確認済み）。
+
+- **本番では** アプリが終了してホーム画面に戻るだけです。ユーザーがアプリを再タップすると、通常通り起動し、権限フローが再実行されます（仕様通りの動作）。
+- **開発中（flutter run）では** デバッガがアタッチされているため、プロセスが死んでもアプリがフリーズして見えます。これは開発時のみの現象で、バグではありません。
+
+追加実装は不要です。
+
 ## 一次情報・参考リンク
 
 - [Apple Developer Documentation: Asking Permission to Use Speech Recognition](https://developer.apple.com/documentation/speech/asking-permission-to-use-speech-recognition)
