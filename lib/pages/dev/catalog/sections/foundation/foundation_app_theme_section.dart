@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:momeo/pages/catalog/catalog_detail_page.dart';
-import 'package:momeo/pages/catalog/sections/foundation/theme/theme_filled_button_page.dart';
+import 'package:momeo/pages/dev/catalog/catalog_detail_page.dart';
+import 'package:momeo/pages/dev/catalog/sections/foundation/theme/theme_filled_button_page.dart';
 
 // ---------------------------------
 // テーマ設定のサブアイテム一覧

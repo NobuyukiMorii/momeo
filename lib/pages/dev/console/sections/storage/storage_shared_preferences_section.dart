@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:momeo/constants/preferences_keys.dart';
-import 'package:momeo/pages/console/sections/storage/storage_shared_preferences_detail_page.dart';
+import 'package:momeo/pages/dev/console/sections/storage/storage_shared_preferences_detail_page.dart';
 
 class StorageSharedPreferencesSection extends StatefulWidget {
   const StorageSharedPreferencesSection({super.key});

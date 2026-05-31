@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:momeo/pages/console/console_detail_page.dart';
-import 'package:momeo/pages/console/sections/storage/storage_shared_preferences_section.dart';
+import 'package:momeo/pages/dev/console/console_detail_page.dart';
+import 'package:momeo/pages/dev/console/sections/storage/storage_shared_preferences_section.dart';
 
 // ---------------------------------
 // データ定義

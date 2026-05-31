@@ -1,14 +1,14 @@
 import 'package:flutter/material.dart';
-import 'package:momeo/pages/catalog/catalog_detail_page.dart';
-import 'package:momeo/pages/catalog/sections/foundation/foundation_app_colors_section.dart';
-import 'package:momeo/pages/catalog/sections/foundation/foundation_app_text_styles_section.dart';
-import 'package:momeo/pages/catalog/sections/foundation/foundation_app_spacing_section.dart';
-import 'package:momeo/pages/catalog/sections/foundation/foundation_app_radius_section.dart';
-import 'package:momeo/pages/catalog/sections/foundation/foundation_app_theme_section.dart';
-import 'package:momeo/pages/catalog/sections/widgets/widgets_animated_text_sequence_section.dart';
-import 'package:momeo/pages/catalog/sections/widgets/widgets_intro_setting_layout_section.dart';
-import 'package:momeo/pages/catalog/sections/widgets/widgets_voice_icon_section.dart';
-import 'package:momeo/pages/catalog/sections/widgets/widgets_voice_card_section.dart';
+import 'package:momeo/pages/dev/catalog/catalog_detail_page.dart';
+import 'package:momeo/pages/dev/catalog/sections/foundation/foundation_app_colors_section.dart';
+import 'package:momeo/pages/dev/catalog/sections/foundation/foundation_app_text_styles_section.dart';
+import 'package:momeo/pages/dev/catalog/sections/foundation/foundation_app_spacing_section.dart';
+import 'package:momeo/pages/dev/catalog/sections/foundation/foundation_app_radius_section.dart';
+import 'package:momeo/pages/dev/catalog/sections/foundation/foundation_app_theme_section.dart';
+import 'package:momeo/pages/dev/catalog/sections/widgets/widgets_animated_text_sequence_section.dart';
+import 'package:momeo/pages/dev/catalog/sections/widgets/widgets_intro_setting_layout_section.dart';
+import 'package:momeo/pages/dev/catalog/sections/widgets/widgets_voice_icon_section.dart';
+import 'package:momeo/pages/dev/catalog/sections/widgets/widgets_voice_card_section.dart';
 
 // ---------------------------------
 // データ定義
