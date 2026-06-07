@@ -31,6 +31,7 @@ class VoiceCard extends StatelessWidget {
           decoration: BoxDecoration(
             color: AppColors.surface,
             borderRadius: BorderRadius.circular(AppRadius.l),
+            border: Border.all(color: AppColors.outline),
           ),
           child: Row(
             children: [
