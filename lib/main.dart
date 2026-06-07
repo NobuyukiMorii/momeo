@@ -3,13 +3,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:momeo/foundation/app_theme.dart';
 import 'package:momeo/pages/dev/console/console_page.dart';
-import 'package:momeo/pages/my_home_page.dart';
 import 'package:momeo/pages/dev/catalog/catalog_page.dart';
 import 'package:momeo/pages/permissions/permission_flow_page.dart';
 import 'package:momeo/pages/splash_page.dart';
+import 'package:momeo/pages/listening_page.dart';
 
 void main() {
-  runApp(const MyApp());
   // ---------------------------------
   // ProviderScope で包むと、配下のどこからでも Provider を参照できる
   // ---------------------------------
@@ -46,7 +45,6 @@ class _RootViewState extends State<RootView> {
 
   @override
   Widget build(BuildContext context) {
-
     // ---------------------------------
     // スプラッシュ画面
     // ---------------------------------
@@ -72,13 +70,13 @@ class _RootViewState extends State<RootView> {
     // ---------------------------------
     // メインコンテンツ
     // kDebugMode 時は ConsolePage が index 0 に入るため、
-    // initialPage で MyHomePage の位置を指定する
+    // initialPage で ListeningPage の位置を指定する
     // ---------------------------------
     return PageView(
       controller: PageController(initialPage: kDebugMode ? 1 : 0),
       children: [
         if (kDebugMode) const ConsolePage(),
-        const MyHomePage(title: 'Flutter Demo Home Page'),
+        const ListeningPage(),
         if (kDebugMode) const CatalogPage(),
       ],
     );
