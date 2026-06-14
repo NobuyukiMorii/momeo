@@ -3,45 +3,85 @@ PODS:
     - CwlCatchExceptionSupport (~> 2.2.1)
   - CwlCatchExceptionSupport (2.2.1)
   - Flutter (1.0.0)
+  - onnxruntime-c (1.22.0)
+  - onnxruntime-objc (1.22.0):
+    - onnxruntime-objc/Core (= 1.22.0)
+  - onnxruntime-objc/Core (1.22.0):
+    - onnxruntime-c (= 1.22.0)
   - permission_handler_apple (9.4.8):
+    - Flutter
+  - record_ios (1.2.1):
     - Flutter
   - shared_preferences_foundation (0.0.1):
     - Flutter
     - FlutterMacOS
+  - sherpa_onnx_ios (1.13.2):
+    - Flutter
   - speech_to_text (7.2.0):
     - CwlCatchException
     - Flutter
     - FlutterMacOS
+  - vad (0.0.6):
+    - Flutter
+    - onnxruntime-objc (= 1.22.0)
+  - vosk_flutter_service (0.1.1):
+    - Flutter
+  - whisper_flutter_new (0.0.1):
+    - Flutter
 
 DEPENDENCIES:
   - Flutter (from `Flutter`)
   - permission_handler_apple (from `.symlinks/plugins/permission_handler_apple/ios`)
+  - record_ios (from `.symlinks/plugins/record_ios/ios`)
   - shared_preferences_foundation (from `.symlinks/plugins/shared_preferences_foundation/darwin`)
+  - sherpa_onnx_ios (from `.symlinks/plugins/sherpa_onnx_ios/ios`)
   - speech_to_text (from `.symlinks/plugins/speech_to_text/darwin`)
+  - vad (from `.symlinks/plugins/vad/ios`)
+  - vosk_flutter_service (from `.symlinks/plugins/vosk_flutter_service/ios`)
+  - whisper_flutter_new (from `.symlinks/plugins/whisper_flutter_new/ios`)
 
 SPEC REPOS:
   trunk:
     - CwlCatchException
     - CwlCatchExceptionSupport
+    - onnxruntime-c
+    - onnxruntime-objc
 
 EXTERNAL SOURCES:
   Flutter:
     :path: Flutter
   permission_handler_apple:
     :path: ".symlinks/plugins/permission_handler_apple/ios"
+  record_ios:
+    :path: ".symlinks/plugins/record_ios/ios"
   shared_preferences_foundation:
     :path: ".symlinks/plugins/shared_preferences_foundation/darwin"
+  sherpa_onnx_ios:
+    :path: ".symlinks/plugins/sherpa_onnx_ios/ios"
   speech_to_text:
     :path: ".symlinks/plugins/speech_to_text/darwin"
+  vad:
+    :path: ".symlinks/plugins/vad/ios"
+  vosk_flutter_service:
+    :path: ".symlinks/plugins/vosk_flutter_service/ios"
+  whisper_flutter_new:
+    :path: ".symlinks/plugins/whisper_flutter_new/ios"
 
 SPEC CHECKSUMS:
   CwlCatchException: 7acc161b299a6de7f0a46a6ed741eae2c8b4d75a
   CwlCatchExceptionSupport: 54ccab8d8c78907b57f99717fb19d4cc3bce02dc
   Flutter: cabc95a1d2626b1b06e7179b784ebcf0c0cde467
+  onnxruntime-c: 7f778680e96145956c0a31945f260321eed2611a
+  onnxruntime-objc: 83d28b87525bd971259a66e153ea32b5d023de19
   permission_handler_apple: 92d754bbaa7361d436db2d6c3c1c2a0fdcec462e
+  record_ios: 980fd386a97a35987d0fce3dfda4b26a38c90f4c
   shared_preferences_foundation: 7036424c3d8ec98dfe75ff1667cb0cd531ec82bb
+  sherpa_onnx_ios: e8ce46d79d231ebdf2edd7b97891f5a601dd3565
   speech_to_text: 3b313d98516d3d0406cea424782ec25470c59d19
+  vad: 7934867589afe53567f492df66fb1615f2185822
+  vosk_flutter_service: 284adba8f0b9d0fd52d8a953540c561c08f2bc08
+  whisper_flutter_new: 9276535665f51f845831fe94859b2cccd0334a70
 
-PODFILE CHECKSUM: b63eadcc773d61b8247138e418b1820b08a6739b
+PODFILE CHECKSUM: ffbe8ab9206d14deeeebcc00828999515e353743
 
 COCOAPODS: 1.16.2

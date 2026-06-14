@@ -43,6 +43,17 @@ dependencies:
   path_provider: ^2.1.5
   flutter_riverpod: ^3.3.1
   intl: ^0.20.2
+  vad: ^0.0.8
+  whisper_flutter_new: ^1.0.1
+  sherpa_onnx: ^1.13.2
+  vosk_flutter_service: ^0.1.1
+
+# whisper_flutter_new はネイティブ層（src/main.cpp）をフォークして使う。
+# audio_ctx の縮小とモデル常駐を入れた packages/whisper_flutter_new を参照する。
+# import は `package:whisper_flutter_new/...` のまま（同名パッケージで上書き）。
+dependency_overrides:
+  whisper_flutter_new:
+    path: packages/whisper_flutter_new
 
 dev_dependencies:
   flutter_test:

@@ -10,6 +10,9 @@ import 'package:momeo/pages/dev/catalog/sections/widgets/widgets_intro_setting_l
 import 'package:momeo/pages/dev/catalog/sections/widgets/widgets_voice_icon_section.dart';
 import 'package:momeo/pages/dev/catalog/sections/widgets/widgets_voice_card_section.dart';
 import 'package:momeo/pages/dev/catalog/sections/packages/packages_speech_to_text_section.dart';
+import 'package:momeo/pages/dev/catalog/sections/packages/packages_vad_whisper_section.dart';
+import 'package:momeo/pages/dev/catalog/sections/packages/packages_sherpa_onnx_ja_section.dart';
+import 'package:momeo/pages/dev/catalog/sections/packages/packages_vosk_ja_section.dart';
 
 // ---------------------------------
 // データ定義
@@ -47,6 +50,9 @@ const _sections = [
   ]),
   _Section(title: 'Packages', items: [
     _Item(title: 'speech_to_text', body: PackagesSpeechToTextSection()),
+    _Item(title: 'vad + whisper', body: PackagesVadWhisperSection()),
+    _Item(title: 'sherpa-onnx (ja)', body: PackagesSherpaOnnxJaSection()),
+    _Item(title: 'vosk (streaming ja)', body: PackagesVoskJaSection()),
   ]),
 ];
 

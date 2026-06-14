@@ -37,6 +37,19 @@ android {
             signingConfig = signingConfigs.getByName("debug")
         }
     }
+
+    // vad（onnxruntime-android）と sherpa_onnx が、ともに libonnxruntime.so 等を
+    // 同梱しており、そのままだと "More than one file ... libonnxruntime.so" で
+    // パッケージングが失敗する。最初に見つかった1つを採用して重複を解消する。
+    packaging {
+        jniLibs {
+            pickFirsts += setOf(
+                "**/libonnxruntime.so",
+                "**/libonnxruntime4j_jni.so",
+                "**/libc++_shared.so",
+            )
+        }
+    }
 }
 
 flutter {

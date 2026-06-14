@@ -46,3 +46,8 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Vendored native packages: ネイティブビルドの生成物はコミットしない
+packages/**/.cxx/
+packages/**/build/
+packages/**/.dart_tool/

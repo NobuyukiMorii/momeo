@@ -1,5 +1,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.RECORD_AUDIO"/>
+    <!-- vad: マイク設定の調整に必要 -->
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS"/>
+    <!-- VAD/Whisper のモデルを初回ダウンロードするために必要 -->
+    <uses-permission android:name="android.permission.INTERNET"/>
     <application
         android:label="momeo"
         android:name="${applicationName}"
