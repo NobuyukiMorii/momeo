@@ -2,30 +2,50 @@
 
 ## この文書について
 
-- **目的**: 調査（`docs/research/on_device_stt/`）で固まった方針を、実際の本番実装へ落とし込むための作業計画をまとめる。
-- **進め方**: `main` から `feature/stt-ondevice` ブランチを切って進める。**1 step = 1 commit = 1つの明確な目的**になるよう分割する。
+- **目的**: 調査（`docs/research/on_device_stt/`）と検証（`docs/on_device_stt/verification/`）で固まった方針を、本番実装へ落とし込むための作業計画をまとめる。
+- **進め方**: `main` 上で進める。**1 step = 1 commit = 1つの明確な目的**になるよう分割する。
 - **記載方針**: 具体的なソースコードは書かない。各ステップの「目的・やること・完了の目安」を言葉で表す。
-- **検証方法**: 各レイヤーの動作確認は dev catalog（`lib/pages/dev/catalog`）に**恒久的な検証セクション**を追加して行う（Step 1 で消える speech_to_text セクションの置き換えにもなる）。
+- **検証方法**: 各レイヤーの動作確認は dev catalog（`lib/pages/dev/catalog`）に**恒久的な検証セクション**を追加して行う。
+- **前提の裏取り**: 本計画の中核（sherpa 内蔵 VAD + record の配線）は、使い捨てブランチ `research/stt-sherpa-builtin-vad` で実機実証済み。合否と根拠は `docs/on_device_stt/verification/README.md` を参照。
 
 ---
 
 ## 採用が決まっていること（前提）
 
 - **エンジン**: `sherpa_onnx` + 日本語モデル **NeMo parakeet CTC 0.6B**（int8 単一ファイル 約625MB ＋ tokens）。
-  - 精度オンデバイス最高・句読点あり・体感ゼロ遅延（約110〜280ms）。決定経緯は `docs/research/on_device_stt/vad_whisper_impl_log.md` 参照。
-- **区切り**: `vad`（Silero VAD）で発話の開始・終了を検出する。
-- **不採用**: whisper（`whisper_flutter_new`）は速度で完敗のため本番に持ち込まない。Vosk はライブ感はあるが精度最下位で不採用。
+  - 精度オンデバイス最高・句読点あり・体感ゼロ遅延（実機で約75〜215ms/発話）。決定経緯は `docs/research/on_device_stt/vad_whisper_impl_log.md` 参照。
+- **録音**: `record` パッケージでマイクを連続キャプチャし、**PCM ストリーム（16bit / 16kHz / モノラル）**を取得する。
+- **区切り**: `sherpa_onnx` に**内蔵された Silero VAD** で発話の開始・終了を検出する（モデル `silero_vad.onnx` 約2MB をローカル同梱）。
+- **不採用**:
+  - `vad` パッケージ … sherpa 内蔵 VAD で代替できるため使わない（理由は次節）。
+  - whisper（`whisper_flutter_new`）… 速度で完敗のため本番に持ち込まない。
+  - Vosk … ライブ感はあるが精度最下位で不採用。
 - **接続点**: リスニング画面 `lib/pages/listening_page.dart` には方式非依存の `_addMemo(String)` が既にある。最終的にここへ確定テキストを渡す。
+
+---
+
+## なぜ「sherpa 内蔵 VAD + record」なのか
+
+区切りは `vad` パッケージでも実現できるが、本計画では **`sherpa_onnx` 内蔵の Silero VAD ＋ `record`** を採る。理由は、ネイティブの土台が本質的にクリーンになるため（いずれも実機・実物で確認済み）。
+
+- **onnxruntime が1本になる**: `sherpa_onnx` も `vad` も内部で onnxruntime を使う。両方入れると Android で `libonnxruntime.so` が**二重同梱**してビルドが壊れる。`vad` を使わなければ onnxruntime は **sherpa の1本だけ**になり、重複対策（pickFirst / exclude）が**そもそも不要**になる。
+- **iOS を 13.0 のまま維持できる**: 15.1 を要求していたのは `vad` が依存する `onnxruntime-objc` だけ。`sherpa_onnx_ios` は xcframework 同梱で onnxruntime-objc に非依存（podspec は iOS 13.0）、`record_ios` は 12.0。よって**デプロイメントターゲットの引き上げが不要**で、iOS 13/14 端末のサポートも維持できる。
+- **完全オフライン**: `silero_vad.onnx` をローカルパスで渡すため、初回起動でも**ネットからのモデル取得が発生しない**（`INTERNET` 権限不要）。同梱（道1）方針と一致する。
+- **権限が最小**: マイク取得は **`RECORD_AUDIO` のみ**で足りる（`MODIFY_AUDIO_SETTINGS` 等は不要）。
+
+> マイク所有者の整理: `record` だけがマイクを掴み、その PCM を「マイクを掴まない」sherpa 内蔵 VAD に流し込む形にする。録音器は1つに集約されるため、二重キャプチャは起きない。
 
 ---
 
 ## 全体パイプライン
 
 ```text
-🎤 マイクを連続キャプチャ
-  ↓ VAD が発話の開始〜終了を検出
-発話チャンク（16kHz モノラルの音声データ）
-  ↓ sherpa-onnx（NeMo CTC）でバッチ文字化
+🎤 record でマイクを連続キャプチャ（PCM16 / 16kHz / モノラル）
+  ↓ PCM を Float32 に変換し、一定窓ごとに供給
+sherpa 内蔵 Silero VAD（発話の開始〜終了を検出）
+  ↓ 発話チャンク（SpeechSegment）として切り出し
+sherpa-onnx OfflineRecognizer（NeMo CTC）でバッチ文字化
+  ↓
 確定テキスト
   ↓ _addMemo に渡す
 メモカードとして保存・表示
@@ -35,7 +55,14 @@
 
 ## モデルの配布方式
 
-625MB のモデルをどう端末に届けるかは **「道1：アプリに同梱」** を採用する（インストール後すぐオフラインで使えるため）。同梱は **iOS と Android で実装・申請設定が異なる**（Android は 200MB 制限のため Play Asset Delivery が必要）。
+端末に届けるモデルは2つ：
+
+| モデル | サイズ | 用途 |
+|---|---|---|
+| NeMo parakeet CTC 0.6B（`model.int8.onnx` ＋ `tokens.txt`） | 約 625MB | 文字化（ASR） |
+| Silero VAD（`silero_vad.onnx`） | 約 2MB | 発話の区切り（VAD） |
+
+配布は **「道1：アプリに同梱」** を採用する（インストール後すぐオフラインで使えるため）。同梱は **iOS と Android で実装・申請設定が異なる**（Android は 200MB 制限のため Play Asset Delivery が必要）。NeMo が大きいので配布設計の主対象は NeMo、`silero_vad.onnx` は小さく同じ仕組みに相乗りできる。
 
 → 詳細は別資料 `docs/on_device_stt/model_distribution.md` を参照。
 
@@ -43,65 +70,70 @@
 
 ## 実装ステップ（各ステップ = 1コミット）
 
-### Step 1: speech_to_text 関連の撤去
+### Step 1: speech_to_text 関連の撤去 ✅ 完了済み
 
-- **目的**: もう使わない `speech_to_text` の実装・依存を最初に取り除き、クリーンな土台から実装を始める。
-- **やること**:
-  - `pubspec.yaml` から `speech_to_text` 依存を削除。
-  - dev catalog の観察セクション `lib/pages/dev/catalog/sections/packages/packages_speech_to_text_section.dart` を削除。
-  - `lib/pages/dev/catalog/catalog_page.dart` から上記セクションの import と登録を外す。
-  - 残った未使用 import がないか確認する。
-- **完了の目安**: コードから `speech_to_text` への参照が消え、ビルドが通る。
-- **備考**: 権限の `Permission.speech`（音声認識権限）は次の Step 2 で扱う。
+- **目的**: もう使わない `speech_to_text` の実装・依存を取り除き、クリーンな土台から始める。
+- **やったこと**: `pubspec.yaml` から `speech_to_text` 依存を削除。dev catalog の観察セクションと登録を削除。未使用 import を整理。
+- **完了の目安**: コードから `speech_to_text` への参照が消え、ビルドが通る。（案Cの影響なし）
 
-### Step 2: 権限フローをマイク中心に整理
+### Step 2: 権限フローをマイク中心に整理 ✅ 完了済み
 
-- **目的**: speech_to_text 前提だった音声認識権限を外し、オンデバイス STT に合った「マイクのみ」のフローにする。
-- **やること**:
-  - iOS の権限リストから音声認識権限（`Permission.speech`）を除く。
-  - `ios/Runner/Info.plist` の音声認識の利用目的記述を削除。
-  - 権限画面側の音声認識向け表示定義を削除。
+- **目的**: 音声認識権限を外し、「マイクのみ」のフローにする。
+- **やったこと**: iOS の権限リストから音声認識権限（`Permission.speech`）を除去。`ios/Runner/Info.plist` の音声認識の利用目的記述を削除。権限画面の音声認識向け表示定義を削除。
 - **完了の目安**: iOS・Android ともマイク権限のみを要求し、許可後にリスニングへ進む。
+- **備考**: 案Cはこの方針をさらに補強する（VAD モデルがローカルのため `INTERNET` 不要、必要権限は `RECORD_AUDIO` のみ）。
 
-### Step 3: 依存追加とネイティブビルドの土台
+### Step 3: `record` の追加とマイク取得の検証
 
-- **目的**: `vad` と `sherpa_onnx` を入れても、ビルドが通り起動する状態を作る。
+- **目的**: 録音パッケージ `record` を入れ、マイクから PCM 音声を連続取得できることを確認する（区切り・文字化はしない）。
 - **やること**:
-  - `pubspec.yaml` に `vad` / `sherpa_onnx` を追加。
-  - Android: `vad` と `sherpa_onnx` が `libonnxruntime.so` を二重同梱する問題への対策（重複ライブラリの取捨設定）。
-  - iOS: `vad` 要件に合わせてデプロイメントターゲットを 15.1 に引き上げ。
-  - Android マニフェストに必要な権限宣言（マイク等）を整える。
-- **完了の目安**: 追加後もアプリがビルド・起動できる（まだ機能はつながっていなくてよい）。
+  - `pubspec.yaml` に `record` を追加する（`sherpa_onnx` は次の Step 4）。
+  - Android マニフェストの権限が **`RECORD_AUDIO` のみ**で足りることを確認する。
+  - iOS のデプロイメントターゲットは **13.0 のまま据え置く**（`record_ios` は 12.0 対応のため引き上げ不要）。
+  - dev catalog に検証セクションを追加し、録音開始/停止・受信サンプル数・音量メーターでマイク取得を可視化する。
+- **完了の目安**: 検証セクションで、話すと音量メーターが反応し、PCM（16bit / 16kHz / モノラル）が連続取得できることを確認できる。
+- **備考**: `record` は onnxruntime を含まないため `.so` 衝突とは無関係。モデルも不要なので、追加直後に単独で挙動確認できる。
 
-### Step 4: VAD による発話の区切り（録音層）
+### Step 4: `sherpa_onnx` の追加とネイティブビルドの土台
 
-- **目的**: マイクを連続キャプチャし、発話の開始〜終了を検出して「1発話分の音声データ」を取り出せるようにする（まだ文字化はしない）。
+- **目的**: 推論エンジン `sherpa_onnx` を入れても、ビルドが通り起動する状態を作る（onnxruntime を sherpa の1本に保つ）。
 - **やること**:
-  - VAD を初期化し、発話開始・終了のイベントで1発話チャンク（16kHz モノラル）を受け取る仕組みを作る。
+  - `pubspec.yaml` に `sherpa_onnx` を追加する（**`vad` は入れない**）。
+  - 追加後もアプリがビルド・起動でき、Android で `libonnxruntime.so` の衝突が起きないことを確認する。
+  - dev catalog に検証セクションを追加し、`initBindings()` でネイティブライブラリが読み込めることを表示する（区切り・文字化はモデル前提のため Step 5 以降）。
+- **完了の目安**: 重複対策（pickFirst/exclude）を入れずにビルドが通って起動し、検証セクションでライブラリ読み込みが成功する。
+- **備考**: 旧計画にあった「`.so` 二重同梱対策（pickFirst/exclude）」「iOS 15.1 への引き上げ」「`INTERNET`/`MODIFY_AUDIO_SETTINGS` の追加」は、`vad` を採用していたら必要だった対策で、案Cでは**いずれも不要**。
+
+### Step 5: 録音と発話の区切り（録音層）
+
+- **目的**: Step 3 で確認した `record` のマイク取得に sherpa 内蔵 VAD をつなぎ、発話の開始〜終了を検出して「1発話分の音声データ」を取り出せるようにする（まだ文字化はしない）。
+- **やること**:
+  - Step 3 の `record` PCM ストリーム（16bit / 16kHz / モノラル）を Float32 に変換する。
+  - サンプルを一定窓で VAD に供給し、発話チャンク（`SpeechSegment`）として受け取る仕組みを作る。
   - dev catalog に検証セクションを追加し、区切られた発話の件数・長さを表示する。
 - **完了の目安**: 検証セクションで、話すたびに発話チャンクが1件ずつ区切られることを確認できる。
 
-### Step 5: モデルの調達（provisioning）
+### Step 6: モデルの調達（provisioning）
 
-- **目的**: sherpa が読めるモデルファイルを端末上の所定パスに用意する。
+- **目的**: sherpa が読めるモデルファイル（ASR と VAD の両方）を端末上の所定パスに用意する。
 - **やること**:
-  - 既定（道1 同梱）に従い、モデルをアプリに同梱し、初回起動でアプリ領域へ展開・配置する。
+  - 既定（道1 同梱）に従い、**NeMo（`model.int8.onnx` ＋ `tokens.txt`）と `silero_vad.onnx`** をアプリに同梱し、初回起動でアプリ領域へ展開・配置する。
   - 配置後にファイルの整合性（壊れ・未完了がないか）を確認する。
   - 展開には時間がかかるため、スプラッシュ等で「準備中」をユーザーに示す。
-  - dev catalog に検証セクションを追加し、モデルの配置状況（パス・サイズ・整合性）を表示する。
-- **完了の目安**: 検証セクションで、モデルとtokensが所定パスに正しく配置され読めることを確認できる。
+  - dev catalog に検証セクションを追加し、各モデルの配置状況（パス・サイズ・整合性）を表示する。
+- **完了の目安**: 検証セクションで、NeMo・tokens・silero_vad が所定パスに正しく配置され読めることを確認できる。
 - **備考**: 同梱の具体的なやり方（iOS/Android の差・展開処理・ストア申請設定）は `docs/on_device_stt/model_distribution.md` を参照。Android のストア公開対応（PAD）はリリース準備時に別途扱う。
 
-### Step 6: sherpa-onnx による文字化（変換層）
+### Step 7: sherpa-onnx による文字化（変換層）
 
 - **目的**: 用意したモデルで、発話チャンクを日本語テキストに変換できるようにする。
 - **やること**:
-  - NeMo CTC 構成で認識器を初期化し、起動後は使い回す（毎回ロードしない）。
+  - NeMo CTC 構成（`nemoCtc`）で認識器を初期化し、起動後は使い回す（毎回ロードしない）。
   - 発話チャンクを渡すとテキストが返る変換処理を実装する。
-  - dev catalog に検証セクションを追加し、発話チャンク（Step 4 の取得分やサンプル）を文字化して結果と所要時間を表示する。
+  - dev catalog に検証セクションを追加し、発話チャンクを文字化して結果と所要時間を表示する。
 - **完了の目安**: 検証セクションで、発話チャンクから妥当な日本語テキストが返ることを確認できる。
 
-### Step 7: リスニング画面への結線（エンドツーエンド）
+### Step 8: リスニング画面への結線（エンドツーエンド）
 
 - **目的**: 録音 → 区切り → 文字化 → 保存をつなぎ、話した内容がメモカードとして積まれるようにする。
 - **やること**:
@@ -109,7 +141,7 @@
   - アクティブカードに進行状況を、確定後は確定済みメモカードを表示する。
 - **完了の目安**: 実機で話すと、確定テキストがメモカードとして保存・表示される（取りこぼしが起きにくいこと）。
 
-### Step 8: 仕様ドキュメントの改訂
+### Step 9: 仕様ドキュメントの改訂
 
 - **目的**: 実装に合わせて仕様文書を最新化する。
 - **やること**:
