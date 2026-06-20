@@ -215,8 +215,8 @@ record or vad（連続キャプチャ＋発話切り出し） → whisper_ggml/w
 
 ## 8. 関連ドキュメント
 
-- `docs/research/continuous_listening/continuous_listening_limitation.md` — `speech_to_text` の限界（再起動の空白）
-- `docs/research/continuous_listening/next_stt_approaches.md` — 次の方向づけ（オンデバイス Whisper ＋ 分離）
+- `docs/research/on_device_stt/continuous_listening_limitation.md` — `speech_to_text` の限界（再起動の空白）
+- `docs/research/on_device_stt/next_stt_approaches.md` — 次の方向づけ（オンデバイス Whisper ＋ 分離）
 - `docs/research/speech_recognition_accuracy.md` — ストリーミング vs バッチの精度差
 - `docs/research/on_device_llm.md` — 確定後の整文（オンデバイス LLM 後処理）
 - `docs/specs/listening_flow.md` — 確定条件は新方式向けに改訂が必要
