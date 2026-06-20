@@ -43,6 +43,12 @@ dependencies:
   flutter_riverpod: ^3.3.1
   intl: ^0.20.2
 
+  # --- [SPIKE] 案C 検証用（branch: research/stt-sherpa-builtin-vad）---
+  # sherpa 内蔵 Silero VAD ＋ record で「録音→区切り→文字化」の配線を実証する。
+  # 合否確定後に整理する想定。vad パッケージは入れない（onnxruntime を1本に保つため）。
+  sherpa_onnx: ^1.13.2
+  record: ^6.1.2
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

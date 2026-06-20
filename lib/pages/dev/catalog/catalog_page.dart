@@ -9,6 +9,7 @@ import 'package:momeo/pages/dev/catalog/sections/widgets/widgets_animated_text_s
 import 'package:momeo/pages/dev/catalog/sections/widgets/widgets_intro_setting_layout_section.dart';
 import 'package:momeo/pages/dev/catalog/sections/widgets/widgets_voice_icon_section.dart';
 import 'package:momeo/pages/dev/catalog/sections/widgets/widgets_voice_card_section.dart';
+import 'package:momeo/pages/dev/catalog/sections/stt/stt_case_c_spike_section.dart';
 
 // ---------------------------------
 // データ定義
@@ -43,6 +44,10 @@ const _sections = [
     _Item(title: 'VoiceIcon', body: WidgetsVoiceIconSection()),
     _Item(title: 'VoiceCard', body: WidgetsVoiceCardSection()),
     _Item(title: 'AnimatedTextSequence', body: WidgetsAnimatedTextSequenceSection()),
+  ]),
+  // 案C 検証用の使い捨てセクション（research/stt-sherpa-builtin-vad）
+  _Section(title: 'STT (検証)', items: [
+    _Item(title: 'CaseC: sherpa VAD + record', body: SttCaseCSpikeSection()),
   ]),
 ];
 
