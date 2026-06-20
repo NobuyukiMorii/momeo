@@ -23,20 +23,6 @@ final _content = {
       button: null as String?,
     ),
   },
-  Permission.speech: {
-    PermissionScreenState.request: (
-      title: 'Allow Speech Recognition',
-      button: 'allow' as String?,
-    ),
-    PermissionScreenState.settings: (
-      title: 'Allow Speech Recognition',
-      button: 'Open Settings' as String?,
-    ),
-    PermissionScreenState.unavailable: (
-      title: 'Speech Recognition Not Available',
-      button: null as String?,
-    ),
-  },
 };
 
 // ---------------------------------

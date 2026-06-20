@@ -28,8 +28,6 @@
 	<true/>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>momeo uses the microphone to capture your voice for memo recording.</string>
-	<key>NSSpeechRecognitionUsageDescription</key>
-	<string>momeo uses speech recognition to convert your voice into text.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

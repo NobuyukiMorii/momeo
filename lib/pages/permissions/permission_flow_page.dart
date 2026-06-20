@@ -28,7 +28,7 @@ class _PermissionFlowPageState extends State<PermissionFlowPage> with WidgetsBin
   // プラットフォームごとの確認対象権限
   // ---------------------------------
   static final _permissionsByPlatform = {
-    'ios':     [Permission.microphone, Permission.speech],
+    'ios':     [Permission.microphone],
     'android': [Permission.microphone],
   };
 

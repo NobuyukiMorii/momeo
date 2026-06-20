@@ -43,12 +43,6 @@ class WidgetsIntroSettingLayoutSection extends StatelessWidget {
       ),
       (
         label: 'ステップ + ボタンあり',
-        step: '2/2',
-        title: Text('Allow Speech Recognition', style: headlineStyle) as Widget,
-        actionLabel: 'allow',
-      ),
-      (
-        label: 'ステップ + ボタンあり',
         step: '1/2',
         title: Text('Allow Microphone Access', style: headlineStyle) as Widget,
         actionLabel: 'Open Settings',
