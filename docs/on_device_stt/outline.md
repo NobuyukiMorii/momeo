@@ -83,7 +83,7 @@ sherpa-onnx OfflineRecognizer（NeMo CTC）でバッチ文字化
 - **完了の目安**: iOS・Android ともマイク権限のみを要求し、許可後にリスニングへ進む。
 - **備考**: 案Cはこの方針をさらに補強する（VAD モデルがローカルのため `INTERNET` 不要、必要権限は `RECORD_AUDIO` のみ）。
 
-### Step 3: `record` の追加とマイク取得の検証
+### Step 3: `record` の追加とマイク取得の検証 ✅ 完了済み
 
 - **目的**: 録音パッケージ `record` を入れ、マイクから PCM 音声を連続取得できることを確認する（区切り・文字化はしない）。
 - **やること**:
@@ -94,7 +94,7 @@ sherpa-onnx OfflineRecognizer（NeMo CTC）でバッチ文字化
 - **完了の目安**: 検証セクションで、話すと音量メーターが反応し、PCM（16bit / 16kHz / モノラル）が連続取得できることを確認できる。
 - **備考**: `record` は onnxruntime を含まないため `.so` 衝突とは無関係。モデルも不要なので、追加直後に単独で挙動確認できる。
 
-### Step 4: `sherpa_onnx` の追加とネイティブビルドの土台
+### Step 4: `sherpa_onnx` の追加とネイティブビルドの土台 ✅ 完了済み
 
 - **目的**: 推論エンジン `sherpa_onnx` を入れても、ビルドが通り起動する状態を作る（onnxruntime を sherpa の1本に保つ）。
 - **やること**:
