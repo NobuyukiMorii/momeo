@@ -10,6 +10,7 @@ import 'package:momeo/pages/dev/catalog/sections/widgets/widgets_intro_setting_l
 import 'package:momeo/pages/dev/catalog/sections/widgets/widgets_voice_icon_section.dart';
 import 'package:momeo/pages/dev/catalog/sections/widgets/widgets_voice_card_section.dart';
 import 'package:momeo/pages/dev/catalog/sections/packages/packages_record_section.dart';
+import 'package:momeo/pages/dev/catalog/sections/packages/packages_sherpa_onnx_section.dart';
 
 // ---------------------------------
 // データ定義
@@ -47,6 +48,7 @@ const _sections = [
   ]),
   _Section(title: 'Packages', items: [
     _Item(title: 'record', body: PackagesRecordSection()),
+    _Item(title: 'sherpa_onnx', body: PackagesSherpaOnnxSection()),
   ]),
 ];
 

@@ -46,6 +46,9 @@ dependencies:
   # マイクから音声を PCM ストリームとして取り込む録音パッケージ（オンデバイス STT の入り口）
   record: ^6.1.2
 
+  # 音声 AI モデル（音声認識・VAD）をオンデバイスで動かす実行エンジン
+  sherpa_onnx: ^1.13.2
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
