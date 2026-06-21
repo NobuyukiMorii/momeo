@@ -73,6 +73,10 @@ flutter:
   # the material Icons class.
   uses-material-design: true
 
+  # オンデバイス STT のモデル（同梱して初回起動で端末へ展開する）
+  assets:
+    - assets/models/silero_vad.onnx
+
   # To add assets to your application, add an assets section, like this:
   # assets:
   #   - images/a_dot_burr.jpeg

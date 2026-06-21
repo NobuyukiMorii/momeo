@@ -11,6 +11,7 @@ import 'package:momeo/pages/dev/catalog/sections/widgets/widgets_voice_icon_sect
 import 'package:momeo/pages/dev/catalog/sections/widgets/widgets_voice_card_section.dart';
 import 'package:momeo/pages/dev/catalog/sections/packages/packages_record_section.dart';
 import 'package:momeo/pages/dev/catalog/sections/packages/packages_sherpa_onnx_section.dart';
+import 'package:momeo/pages/dev/catalog/sections/stt/stt_vad_section.dart';
 
 // ---------------------------------
 // データ定義
@@ -49,6 +50,9 @@ const _sections = [
   _Section(title: 'Packages', items: [
     _Item(title: 'record', body: PackagesRecordSection()),
     _Item(title: 'sherpa_onnx', body: PackagesSherpaOnnxSection()),
+  ]),
+  _Section(title: 'STT', items: [
+    _Item(title: 'VAD 区切り', body: SttVadSection()),
   ]),
 ];
 
