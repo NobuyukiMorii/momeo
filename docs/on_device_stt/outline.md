@@ -30,7 +30,7 @@
 
 - **onnxruntime が1本になる**: `sherpa_onnx` も `vad` も内部で onnxruntime を使う。両方入れると Android で `libonnxruntime.so` が**二重同梱**してビルドが壊れる。`vad` を使わなければ onnxruntime は **sherpa の1本だけ**になり、重複対策（pickFirst / exclude）が**そもそも不要**になる。
 - **iOS を 13.0 のまま維持できる**: 15.1 を要求していたのは `vad` が依存する `onnxruntime-objc` だけ。`sherpa_onnx_ios` は xcframework 同梱で onnxruntime-objc に非依存（podspec は iOS 13.0）、`record_ios` は 12.0。よって**デプロイメントターゲットの引き上げが不要**で、iOS 13/14 端末のサポートも維持できる。
-- **完全オフライン**: `silero_vad.onnx` をローカルパスで渡すため、初回起動でも**ネットからのモデル取得が発生しない**（`INTERNET` 権限不要）。同梱（道1）方針と一致する。
+- **VAD はオフライン**: `silero_vad.onnx` をローカルパスで渡すため、`vad` パッケージのような**VAD モデルの初回DLが発生しない**。同梱（道1）方針と一致する（アプリ全体の `INTERNET` 要否は「モデルの配布方式」の節で整理）。
 - **権限が最小**: マイク取得は **`RECORD_AUDIO` のみ**で足りる（`MODIFY_AUDIO_SETTINGS` 等は不要）。
 
 > マイク所有者の整理: `record` だけがマイクを掴み、その PCM を「マイクを掴まない」sherpa 内蔵 VAD に流し込む形にする。録音器は1つに集約されるため、二重キャプチャは起きない。
@@ -62,9 +62,13 @@ sherpa-onnx OfflineRecognizer（NeMo CTC）でバッチ文字化
 | NeMo parakeet CTC 0.6B（`model.int8.onnx` ＋ `tokens.txt`） | 約 625MB | 文字化（ASR） |
 | Silero VAD（`silero_vad.onnx`） | 約 2MB | 発話の区切り（VAD） |
 
-配布は **「道1：アプリに同梱」** を採用する（インストール後すぐオフラインで使えるため）。同梱は **iOS と Android で実装・申請設定が異なる**（Android は 200MB 制限のため Play Asset Delivery が必要）。NeMo が大きいので配布設計の主対象は NeMo、`silero_vad.onnx` は小さく同じ仕組みに相乗りできる。
+配布は **「道1：アプリに同梱」を基本**とする。**iOS と Android で実装・申請設定が異なる**（Android は 200MB 制限のため Play Asset Delivery が必要）。NeMo が大きいので配布設計の主対象は NeMo、`silero_vad.onnx` は小さく普通のアセットに相乗りできる。
 
-→ 詳細は別資料 `docs/on_device_stt/model_distribution.md` を参照。
+ただし **Android の NeMo（625MB）は、PAD の中でも `fast-follow`（インストール直後に Play が自動DL）を使う**。install-time だとコピー必須・ディスク約1.25GB・自前ネイティブが要るため、コピー不要でディスク半減の fast-follow に切り替えた。引き換えに「初回はDL中でモデルが未到着」という状態が生まれ、初回起動時の進捗表示・準備待ちが要る（Android 固有）。なお iOS の NeMo は **Xcode のバンドルリソース**として同梱し、`Bundle.main` の実パスを直接渡す（コピー不要）。
+
+**オフラインと権限の整理**: 音声認識も VAD も、モデルが端末にあれば**実行時はネット不要＝完全オフライン**（両OS）。崩れるのは「Android の NeMo の入手」だけで、fast-follow は初回に一度 Play がDLする。**PAD（`asset-delivery` ライブラリ）を入れると、その manifest 由来で `INTERNET`＋`ACCESS_NETWORK_STATE` がマニフェストマージで自動付与**される＝「Android は `INTERNET` 不要」は NeMo 配信を入れた時点で成り立たない。ただし両者は **normal permission**（インストール時自動付与）なので**ユーザーに権限ダイアログは出ない**。マイクの `RECORD_AUDIO`（runtime 権限）とは別レイヤー。iOS は NeMo も同梱でDLが無く、入手も実行も完全オフライン・追加権限なし。
+
+→ 配布方式の詳細は `docs/on_device_stt/model_distribution.md`、判断の経緯は `docs/research/on_device_stt/model_delivery_decision_for_beginners.md` を参照。
 
 ---
 
@@ -81,14 +85,14 @@ sherpa-onnx OfflineRecognizer（NeMo CTC）でバッチ文字化
 - **目的**: 音声認識権限を外し、「マイクのみ」のフローにする。
 - **やったこと**: iOS の権限リストから音声認識権限（`Permission.speech`）を除去。`ios/Runner/Info.plist` の音声認識の利用目的記述を削除。権限画面の音声認識向け表示定義を削除。
 - **完了の目安**: iOS・Android ともマイク権限のみを要求し、許可後にリスニングへ進む。
-- **備考**: 案Cはこの方針をさらに補強する（VAD モデルがローカルのため `INTERNET` 不要、必要権限は `RECORD_AUDIO` のみ）。
+- **備考**: 案Cはこの方針をさらに補強する（VAD モデルがローカルなので **VAD のための** `INTERNET` は不要、マイクは `RECORD_AUDIO` のみ）。※ Android の NeMo 配信（fast-follow）では別途 `INTERNET` がマージされるが、normal 権限のため runtime ダイアログは増えない（「モデルの配布方式」の節を参照）。
 
 ### Step 3: `record` の追加とマイク取得の検証 ✅ 完了済み
 
 - **目的**: 録音パッケージ `record` を入れ、マイクから PCM 音声を連続取得できることを確認する（区切り・文字化はしない）。
 - **やること**:
   - `pubspec.yaml` に `record` を追加する（`sherpa_onnx` は次の Step 4）。
-  - Android マニフェストの権限が **`RECORD_AUDIO` のみ**で足りることを確認する。
+  - Android マニフェストの権限が **（この時点では）`RECORD_AUDIO` のみ**で足りることを確認する（NeMo の fast-follow を入れる Step 6 で PAD 由来の `INTERNET` 等が加わる）。
   - iOS のデプロイメントターゲットは **13.0 のまま据え置く**（`record_ios` は 12.0 対応のため引き上げ不要）。
   - dev catalog に検証セクションを追加し、録音開始/停止・受信サンプル数・音量メーターでマイク取得を可視化する。
 - **完了の目安**: 検証セクションで、話すと音量メーターが反応し、PCM（16bit / 16kHz / モノラル）が連続取得できることを確認できる。
@@ -102,7 +106,7 @@ sherpa-onnx OfflineRecognizer（NeMo CTC）でバッチ文字化
   - 追加後もアプリがビルド・起動でき、Android で `libonnxruntime.so` の衝突が起きないことを確認する。
   - dev catalog に検証セクションを追加し、`initBindings()` でネイティブライブラリが読み込めることを表示する（区切り・文字化はモデル前提のため Step 5 以降）。
 - **完了の目安**: 重複対策（pickFirst/exclude）を入れずにビルドが通って起動し、検証セクションでライブラリ読み込みが成功する。
-- **備考**: 旧計画にあった「`.so` 二重同梱対策（pickFirst/exclude）」「iOS 15.1 への引き上げ」「`INTERNET`/`MODIFY_AUDIO_SETTINGS` の追加」は、`vad` を採用していたら必要だった対策で、案Cでは**いずれも不要**。
+- **備考**: 旧計画にあった「`.so` 二重同梱対策（pickFirst/exclude）」「iOS 15.1 への引き上げ」「`MODIFY_AUDIO_SETTINGS` の追加」は、`vad` を採用していたら必要だった対策で、案Cでは**いずれも不要**。（`INTERNET` も `vad` の VAD モデルDL用としては不要だが、Step 6 で NeMo の fast-follow を入れると PAD ライブラリ経由で別途付く。）
 
 ### Step 5: 録音と発話の区切り（録音層） ✅ 完了済み
 
@@ -113,45 +117,66 @@ sherpa-onnx OfflineRecognizer（NeMo CTC）でバッチ文字化
   - dev catalog に検証セクションを追加し、区切られた発話の件数・長さを表示する。
 - **完了の目安**: 検証セクションで、話すたびに発話チャンクが1件ずつ区切られることを確認できる。
 
-### Step 6: モデルの調達（provisioning）
+### Step 6: モデルの配置とパス契約（土台）
 
-- **目的**: sherpa が読めるモデルファイル（ASR と VAD の両方）を端末上の所定パスに用意する。
+- **目的**: sherpa が読める**実ファイルのパス**を所定の場所に用意する**土台**を作る（メモリ読み込みは Step 9、Android の本番配信は Step 8）。
 - **やること**:
-  - 既定（道1 同梱）に従い、**NeMo（`model.int8.onnx` ＋ `tokens.txt`）と `silero_vad.onnx`** をアプリに同梱し、初回起動でアプリ領域へ展開・配置する。
-  - 配置後にファイルの整合性（壊れ・未完了がないか）を確認する。
-  - 展開には時間がかかるため、スプラッシュ等で「準備中」をユーザーに示す。
-  - dev catalog に検証セクションを追加し、各モデルの配置状況（パス・サイズ・整合性）を表示する。
-- **完了の目安**: 検証セクションで、NeMo・tokens・silero_vad が所定パスに正しく配置され読めることを確認できる。
-- **備考**: 同梱の具体的なやり方（iOS/Android の差・展開処理・ストア申請設定）は `docs/on_device_stt/model_distribution.md` を参照。Android のストア公開対応（PAD）はリリース準備時に別途扱う。
+  - **`silero_vad.onnx`（約2MB）**: 普通のアセットとして同梱し、初回起動で書込領域へ**コピー**する（Step 5 の流用）。
+  - **NeMo（iOS）**: **Xcode のバンドルリソース**として同梱（4GB枠内）。`Bundle.main` の**実パスを直接渡す（コピー不要）**。Flutter アセットだと実パスが取れず 625MB のコピーが要るため避ける。
+  - **NeMo（Android・この時点）**: 本番の fast-follow 配信は **Step 8**。本ステップでは **`adb push` の事前配置**で「決まったパスにモデルがある」状態を満たす（dev のみ）。
+  - 「決まったパスに有効なモデルがある状態」を返す `SttModelProvisioner`（**パス契約**＝「決まった場所に必ず有効なモデルがある」という約束。届け方の違いはこの窓口の内側に隠し、使う側はパスだけ見る）を用意し、整合性（壊れ・未完了）を確認する。
+  - dev catalog に検証セクションを追加し、各モデルのパス・サイズ・整合性を表示する。
+- **完了の目安**: iOS は本物の同梱経路、Android は事前配置で、NeMo・tokens・silero_vad が所定パスに揃い、sherpa が実パスから読める。`flutter analyze` が通る。
+- **備考**:
+  - iOS をバンドルリソースにする理由（Flutter アセットだと 625MB コピーが要る）は `model_distribution.md` §3-1。
+  - Android の本番配信（fast-follow）・初回DL未到着のUX・`INTERNET` の扱いは **Step 8** に分離した。
+- **詳細**: `docs/on_device_stt/step06_provision_models.md` を参照。
 
 ### Step 7: sherpa-onnx による文字化（変換層）
 
-- **目的**: 用意したモデルで、発話チャンクを日本語テキストに変換できるようにする。
+- **目的**: 用意したモデルで、発話チャンクを日本語テキストに変換できるようにする（dev 事前配置の上で**エンジンの core を最速で実証**する）。
 - **やること**:
-  - NeMo CTC 構成（`nemoCtc`）で認識器を初期化し、起動後は使い回す（毎回ロードしない）。
+  - NeMo CTC 構成（`nemoCtc`）で認識器を、パス契約（Step 6）の実パスから初期化する。
   - 発話チャンクを渡すとテキストが返る変換処理を実装する。
   - dev catalog に検証セクションを追加し、発話チャンクを文字化して結果と所要時間を表示する。
 - **完了の目安**: 検証セクションで、発話チャンクから妥当な日本語テキストが返ることを確認できる。
+- **備考**: 起動フローへの統合・アプリ全体で1個保持（シングルトン）は Step 9。ここでは dev catalog 上で単発に動けばよい。
 
-### Step 8: スプラッシュでエンジンを読み込む（起動準備）
+### Step 8: Android fast-follow の本配信＋ネイティブブリッジ
 
-- **目的**: 起動のたびに必要な「エンジンをメモリに読み込む」処理を、スプラッシュ表示中に裏で済ませ、待ち時間を感じさせないようにする。
+- **目的**: 625MB の NeMo を**本番の Android** に届ける（最重・リスク隔離）。Step 6 の「事前配置」を本物の Play 配信に置き換える。
 - **やること**:
-  - スプラッシュ開始と同時に、裏でエンジンの読み込みを始める。
+  - `asset-delivery` 依存を追加し、**fast-follow アセットパック**用の小モジュールを定義して Gradle に紐付ける。
+  - `AssetPackManager` を直接叩く**薄いネイティブブリッジ**を実装（`getPackLocation().assetsPath()` で実パス、`getPackStates`/listener で状態・進捗、失敗時 `fetch`/再試行）。既製の `asset_delivery` は on-demand 専用のため使わない。
+  - パス契約の Android 実装を「事前配置」→「fast-follow 実パス」に差し替える（dev は事前配置と両対応）。
+  - provisioner に**準備状態（未開始／DL中／完了／失敗）・進捗・再試行**を公開する（Step 9 のスプラッシュ／Step 10 の入力ガードがこれを消費する）。
+  - `bundletool --local-testing` で本物の fast-follow 経路（DL→`getPackLocation`）を確認。ビルド後の最終 AndroidManifest に PAD 由来の `INTERNET`／`ACCESS_NETWORK_STATE` が入ること・runtime ダイアログ権限は `RECORD_AUDIO` のみであることを確認。
+  - dev catalog に Android の fast-follow DL状態・進捗・再試行を表示する。
+- **完了の目安**: 実機（bundletool 経由）で DL→実パス取得が通り、DL状態が dev catalog で確認できる。
+- **備考**: 「`INTERNET` はマージされるが normal 権限でダイアログは増えない／実行時はオフライン」の整理、「512MB上限」誤情報の否定、3案比較は `model_distribution.md` と `docs/research/on_device_stt/model_delivery_flutter_impl.md`。ストア申請設定はリリース準備時に別途。
+- **詳細**: `docs/on_device_stt/step08_android_fast_follow.md` を参照。
+
+### Step 9: エンジンの読み込みを起動フローに組み込む（スプラッシュ＋シングルトン化）
+
+- **目的**: Step 7 で動いた「エンジンをメモリに読み込む」処理を**起動フローに統合する**。起動のたびに必要なこの数秒を、スプラッシュ表示中に裏で済ませて待ち時間を感じさせず、さらにエンジンをアプリ全体で1つだけ保持する形にする（読み込みの仕組み自体は Step 7 で作成済み）。
+- **やること**:
+  - スプラッシュ開始と同時に、裏でエンジンの読み込み（モデルをメモリへ展開）を始める。
+  - ただし初回起動で Android のモデルDL（625MB / fast-follow）がまだ終わっていない場合、スプラッシュの数秒では完了しない。メモリ読み込みは Step 8 の準備状態（`ensureReady`）が**完了してから**行い、進捗・準備中表示は Step 8 の状態を消費する。
   - アニメ終了時に読み込み済みなら次へ進み、未完了なら「準備中」を示して完了まで待ってから進む。
   - 読み込んだエンジンはアプリ全体で1つだけ保持して使い回す。
 - **完了の目安**: 起動ごとにスプラッシュ中で読み込みが行われ、完了後にリスニング画面へ進む。長引いても画面が固まったように見えない。
-- **詳細**: `docs/on_device_stt/step08_load_engine_on_splash.md` を参照。
+- **詳細**: `docs/on_device_stt/step09_load_engine_on_splash.md` を参照。
 
-### Step 9: リスニング画面への結線（エンドツーエンド）
+### Step 10: リスニング画面への結線（エンドツーエンド）
 
 - **目的**: 録音 → 区切り → 文字化 → 保存をつなぎ、話した内容がメモカードとして積まれるようにする。
 - **やること**:
   - VAD の発話終了を確定トリガーとして、発話チャンクを sherpa で文字化し、結果を `_addMemo` に渡す。
+  - Android でモデルが未準備なら、Step 8 の準備状態で**音声入力を始めさせないガード**を入れる。
   - アクティブカードに進行状況を、確定後は確定済みメモカードを表示する。
 - **完了の目安**: 実機で話すと、確定テキストがメモカードとして保存・表示される（取りこぼしが起きにくいこと）。
 
-### Step 10: 仕様ドキュメントの改訂
+### Step 11: 仕様ドキュメントの改訂
 
 - **目的**: 実装に合わせて仕様文書を最新化する。
 - **やること**:
