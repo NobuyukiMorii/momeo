@@ -12,7 +12,7 @@
 ## 1. このステップの境界
 
 - 扱うのは **音声認識「権限」(B 系統)** のみ。パッケージ本体 (A 系統) は Step 1 で完了済み。
-- **ドキュメントの扱い（決定）**: 音声認識「権限」に関する記述は、混乱を残さないよう **本ステップで整理する**（§3）。`outline.md` Step 11（仕様ドキュメントの改訂）は予定どおり残し、`listening_flow.md` / `overview.md` の改訂は Step 11 で行う。
+- **ドキュメントの扱い（決定）**: 音声認識「権限」に関する記述は、混乱を残さないよう **本ステップで整理する**（§3）。`outline.md` Step 12（仕様ドキュメントの改訂）は予定どおり残し、`listening_flow.md` / `overview.md` の改訂は Step 12 で行う。
 - iOS のデプロイメントターゲット引き上げ（15.1）は **Step 3** の担当。本ステップでは触れない。
 
 ---
@@ -90,7 +90,7 @@
 | `ios/Runner/Info.plist` の `NSMicrophoneUsageDescription`（L29-30） | マイク利用目的 | **残す** |
 | `ios/Podfile` の `PERMISSION_MICROPHONE=1`（L45） | マイクのマクロ | **残す** |
 | `permission_handler` 依存 | マイク権限で引き続き使用 | **削除しない** |
-| `docs/specs/listening_flow.md` / `docs/specs/overview.md` | 確定トリガー・全体フローの記述 | **Step 11** で改訂 |
+| `docs/specs/listening_flow.md` / `docs/specs/overview.md` | 確定トリガー・全体フローの記述 | **Step 12** で改訂 |
 | `pubspec.lock` / `ios/Podfile.lock` | ロック情報 | **手で編集しない**。§6 で自動再生成 |
 
 ---
