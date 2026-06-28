@@ -70,7 +70,7 @@
   - これにより install-time の難点（`AssetManager` 経由でしか読めず 625MB コピー必須・ディスク約1.25GB・自前ネイティブブリッジが必要）を避けられる。判断経緯は [../research/on_device_stt/model_delivery_decision_for_beginners.md](../research/on_device_stt/model_delivery_decision_for_beginners.md)。
 - プロジェクトには、このアセットパック用の小さな専用モジュールを定義し、ビルド設定（Gradle）に紐付ける**Android専用の配線**が必要になる。
 - 引き換えに、**「インストール直後はまだDL中でモデルが無い」状態**が生まれる。初回起動時に進捗を見せ、揃うまで音声入力を待たせる扱いが要る（momeo の Intro/Setting オンボーディング中に背景DLが進む想定）。
-- **権限**: PAD（`asset-delivery` ライブラリ）を入れると、その manifest 由来で `INTERNET`＋`ACCESS_NETWORK_STATE` がマニフェストマージで**自動的に付く**。どちらも normal permission なので**ユーザーに許可ダイアログは出ない**（マイクの `RECORD_AUDIO` とは別レイヤー）。**音声認識の実行自体はオフライン**で、ネットを使うのは初回のモデルDLだけ。
+- **権限**: ユーザーに許可を求めるのはマイク（`RECORD_AUDIO`）だけ。モデルの初回DLは **Google Play が代行する**ので、アプリ自身はネットにつながない。配信ライブラリ（`asset-delivery`）は自分の常駐サービス用の権限を自動で足すが、インストール時に自動で付くだけで許可ダイアログは出ない。音声認識の実行自体もオフライン。
 
 ### 3-3. 実行時の共通処理（パス契約）
 

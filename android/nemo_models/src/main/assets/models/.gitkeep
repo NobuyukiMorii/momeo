@@ -1,0 +1,3 @@
+# このディレクトリには本番/検証時に NeMo（model.int8.onnx・tokens.txt）を置く。
+# モデル実体は巨大なため Git では無視している（.gitignore 参照）。
+# 日常の flutter run では空のままでよい（手置き＝事前配置へフォールバックする）。

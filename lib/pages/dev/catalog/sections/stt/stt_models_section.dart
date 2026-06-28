@@ -1,4 +1,8 @@
+import 'dart:async';
+import 'dart:io' show Platform;
+
 import 'package:flutter/material.dart';
+import 'package:momeo/platform/asset_pack_delivery.dart';
 import 'package:momeo/stt/stt_model_provisioner.dart';
 
 // ============================================================
@@ -16,6 +20,10 @@ class SttModelsSection extends StatefulWidget {
 }
 
 class _SttModelsSectionState extends State<SttModelsSection> {
+  // 窓口は1つだけ持ち、モデル一覧と自動DL状態カードで同じものを共有する
+  // （同じ AssetPackDelivery を使うため）。
+  final SttModelProvisioner _provisioner = SttModelProvisioner();
+
   bool _loading = true; // 住所解決・サイズ計測の最中
   SttModels? _models; // 解決できた3ファイルの状態
   String? _errorMessage;
@@ -33,7 +41,7 @@ class _SttModelsSectionState extends State<SttModelsSection> {
       _errorMessage = null;
     });
     try {
-      final models = await SttModelProvisioner().provision();
+      final models = await _provisioner.provision();
       if (!mounted) return;
       setState(() {
         _models = models;
@@ -83,6 +91,15 @@ class _SttModelsSectionState extends State<SttModelsSection> {
         ),
         const SizedBox(height: 12),
 
+        // Android の自動DL（fast-follow）状態。iOS は同梱なので出さない。
+        if (Platform.isAndroid) ...[
+          _ModelDownloadCard(
+            provisioner: _provisioner,
+            onCompleted: _load, // DL完了でモデル一覧を取り直す
+          ),
+          const SizedBox(height: 12),
+        ],
+
         // 全体の準備状況をひとめで
         _OverallStatus(allValid: models.allValid),
         const SizedBox(height: 8),
@@ -105,6 +122,163 @@ class _SttModelsSectionState extends State<SttModelsSection> {
         ],
       ],
     );
+  }
+}
+
+// ---------------------------------
+// Android の自動DL（fast-follow）状態カード
+//   窓口（provisioner）が公開する準備状態を購読して表示する。
+//   ・最初の1回は現在状態を取得（変化通知は動いたときしか来ないため）
+//   ・以降は変化を購読（進捗・完了）
+//   ・完了に切り替わったら親へ通知し、モデル一覧を取り直してもらう
+// ---------------------------------
+
+class _ModelDownloadCard extends StatefulWidget {
+  const _ModelDownloadCard({required this.provisioner, required this.onCompleted});
+
+  final SttModelProvisioner provisioner;
+  final VoidCallback onCompleted; // DL完了時に呼ぶ（一覧の再取得）
+
+  @override
+  State<_ModelDownloadCard> createState() => _ModelDownloadCardState();
+}
+
+class _ModelDownloadCardState extends State<_ModelDownloadCard> {
+  AssetPackState? _state; // null の間は「取得中」
+  StreamSubscription<AssetPackState>? _subscription;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadInitial();
+    _subscription = widget.provisioner.watchModelDownload().listen(_onUpdate);
+  }
+
+  // 画面を開いた時点の状態（スナップショット）を1回取得する。
+  Future<void> _loadInitial() async {
+    final state = await widget.provisioner.modelDownloadState();
+    if (!mounted) return;
+    setState(() => _state = state);
+  }
+
+  // 状態が変わるたびに呼ばれる。完了へ切り替わった瞬間だけ親へ通知する。
+  void _onUpdate(AssetPackState state) {
+    if (!mounted) return;
+    final justCompleted = _state?.phase != AssetPackPhase.completed &&
+        state.phase == AssetPackPhase.completed;
+    setState(() => _state = state);
+    if (justCompleted) widget.onCompleted();
+  }
+
+  @override
+  void dispose() {
+    _subscription?.cancel();
+    super.dispose();
+  }
+
+  // 取得開始・再試行
+  Future<void> _retry() async {
+    await widget.provisioner.requestModelDownload();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final state = _state;
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        border: Border.all(color: theme.colorScheme.outlineVariant),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // 見出し＋現在フェーズのバッジ
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'NeMo 自動DL（fast-follow）',
+                  style: theme.textTheme.titleSmall,
+                ),
+              ),
+              if (state != null)
+                Builder(builder: (context) {
+                  final badge = _phaseBadge(state.phase, theme);
+                  return _StatusBadge(label: badge.label, color: badge.color);
+                }),
+            ],
+          ),
+          const SizedBox(height: 8),
+
+          if (state == null)
+            Text('状態を取得中…', style: theme.textTheme.bodySmall)
+          else
+            ..._buildStatusBody(state, theme),
+        ],
+      ),
+    );
+  }
+
+  // フェーズごとの本文（進捗・説明・再試行ボタン）
+  List<Widget> _buildStatusBody(AssetPackState state, ThemeData theme) {
+    return [
+      // DL中は進捗バーとバイト数
+      if (state.phase == AssetPackPhase.downloading) ...[
+        LinearProgressIndicator(value: state.progress),
+        const SizedBox(height: 4),
+        Text(
+          '${_formatBytes(state.bytesDownloaded)} / '
+          '${_formatBytes(state.totalBytes)} バイト',
+          style: theme.textTheme.bodySmall,
+        ),
+      ],
+
+      if (state.phase == AssetPackPhase.completed)
+        Text('モデルは端末に届いています。', style: theme.textTheme.bodySmall),
+
+      if (state.phase == AssetPackPhase.notStarted)
+        Text(
+          'まだ届いていません（開発では手置きのモデルを使用）。',
+          style: theme.textTheme.bodySmall,
+        ),
+
+      if (state.phase == AssetPackPhase.failed)
+        Text(
+          'ダウンロードに失敗しました（コード: ${state.errorCode}）。',
+          style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.error),
+        ),
+
+      // 失敗・未到着のときは取得を促せるように
+      if (state.phase == AssetPackPhase.failed ||
+          state.phase == AssetPackPhase.notStarted) ...[
+        const SizedBox(height: 8),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton.icon(
+            onPressed: _retry,
+            icon: const Icon(Icons.download, size: 18),
+            label: const Text('取得 / 再試行'),
+          ),
+        ),
+      ],
+    ];
+  }
+}
+
+// フェーズを、バッジの表示ラベルと色に変換する。
+({String label, Color color}) _phaseBadge(AssetPackPhase phase, ThemeData theme) {
+  switch (phase) {
+    case AssetPackPhase.completed:
+      return (label: '完了', color: Colors.green);
+    case AssetPackPhase.downloading:
+      return (label: 'DL中', color: Colors.blue);
+    case AssetPackPhase.failed:
+      return (label: '失敗', color: theme.colorScheme.error);
+    case AssetPackPhase.notStarted:
+      return (label: '未到着', color: Colors.orange);
   }
 }
 

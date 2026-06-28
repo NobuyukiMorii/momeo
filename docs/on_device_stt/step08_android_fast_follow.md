@@ -1,130 +1,185 @@
-# Step 8: Android fast-follow の本配信＋ネイティブブリッジ
+# Step 8: Android で大きなモデルを「あとから自動ダウンロード」で届ける
 
-## ひとことで言うと
+## このステップを一言で
 
-Android で 625MB の NeMo を**本番でユーザーに届ける**ステップ。
-Step 6 で作った「`adb push` 事前配置」を、本物の Play 配信（**fast-follow**）に置き換える。
+Android で、625MB の文字化モデル（NeMo）を**ユーザーの端末に本番で届ける**ステップ。
 
-iOS の NeMo は Step 6 のバンドルリソースで配信が完成しているので、**このステップは Android 専用**。
-全ステップの中で最重・最もリスクが高い部分なので、core（Step 7 の文字化）が動いたあとに**独立させて隔離**してある。
+Step 6 では「開発機に手でモデルを置く（事前配置）」やり方で先に進めた。
+ここではそれを、本物の配り方＝ **インストール直後にストアが自動でダウンロードする方式（fast-follow）** に置き換える。
 
-> 配信モードを fast-follow にした理由（コピー不要・ディスク半減・実装軽量）と判断経緯は
-> [model_distribution.md](model_distribution.md) と
-> [../research/on_device_stt/model_delivery_decision_for_beginners.md](../research/on_device_stt/model_delivery_decision_for_beginners.md)、
-> 実装手段（薄い自前ブリッジ）の調査は
-> [../research/on_device_stt/model_delivery_flutter_impl.md](../research/on_device_stt/model_delivery_flutter_impl.md) を参照。
+iOS は Step 6 で配信が完成しているので、**このステップは Android 専用**。
+全ステップの中で一番重く、失敗したときの影響が大きい部分なので、文字化の核（Step 7）が動いたあとに**切り離して**扱う。
 
 ---
 
-## このステップの目的
+## いま何が出来ていて、何を変えるのか
 
-Step 6 で**パス契約**（`SttModelProvisioner`＝「実パスを返す」窓口）は出来ている。
-下流（Step 7 の文字化・Step 9 の起動時読み込み・Step 10 の結線）は**実パスしか見ない**ので、
-ここで Android の「実パスの出どころ」を **事前配置 → fast-follow** に差し替えるだけで、下流は影響を受けない。
+「音声を文字にする部品（sherpa）は、モデルファイルの**住所（端末のどこにあるか＝パス）**を教えてもらわないと動けない」——これが大前提。
+Step 6 で、その住所を返す**ひとつの窓口**（パス契約。後述の用語参照）を作った。下流の処理（文字化・起動時の読み込み・画面への結線）は、この窓口から**住所だけ**を受け取り、モデルが**どうやって届いたか**は気にしない。
+
+このステップで変えるのは、その窓口の**中身のうち「Android のモデルの住所の出どころ」だけ**。
 
 ```
-[下流は変わらない]  認識器生成 / 起動時読み込み / 結線
-        ↑ 実パスだけ
-   パス契約（SttModelProvisioner）
-        ↑ ここの Android 実装だけを差し替える
-   事前配置（Step 6）  →  fast-follow 実パス（このステップ）
+[ここは変えない]  文字化 / 起動時の読み込み / 画面への結線
+       ↑ 住所だけ受け取る
+   住所を返す窓口（パス契約）
+       ↑ この中の「Android の住所の出どころ」だけを差し替える
+   事前配置（Step 6 の手置き）  →  自動ダウンロードした場所（このステップ）
 ```
 
-fast-follow は「本体インストールには含めず、**インストール直後に Play が自動DL**する大容量パック」。
-DL 完了後は `getPackLocation().assetsPath()` で**展開済みの実パス**が取れ、そのまま sherpa に渡せる（コピー不要）。
+窓口の外から見た形は変わらないので、下流のコードはそのまま。差し替えはこの一点に閉じる。
+
+---
+
+## 最初に用語
+
+このステップで出てくる言葉を先に押さえると、以降が読みやすい。
+
+| 言葉 | かみ砕いた意味 |
+|---|---|
+| **fast-follow** | アプリを入れた**直後**に、ストア（Play）が裏で大きいファイルを自動ダウンロードする配り方。本体のインストール自体は軽いまま |
+| **アセットパック** | 大きいファイルを fast-follow で配るための「専用の入れ物」。普通の同梱（後述の 200MB 制限）に入りきらないモデルは、これに入れて配る |
+| **パス契約**（再掲） | 「決まった住所に、いつでも読める本物のモデルが必ずある」とアプリが保証する約束。たとえるなら**宅配ボックス**——届ける側は必ず本物を入れておき、受け取る側は住所を見るだけ。届き方が違っても受け取り口は1つに揃う |
+| **橋渡し（ブリッジ）** | Flutter（Dart）から Android の機能を呼ぶための、両者をつなぐ小さなコード。今回は「ダウンロードの操作」を Android に頼むために自分で薄く作る |
+| **準備状態** | モデルが「まだ無い／ダウンロード中／完了／失敗」のどれか、という状態。事前配置には無かった、fast-follow で初めて生まれる考え方 |
+| **bundletool** | 開発機で「本物のストア配信」を**模擬**して試すための道具。fast-follow は普段の `flutter run` では届かないので、確認にこれを使う |
 
 ---
 
 ## やること
 
-### 1. fast-follow アセットパックを用意する（Gradle 配線）
+各項目は「**何を / なぜ / どうなれば OK**」で読める。
 
-- `asset-delivery` 依存（`com.google.android.play:asset-delivery`）を追加する。
-- fast-follow アセットパック用の**小モジュール**を定義し、`settings.gradle.kts` / `build.gradle.kts` に紐付ける（現状は `:app` のみ）。これは **Android 専用の配線**。
-- 200MB 制限を超えるため普通のアセットには入れられないので PAD を使う。NeMo 625MB は**パック上限 1.5GB 内に収まる**（「512MB上限」は誤情報。[model_delivery_flutter_impl.md](../research/on_device_stt/model_delivery_flutter_impl.md) §2-1）。
+### ① 大きいモデルを fast-follow で配る「入れ物」を用意する
 
-### 2. `AssetPackManager` の薄いネイティブブリッジを実装する
+- **何を**: NeMo（625MB）を入れる**アセットパック**を1つ用意し、配り方を fast-follow に設定する。アプリのビルド設定に、この入れ物を「アプリと一緒にストアへ提出する大容量パック」として紐づける。
+- **なぜ**: Google Play は「インストール時に最初に落とす本体」を **200MB まで**に制限している。625MB は普通の同梱に入らないので、大容量専用の入れ物（アセットパック）が要る。なお、この入れ物の上限は **1.5GB** なので、625MB は余裕で1パックに収まる。
+- **どうなれば OK**: ストアへ提出する形（AAB）に、この入れ物が組み込まれる状態になる。
 
-- `getPackLocation(pack).assetsPath()` … 完了後の**実パス**を取る。
-- `getPackStates()` / `registerListener(AssetPackStateUpdateListener)` … **状態・進捗・失敗**を取る。
-- （必要なら）`fetch()` … 未DL時の保険・再試行に使う。
-- Dart へは MethodChannel / EventChannel で「実パス」と「準備状態・進捗」を渡す。
+### ② ダウンロードを操作する薄い「橋渡し」を自前で作る
 
-> **既製の `asset_delivery` パッケージは使わない。** あれは **on-demand 専用**で fast-follow（`getPackLocation`・状態リスナー）をラップしておらず、コア経路に乗せると壊れたとき直せない。必要な Android API はごく少数なので、**薄い自前ブリッジ**で確実に自分の制御下に置く。比較は [model_delivery_flutter_impl.md](../research/on_device_stt/model_delivery_flutter_impl.md) を参照。
+- **何を**: 「いまダウンロードは何%か」「完了したらモデルはどこにあるか」を Android から受け取り、必要なら「もう一度取りに行く（再試行）」を頼める、小さな橋渡しを自分で書く。
+- **なぜ自前か**: 同じ目的の**既製の部品**もあるが、それは「**アプリを開いてからユーザー操作で**ダウンロードする」用で、今回の「**インストール直後に自動で**ダウンロードする」やり方には対応していない。動いても“たまたま”で、壊れたとき直せない。今回はモデルが届かないとアプリが成立しない**核**なので、必要な機能だけを自分の管理下に置く。Android 側で本当に呼ぶ機能はごく少数なので、橋渡しは薄くて済む。
+- **NeMo に依存させない（汎用に作る）**: この橋渡しは「自動DLという OS の汎用機構」を操作するだけで、**NeMo も音声認識も知らない**。扱うのは**入れ物の名前（パック名）だけ**。だから NeMo 固有の知識（どのファイルか・正しいサイズ・住所の振り分け）は持たせず、それは③のパス契約側に置く。こうしておくと、将来また別の大きいファイルを同じ方式で配るときに**橋渡しをそのまま使い回せる**（脱 STT な名前・置き場所にする）。やりすぎ防止のため、汎用化するのは「Android の自動DL操作」だけに限る（iOS は別の仕組みなので巻き込まない）。
+- **どうなれば OK**: ダウンロードの進み具合・完了後のモデルの住所・再試行のきっかけが、Flutter 側に渡る。
 
-### 3. パス契約の Android 実装を差し替える
+### ③ パス契約の Android 側を「事前配置」→「自動DLの住所」に差し替える
 
-- Step 6 の「事前配置先の実パスを返す」を、**fast-follow 完了後の `getPackLocation` 実パスを返す**に差し替える。
-- 開発の利便のため、**事前配置（`adb push`）と fast-follow の両対応**にしておく（dev は事前配置、本番は fast-follow）。
-- パス契約の窓口の内側だけが変わり、下流（Step 7/9/10）は無影響。
+- **何を**: 窓口（パス契約）の Android 実装を、Step 6 の「手置きした場所の住所」から「**自動ダウンロードが完了した場所の住所**」を返す形にする。
+- **両対応にする**: 開発の利便のため、**自動DLの住所が取れればそれを、無ければ手置き（事前配置）の住所**を使う。普段の `flutter run` は手置きで軽く回し、本物の配信は bundletool で確認、という使い分けができる。
+- **なぜ**: 下流（文字化・起動時読み込み・結線）は住所しか見ないので、ここだけ差し替えれば本番配信に切り替わる。窓口の外から見た形は不変。
+- **NeMo 固有はここに集約**: パック名・ファイル名・正しいサイズ・「自動DLか手置きか」の振り分けといった STT 固有の知識は、この窓口側に置く（②の橋渡しは汎用のまま保つ）。
+- **どうなれば OK**: 本番では自動DLの住所、開発では手置きの住所を返し、どちらでも sherpa がモデルを読める。
 
-### 4. 初回DL未到着の「準備状態」を公開する
+### ④ 準備状態を「データ」として公開する（土台）
 
-fast-follow では、**インストール直後はまだDL中でモデルが無い**状態が起こり得る。これは Step 6 の事前配置には無かった新しい状態。
+> ④は**中身（データ）を用意する係**。これを開発者向け画面に映すのが⑤、本番で使うのが Step 9／11。
 
-- provisioner に **準備状態（未開始／DL中／完了／失敗）・進捗・`ensureReady()`・再試行** を公開する。
-- momeo には Intro 1〜4 ＋ Setting のオンボーディングがあるので、**その間に背景DLが進む**想定。多くの場合、最初の音声メモ画面に着くころには完了している。
-- この準備状態を**消費する側**は別ステップ：起動時に裏で読み込みを始めるのは **Step 9**、その状態を見て「準備中」表示・進捗・入力ガードを出す**待ち画面**は **Step 11**。本ステップは「状態を正しく公開する」ところまで。
+- **何を**: モデルの**準備状態（未開始／DL中／完了／失敗）**・進捗・再試行を、**プログラムから読めるデータ**として窓口から外に出す（画面はまだ作らない）。
+- **なぜ**: fast-follow では「**インストール直後はまだDL中でモデルが無い**」という、事前配置には無かった状態が生まれる。この状態を**使う相手が複数いる**ので、先に供給源を1つ用意する（⑤ dev 確認画面／Step 9 起動時の読み込み／Step 11 待ち画面）。momeo は Intro 1〜4 ＋ Setting のオンボーディングがあるので、**その間に裏でDLが進む**想定（多くの場合、最初の音声メモ画面に着くころには完了している）。
+- **どうなれば OK**: 準備状態・進捗・再試行が、後段（⑤や Step 9／11）から読めるデータとして外に出ている。
 
-### 5. dev catalog に fast-follow の状態表示を追加する
+### ⑤ ④の状態を dev 確認画面に表示する（④を使う側の一例）
 
-- Step 6 で作った STT セクションに、**Android の fast-follow DL状態・進捗・再試行ボタン**を追加する。
-- `bundletool` 経由で「未到着 → DL中 → 完了」の遷移と再試行を、目で確認できるようにする。
+> ⑤は**見た目（画面）だけの係**。自分で状態は持たず、④のデータを読んで映すだけ。本番のユーザー向け画面は Step 11。
 
-### 6. 本物経路とマニフェストを確認する
+- **何を**: Step 6 で作った「STT モデル配置」の確認画面に、④のデータを読んで**ダウンロード状態・進捗・再試行ボタン**を表示する。
+- **なぜ**: 「未到着 → DL中 → 完了」の移り変わりと、失敗からの再試行を、開発者が**目で確かめられる**ようにするため。
+- **どうなれば OK**: 確認画面で状態の遷移と再試行が見える。
 
-- `bundletool --local-testing` で**本物の fast-follow 経路**（DL → `getPackLocation`）を再現して通す。
-- ビルド後の**最終 AndroidManifest** に PAD 由来の `INTERNET`／`ACCESS_NETWORK_STATE` が入ること、runtime ダイアログ権限は `RECORD_AUDIO` のみであることを確認する（詳細は次節）。
+### ⑥ 本物の配信経路と権限を確認する
+
+- **何を**: bundletool で「本物の fast-follow 配信」を模擬して、**自動DL → 完了後に住所が取れる**ところまで通す。あわせて、ビルド後の権限を確認する（具体的なコマンドは後述の「検証手順」）。
+- **なぜ**: fast-follow は普段の `flutter run` では届かないので、本番に近い経路を一度ちゃんと通しておく必要がある。
+- **どうなれば OK**: 模擬配信で「DL → 住所取得」が通り、権限が想定どおり（次節）になっている。
 
 ---
 
-## オフラインと権限（fast-follow に伴う整理）
+## オフラインと権限
 
-「完全オフライン」「`INTERNET` 不要」は VAD・マイクの文脈で書いてきたが、NeMo を fast-follow で配ると **Android だけ前提が一段変わる**。混乱しないよう切り分ける。
+権限まわりは、結論だけ言えばシンプル。
 
-- **実行時は完全オフライン（両OS）**: 音声認識も VAD も、モデルさえ端末にあれば**推論にネットは要らない**。ここは従来どおり。
-- **Android の NeMo 入手だけ初回に一度ネットを使う**: fast-follow は初回に Play が1回だけDLする。**PAD（`asset-delivery` ライブラリ）を入れると、その manifest 由来で `INTERNET`＋`ACCESS_NETWORK_STATE` がマニフェストマージで自動的に付く**。＝「Android は `INTERNET` 不要」は NeMo 配信を入れた時点で成り立たない。
-- **ユーザーに見える権限ダイアログは増えない**: `INTERNET`／`ACCESS_NETWORK_STATE` は **normal permission**（インストール時に自動付与）なので許可ダイアログは出ない。ダイアログが出るのはマイクの `RECORD_AUDIO`（runtime 権限）だけで、従来どおり。レイヤーが違う。
-- **silero・マイクの「ローカル／`RECORD_AUDIO` のみ」は今も正しい**: silero はローカルなので VAD のための `INTERNET` は不要、マイクは `RECORD_AUDIO` のみ。NeMo の `INTERNET` はそれとは独立に増えるもの。
-- **iOS は丸ごとオフライン**: NeMo も同梱でDLが無いため、インストール以降は入手も実行も完全オフライン・追加権限なし。
+- **ユーザーに許可を求めるのはマイク（`RECORD_AUDIO`）だけ**。fast-follow を入れても、ここは増えない。
+- **実行は完全オフライン（両OS）**。モデルさえ端末にあれば、文字化も区切り（VAD）もネット不要。
+- **モデルの初回DLは Google Play が代行する**ので、アプリ自身はネットにつながない（アプリにネット接続権限は不要）。
+- **配信ライブラリ（`asset-delivery`）は、自分の常駐サービス用の権限を自動で足す**。インストール時に自動で付くだけで、ユーザーに許可ダイアログは出ない。
+- **iOS は NeMo も同梱**でダウンロードが無く、追加の権限もなし。
+
+---
+
+## 検証手順（bundletool で配信を模擬）
+
+普段の `flutter run` では fast-follow が届かないので、bundletool で**ストア配信を模擬**して経路を通す。実機（またはエミュレータ）と `bundletool`（`brew install bundletool`）を用意する。
+
+```bash
+# 1) モデルを取得（未取得なら）。.dev_models/ に置かれる
+bash scripts/fetch_nemo_model.sh
+
+# 2) 検証ビルド用に、モデルをアセットパックへ置く（実体は .gitignore 済み）
+cp .dev_models/model.int8.onnx android/nemo_models/src/main/assets/models/
+cp .dev_models/tokens.txt      android/nemo_models/src/main/assets/models/
+
+# 3) AAB（ストア提出用パッケージ）をビルド
+flutter build appbundle --debug
+
+# 4) fast-follow を模擬した APK セットを生成（--local-testing が肝）
+bundletool build-apks \
+  --bundle=build/app/outputs/bundle/debug/app-debug.aab \
+  --output=/tmp/momeo.apks \
+  --local-testing
+
+# 5) 端末にインストール
+bundletool install-apks --apks=/tmp/momeo.apks
+
+# 6) 後始末：普段の flutter run を 625MB で重くしないため、パックからモデルを外す
+rm android/nemo_models/src/main/assets/models/model.int8.onnx
+rm android/nemo_models/src/main/assets/models/tokens.txt
+```
+
+起動後、dev カタログの「STT → モデル配置」で次を確認する。
+
+- 配信カードが「完了」になり、モデル一覧が **OK（緑）** になる。
+- インストール時、**マイク以外の許可ダイアログが出ない**。
+
+> **local-testing の限界**: この模擬は「経路が正しいか（自動DL → 実パス → モデルが読める）」を確かめるもの。配信元が端末ローカルなので**速く完了**しがちで、実際の「遅いDL＋進捗」までは再現しない。リアルな初回DL体験の確認は本物の Play 内部テスト（リリース準備時）で行う。
 
 ---
 
 ## このステップでやらないこと
 
-- 準備待ち画面（「準備中」表示・進捗・入力ガード＝準備状態を**消費**する側） → Step 11
-- 起動時にバックグラウンドで読み込みを始める側 → Step 9
+- 準備の状態を**使う側**（「準備中」表示・進捗・入力の足止め） → Step 11
+- 起動時に裏でモデルの読み込みを始める側 → Step 9
 - iOS の NeMo 配信（Step 6 のバンドルリソースで**完了済み**）
-- **Android のストア公開対応（fast-follow パックの申請設定の作り込み）** → リリース準備時に別途
+- **ストア公開のための申請設定の作り込み** → リリース準備時に別途
 
 ---
 
 ## 完了の目安
 
-- 実機（`bundletool --local-testing` 経由）で、fast-follow の **DL → `getPackLocation` 実パス取得**が通る。
-- dev catalog で fast-follow の**DL状態・進捗・再試行**が確認でき、「未到着 → 完了」の遷移が見える。
-- パス契約の Android 実装が、本番では fast-follow 実パス、dev では事前配置と**両対応**になっている。
-- 最終 AndroidManifest に PAD 由来の `INTERNET`／`ACCESS_NETWORK_STATE` が入り、runtime ダイアログ権限は `RECORD_AUDIO` のみ。
-- `flutter analyze` が通る。
+- 開発機（bundletool で模擬配信）で、**自動ダウンロード → 完了後にモデルの住所が取れる**ところまで通る。
+- dev 確認画面で**ダウンロード状態・進捗・再試行**が見え、「未到着 → 完了」の移り変わりが確認できる。
+- 窓口（パス契約）の Android 側が、本番＝自動DLの住所／開発＝手置きの住所、の**両対応**になっている。
+- ビルド後、**ユーザーに許可を求める権限はマイクだけ**になっている（配信ライブラリが足す権限は自動付与でダイアログ無し）。
+- `flutter analyze`（コードの静的チェック）が通る。
 
 ---
 
 ## 関連ドキュメント
 
-- [step06_provision_models.md](step06_provision_models.md) — 配置とパス契約の土台（このステップはその Android 実装を本番化する）
-- [model_distribution.md](model_distribution.md) — 配布方式の詳細（iOS/Android 差・PAD・ストア申請）
-- [../research/on_device_stt/model_delivery_flutter_impl.md](../research/on_device_stt/model_delivery_flutter_impl.md) — 実装手段（薄い自前ブリッジ）の調査・3案比較・サイズ上限
-- [../research/on_device_stt/model_delivery_decision_for_beginners.md](../research/on_device_stt/model_delivery_decision_for_beginners.md) — fast-follow 採用の判断（やさしい解説）
+- [step06_provision_models.md](step06_provision_models.md) — 配置とパス契約の土台（このステップはその Android 側を本番化する）
+- [model_distribution.md](model_distribution.md) — 配布方式の詳細（iOS/Android の違い・大容量配信・ストア申請）
+- [../research/on_device_stt/model_delivery_flutter_impl.md](../research/on_device_stt/model_delivery_flutter_impl.md) — 「橋渡しを自前で薄く作る」と決めた調査（既製部品との比較・サイズ上限）
+- [../research/on_device_stt/model_delivery_decision_for_beginners.md](../research/on_device_stt/model_delivery_decision_for_beginners.md) — fast-follow を採用した判断（やさしい解説）
 
 ---
 
 ## 作業チェックリスト
 
-- [ ] `asset-delivery` 依存を追加し、fast-follow アセットパック用の小モジュールを `settings.gradle.kts` / `build.gradle.kts` に紐付け
-- [ ] `AssetPackManager` の薄いネイティブブリッジ（`getPackLocation` 実パス・`getPackStates`/listener 状態進捗・`fetch`/再試行）を実装し、Dart へ橋渡し
-- [ ] パス契約の Android 実装を「事前配置」→「fast-follow 実パス」に差し替え（dev は事前配置と両対応）
-- [ ] provisioner に準備状態（未開始／DL中／完了／失敗）・進捗・`ensureReady()`・再試行を公開（消費は Step 9／10）
-- [ ] dev catalog に Android の fast-follow DL状態・進捗・再試行ボタンを追加
-- [ ] `bundletool --local-testing` で本物の fast-follow 経路（DL→`getPackLocation`）を確認
-- [ ] 最終 AndroidManifest に PAD 由来の `INTERNET`／`ACCESS_NETWORK_STATE` が入ること、runtime ダイアログ権限は `RECORD_AUDIO` のみであることを確認
+- [ ] NeMo を入れる fast-follow アセットパック（入れ物）を用意し、アプリのビルド設定に紐づける
+- [ ] ダウンロードを操作する薄い橋渡し（進捗・完了後の住所・再試行）を自前で作り、Flutter 側へつなぐ
+- [ ] パス契約の Android 側を「事前配置」→「自動DLの住所」に差し替える（開発は手置きと両対応）
+- [ ] 準備状態（未開始／DL中／完了／失敗）・進捗・再試行を、後段が使える「データ」として公開する（④）
+- [ ] ④の状態を dev 確認画面に表示する（状態・進捗・再試行ボタン）（⑤）
+- [ ] bundletool で本物の配信経路（自動DL → 住所取得）を確認する
+- [ ] ビルド後、ユーザーに許可を求める権限がマイクだけであることを確認する
 - [ ] `flutter analyze` が通る

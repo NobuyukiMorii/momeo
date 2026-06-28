@@ -62,11 +62,11 @@ sherpa-onnx OfflineRecognizer（NeMo CTC）でバッチ文字化
 | NeMo parakeet CTC 0.6B（`model.int8.onnx` ＋ `tokens.txt`） | 約 625MB | 文字化（ASR） |
 | Silero VAD（`silero_vad.onnx`） | 約 2MB | 発話の区切り（VAD） |
 
-配布は **「道1：アプリに同梱」を基本**とする。**iOS と Android で実装・申請設定が異なる**（Android は 200MB 制限のため Play Asset Delivery が必要）。NeMo が大きいので配布設計の主対象は NeMo、`silero_vad.onnx` は小さく普通のアセットに相乗りできる。
+配布は **「道1：アプリに同梱」を基本**とする。**iOS と Android で実装・申請設定が異なる**（Android は 200MB 制限のため **Play Asset Delivery（PAD。大容量ファイルを配るための Android 公式の仕組み）** が必要）。NeMo が大きいので配布設計の主対象は NeMo、`silero_vad.onnx` は小さく普通のアセットに相乗りできる。
 
 ただし **Android の NeMo（625MB）は、PAD の中でも `fast-follow`（インストール直後に Play が自動DL）を使う**。install-time だとコピー必須・ディスク約1.25GB・自前ネイティブが要るため、コピー不要でディスク半減の fast-follow に切り替えた。引き換えに「初回はDL中でモデルが未到着」という状態が生まれ、初回起動時の進捗表示・準備待ちが要る（Android 固有）。なお iOS の NeMo は **Xcode のバンドルリソース**として同梱し、`Bundle.main` の実パスを直接渡す（コピー不要）。
 
-**オフラインと権限の整理**: 音声認識も VAD も、モデルが端末にあれば**実行時はネット不要＝完全オフライン**（両OS）。崩れるのは「Android の NeMo の入手」だけで、fast-follow は初回に一度 Play がDLする。**PAD（`asset-delivery` ライブラリ）を入れると、その manifest 由来で `INTERNET`＋`ACCESS_NETWORK_STATE` がマニフェストマージで自動付与**される＝「Android は `INTERNET` 不要」は NeMo 配信を入れた時点で成り立たない。ただし両者は **normal permission**（インストール時自動付与）なので**ユーザーに権限ダイアログは出ない**。マイクの `RECORD_AUDIO`（runtime 権限）とは別レイヤー。iOS は NeMo も同梱でDLが無く、入手も実行も完全オフライン・追加権限なし。
+**オフラインと権限の整理**: ユーザーに許可を求めるのはマイク（`RECORD_AUDIO`）だけ。モデルが端末にあれば音声認識も VAD も**実行は完全オフライン**（両OS）。Android の NeMo の初回DLは **Google Play が代行する**ので、アプリ自身はネットにつながない。配信ライブラリ（`asset-delivery`）は自分の常駐サービス用の権限を自動で足すが、インストール時に自動で付くだけでダイアログは出ない。iOS は NeMo も同梱でDLが無く、追加の権限もなし。
 
 → 配布方式の詳細は `docs/on_device_stt/model_distribution.md`、判断の経緯は `docs/research/on_device_stt/model_delivery_decision_for_beginners.md` を参照。
 
@@ -78,21 +78,21 @@ sherpa-onnx OfflineRecognizer（NeMo CTC）でバッチ文字化
 
 - **目的**: もう使わない `speech_to_text` の実装・依存を取り除き、クリーンな土台から始める。
 - **やったこと**: `pubspec.yaml` から `speech_to_text` 依存を削除。dev catalog の観察セクションと登録を削除。未使用 import を整理。
-- **完了の目安**: コードから `speech_to_text` への参照が消え、ビルドが通る。（案Cの影響なし）
+- **完了の目安**: コードから `speech_to_text` への参照が消え、ビルドが通る。
 
 ### Step 2: 権限フローをマイク中心に整理 ✅ 完了済み
 
 - **目的**: 音声認識権限を外し、「マイクのみ」のフローにする。
 - **やったこと**: iOS の権限リストから音声認識権限（`Permission.speech`）を除去。`ios/Runner/Info.plist` の音声認識の利用目的記述を削除。権限画面の音声認識向け表示定義を削除。
 - **完了の目安**: iOS・Android ともマイク権限のみを要求し、許可後にリスニングへ進む。
-- **備考**: 案Cはこの方針をさらに補強する（VAD モデルがローカルなので **VAD のための** `INTERNET` は不要、マイクは `RECORD_AUDIO` のみ）。※ Android の NeMo 配信（fast-follow）では別途 `INTERNET` がマージされるが、normal 権限のため runtime ダイアログは増えない（「モデルの配布方式」の節を参照）。
+- **備考**: 採用方式（sherpa 内蔵 VAD ＋ record）はこの方針に合う（VAD モデルはローカル、ユーザーに見える権限はマイク `RECORD_AUDIO` のみ）。Android の配信で増える権限は「モデルの配布方式」の節に整理。
 
 ### Step 3: `record` の追加とマイク取得の検証 ✅ 完了済み
 
 - **目的**: 録音パッケージ `record` を入れ、マイクから PCM 音声を連続取得できることを確認する（区切り・文字化はしない）。
 - **やること**:
   - `pubspec.yaml` に `record` を追加する（`sherpa_onnx` は次の Step 4）。
-  - Android マニフェストの権限が **（この時点では）`RECORD_AUDIO` のみ**で足りることを確認する（NeMo の fast-follow を入れる Step 6 で PAD 由来の `INTERNET` 等が加わる）。
+  - Android マニフェストの権限が **（この時点では）`RECORD_AUDIO` のみ**で足りることを確認する（配信を入れる Step 8 で増える権限は「モデルの配布方式」の節）。
   - iOS のデプロイメントターゲットは **13.0 のまま据え置く**（`record_ios` は 12.0 対応のため引き上げ不要）。
   - dev catalog に検証セクションを追加し、録音開始/停止・受信サンプル数・音量メーターでマイク取得を可視化する。
 - **完了の目安**: 検証セクションで、話すと音量メーターが反応し、PCM（16bit / 16kHz / モノラル）が連続取得できることを確認できる。
@@ -106,7 +106,7 @@ sherpa-onnx OfflineRecognizer（NeMo CTC）でバッチ文字化
   - 追加後もアプリがビルド・起動でき、Android で `libonnxruntime.so` の衝突が起きないことを確認する。
   - dev catalog に検証セクションを追加し、`initBindings()` でネイティブライブラリが読み込めることを表示する（区切り・文字化はモデル前提のため Step 5 以降）。
 - **完了の目安**: 重複対策（pickFirst/exclude）を入れずにビルドが通って起動し、検証セクションでライブラリ読み込みが成功する。
-- **備考**: 旧計画にあった「`.so` 二重同梱対策（pickFirst/exclude）」「iOS 15.1 への引き上げ」「`MODIFY_AUDIO_SETTINGS` の追加」は、`vad` を採用していたら必要だった対策で、案Cでは**いずれも不要**。（`INTERNET` も `vad` の VAD モデルDL用としては不要だが、Step 6 で NeMo の fast-follow を入れると PAD ライブラリ経由で別途付く。）
+- **備考**: `vad` パッケージを使っていたら必要だった対策（ネイティブライブラリの重複対策・iOS の対応バージョン引き上げ・余分なマイク権限の追加）は、採用方式では**どれも要らない**（理由は前述「なぜ『sherpa 内蔵 VAD + record』なのか」）。
 
 ### Step 5: 録音と発話の区切り（録音層） ✅ 完了済み
 
@@ -129,7 +129,7 @@ sherpa-onnx OfflineRecognizer（NeMo CTC）でバッチ文字化
 - **完了の目安**: iOS は本物の同梱経路、Android は事前配置で、NeMo・tokens・silero_vad が所定パスに揃い、sherpa が実パスから読める。`flutter analyze` が通る。
 - **備考**:
   - iOS をバンドルリソースにする理由（Flutter アセットだと 625MB コピーが要る）は `model_distribution.md` §3-1。
-  - Android の本番配信（fast-follow）・初回DL未到着のUX・`INTERNET` の扱いは **Step 8** に分離した。
+  - Android の本番配信（fast-follow）・初回DL未到着のUX・権限の扱いは **Step 8** に分離した。
 - **詳細**: `docs/on_device_stt/step06_provision_models.md` を参照。
 
 ### Step 7: sherpa-onnx による文字化（変換層） ✅ 完了済み
@@ -143,18 +143,18 @@ sherpa-onnx OfflineRecognizer（NeMo CTC）でバッチ文字化
 - **備考**: 起動フローへの統合・アプリ全体で1個保持（シングルトン）は Step 9。ここでは dev catalog 上で単発に動けばよい。
 - **詳細**: `docs/on_device_stt/step07_transcribe_with_nemo.md` を参照。
 
-### Step 8: Android fast-follow の本配信＋ネイティブブリッジ
+### Step 8: Android fast-follow の本配信＋ネイティブブリッジ ✅ 完了済み
 
-- **目的**: 625MB の NeMo を**本番の Android** に届ける（最重・リスク隔離）。Step 6 の「事前配置」を本物の Play 配信に置き換える。
+- **目的**: 625MB の NeMo を**本番の Android** に届ける（最重・リスク隔離）。Step 6 の「開発機への手置き（事前配置）」を、本物の配り方＝**インストール直後にストアが自動DLする方式（fast-follow）**に置き換える。
 - **やること**:
-  - `asset-delivery` 依存を追加し、**fast-follow アセットパック**用の小モジュールを定義して Gradle に紐付ける。
-  - `AssetPackManager` を直接叩く**薄いネイティブブリッジ**を実装（`getPackLocation().assetsPath()` で実パス、`getPackStates`/listener で状態・進捗、失敗時 `fetch`/再試行）。既製の `asset_delivery` は on-demand 専用のため使わない。
-  - パス契約の Android 実装を「事前配置」→「fast-follow 実パス」に差し替える（dev は事前配置と両対応）。
-  - provisioner に**準備状態（未開始／DL中／完了／失敗）・進捗・再試行**を公開する（Step 9 の起動時読み込み／Step 11 の待ち画面がこれを消費する）。
-  - `bundletool --local-testing` で本物の fast-follow 経路（DL→`getPackLocation`）を確認。ビルド後の最終 AndroidManifest に PAD 由来の `INTERNET`／`ACCESS_NETWORK_STATE` が入ること・runtime ダイアログ権限は `RECORD_AUDIO` のみであることを確認。
-  - dev catalog に Android の fast-follow DL状態・進捗・再試行を表示する。
-- **完了の目安**: 実機（bundletool 経由）で DL→実パス取得が通り、DL状態が dev catalog で確認できる。
-- **備考**: 「`INTERNET` はマージされるが normal 権限でダイアログは増えない／実行時はオフライン」の整理、「512MB上限」誤情報の否定、3案比較は `model_distribution.md` と `docs/research/on_device_stt/model_delivery_flutter_impl.md`。ストア申請設定はリリース準備時に別途。
+  - NeMo を入れる **fast-follow 用の「入れ物」（アセットパック）** を1つ用意し、アプリのビルド設定に紐づける（普通の同梱は 200MB 制限で入らないため）。
+  - ダウンロードを操作する**薄い橋渡し**（進捗・完了後のモデルの住所・再試行）を自前で作り、Flutter 側へつなぐ。既製の部品は「アプリを開いて手動DL」用で今回の自動DLに非対応のため使わない。
+  - パス契約の Android 側を「事前配置の住所」→「自動DLが完了した場所の住所」に差し替える（開発は手置きと両対応）。
+  - **準備状態（未開始／DL中／完了／失敗）・進捗・再試行** を、後段が使える形で公開する（Step 9 の起動時読み込み／Step 11 の待ち画面がこれを使う）。
+  - dev 確認画面に、Android のダウンロード状態・進捗・再試行ボタンを足す。
+  - **bundletool で本物の配信を模擬**して「自動DL → 住所取得」を確認。ビルド後、**ユーザーに許可を求める権限はマイクだけ**であること（配信ライブラリが足す権限は自動付与でダイアログ無し）を確認。
+- **完了の目安**: 開発機（bundletool で模擬配信）で「自動DL → モデルの住所取得」が通り、ダウンロード状態が dev 確認画面で見える。
+- **備考**: 権限の整理（ユーザーに見える権限はマイクだけ・モデルDLは Play 代行で実行はオフライン）と、既製部品との比較は `model_distribution.md` と `docs/research/on_device_stt/model_delivery_flutter_impl.md` に詳しい。ストア申請設定はリリース準備時に別途。
 - **詳細**: `docs/on_device_stt/step08_android_fast_follow.md` を参照。
 
 ### Step 9: 準備を起動時に開始し、エンジンをシングルトンで保持する

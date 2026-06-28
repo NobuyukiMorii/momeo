@@ -3,13 +3,15 @@ import 'dart:io';
 import 'package:flutter/services.dart' show MethodChannel, PlatformException, rootBundle;
 import 'package:path_provider/path_provider.dart';
 
+import 'package:momeo/platform/asset_pack_delivery.dart';
+
 // ============================================================
 // STT モデルの「住所を返す窓口」（パス契約）
 //
 //   sherpa は実ファイルの「住所（パス）」からしかモデルを読めない。
 //   一方、モデルの届き方は OS・ファイルごとにバラバラ:
 //     - iOS の NeMo   … アプリ同梱（Swift ブリッジ経由で実パスを取得）
-//     - Android の NeMo … 開発機に手置き（adb push 先の外部ストレージ）※本番配信は Step 8
+//     - Android の NeMo … 本番は自動DL（fast-follow パック）、開発は手置き（内部ストレージ）
 //     - silero        … Flutter アセット同梱 → 端末へコピーして実パスを作る（両OS共通）
 //
 //   この「住所探しのバラバラさ」を窓口の中だけに隠し、
@@ -56,6 +58,12 @@ const String _kIosTokensKey = 'tokens';
 //   置き方は /data/local/tmp 経由で run-as コピー（step06 の手順と一致）。
 //   本番の自動配信（fast-follow）への差し替えは Step 8。
 const String _kAndroidDevModelsSubDir = 'models';
+
+// Android 本番配信（fast-follow アセットパック）の契約。
+//   パック名は android/nemo_models/build.gradle.kts の packName と必ず揃えること。
+//   モデルはパック内の models/ サブフォルダに入る（自動DL完了後の実パスからの相対）。
+const String _kAndroidNemoPackName = 'nemo_models';
+const String _kAndroidPackModelsSubDir = 'models';
 
 // ---------------------------------
 // 1ファイルぶんの住所＋整合性
@@ -113,6 +121,10 @@ class SttModelProvisioner {
   // iOS の住所を取りに行く通話線（Swift 側の SttModelChannel と対）
   static const MethodChannel _iosChannel = MethodChannel(_kIosChannelName);
 
+  // NeMo の自動DL（fast-follow パック）の準備状態を扱う窓口。
+  //   iOS など自動DLが無い環境では「常に完了」を返す空実装になる。
+  final AssetPackDelivery _nemoDelivery = AssetPackDelivery(_kAndroidNemoPackName);
+
   // 3ファイルの住所を解決し、サイズまで測ってまとめて返す。
   // 見つからないファイルは exists=false / isValid=false になる（例外は投げない）。
   Future<SttModels> provision() async {
@@ -156,6 +168,21 @@ class SttModelProvisioner {
   }
 
   // ---------------------------------
+  // NeMo の準備状態（自動DL）の公開口
+  //   「いま未開始／DL中／完了／失敗か・進捗」を後段（dev 画面・起動時読み込み・
+  //   待ち画面）へ渡す。実体は汎用ラッパー AssetPackDelivery への委譲。
+  // ---------------------------------
+
+  // 今の準備状態を1回だけ取得する。
+  Future<AssetPackState> modelDownloadState() => _nemoDelivery.currentState();
+
+  // 準備状態の変化を流し続けるストリーム（DL中の進捗もここに流れる）。
+  Stream<AssetPackState> watchModelDownload() => _nemoDelivery.watchState();
+
+  // 取得開始・再試行。未到着や失敗のときに呼ぶ。
+  Future<void> requestModelDownload() => _nemoDelivery.fetch();
+
+  // ---------------------------------
   // NeMo の住所解決（OS で分岐。違いはここに隠す）
   // ---------------------------------
 
@@ -183,10 +210,38 @@ class SttModelProvisioner {
     }
   }
 
-  // Android(dev): 内部ストレージの所定フォルダ（silero と同じ getApplicationSupportDirectory
-  //   配下）の住所を返す。adb で /data/local/tmp 経由 → run-as コピーで置く（step06 参照）。
-  //   本番の自動配信（fast-follow）への差し替えは Step 8。
+  // Android: 本番配信（fast-follow）と開発の手置きの両対応。
+  //   1) まず自動DL（fast-follow パック）の実パスを試す。
+  //   2) ただしパスが取れても、そこにモデルが実在するときだけ採用する。
+  //      （日常の `flutter run` では空のパックがアプリに溶け込み、パスは取れても
+  //        モデルは無い。そこで「パスの有無」ではなく「実ファイルの有無」で判定する。）
+  //   3) 無ければ開発機の手置き（内部ストレージ）へフォールバックする。
   Future<_NemoPaths> _resolveNemoPathsForAndroid() async {
+    final fastFollowPaths = await _resolveNemoPathsFromAndroidAssetPack();
+    if (fastFollowPaths != null) return fastFollowPaths;
+    return _resolveNemoPathsFromAndroidDevPlacement();
+  }
+
+  // 自動DL（fast-follow パック）にモデルが届いていれば、その実パスを返す。
+  //   パックが未到着、またはモデルが実在しなければ null（呼び出し側が手置きへ回す）。
+  Future<_NemoPaths?> _resolveNemoPathsFromAndroidAssetPack() async {
+    final assetsPath = await AssetPackDelivery(_kAndroidNemoPackName).assetsPath();
+    if (assetsPath == null) return null;
+
+    final modelsDir = '$assetsPath/$_kAndroidPackModelsSubDir';
+    final modelPath = '$modelsDir/$_kNemoModelFileName';
+    // パスが取れても中身が無いことがあるので、実ファイルの存在で最終判断する。
+    if (!await File(modelPath).exists()) return null;
+
+    return _NemoPaths(
+      modelPath: modelPath,
+      tokensPath: '$modelsDir/$_kNemoTokensFileName',
+    );
+  }
+
+  // 開発機の手置き場所（内部ストレージ getApplicationSupportDirectory 配下の models/）の住所。
+  //   adb で /data/local/tmp 経由 → run-as コピーで置く。silero と同じ場所に統一している。
+  Future<_NemoPaths> _resolveNemoPathsFromAndroidDevPlacement() async {
     final supportDir = await getApplicationSupportDirectory();
     final modelsDir = '${supportDir.path}/$_kAndroidDevModelsSubDir';
     return _NemoPaths(
