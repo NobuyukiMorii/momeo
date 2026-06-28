@@ -1,10 +1,8 @@
 import 'dart:async';
-import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show rootBundle;
-import 'package:path_provider/path_provider.dart';
+import 'package:momeo/stt/stt_model_provisioner.dart';
 import 'package:record/record.dart';
 import 'package:sherpa_onnx/sherpa_onnx.dart' as sherpa;
 
@@ -25,10 +23,6 @@ const int _kBytesPerSample = 2; // PCM16 = 1サンプル2バイト
 const int _kInt16Amplitude = 32768; // PCM16 の正規化基準（2^15）
 const int _kVadWindow = 512; // VAD に1回で渡すサンプル数（16kHz の Silero 用）
 const double _kVadBufferSeconds = 60; // VAD 内部バッファ（秒）。maxSpeechDuration(最大30秒)を余裕で収める
-
-// 同梱した VAD モデル（アセット）と、端末へコピーする先のファイル名
-const String _kSileroAsset = 'assets/models/silero_vad.onnx';
-const String _kSileroFileName = 'silero_vad.onnx';
 
 // 区切られた1発話の記録
 class _Segment {
@@ -83,7 +77,7 @@ class _SttVadSectionState extends State<SttVadSection> {
   Future<void> _prepare() async {
     try {
       sherpa.initBindings();
-      _modelPath = await _ensureSileroModel();
+      _modelPath = await SttModelProvisioner().ensureSilero();
       _createVad();
       if (!mounted) return;
       setState(() {
@@ -97,19 +91,6 @@ class _SttVadSectionState extends State<SttVadSection> {
         _errorMessage = 'VAD の準備に失敗しました: $error';
       });
     }
-  }
-
-  // 同梱した silero_vad.onnx を端末の書き込み可能領域へコピーし、その実パスを返す
-  // （sherpa はアセットを直接読めず、実ファイルのパスが必要なため）
-  Future<String> _ensureSileroModel() async {
-    final supportDir = await getApplicationSupportDirectory();
-    final file = File('${supportDir.path}/$_kSileroFileName');
-    if (!await file.exists()) {
-      final data = await rootBundle.load(_kSileroAsset);
-      final bytes = data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
-      await file.writeAsBytes(bytes, flush: true);
-    }
-    return file.path;
   }
 
   // 現在のパラメータで VAD を生成する（パラメータ変更時は作り直す）

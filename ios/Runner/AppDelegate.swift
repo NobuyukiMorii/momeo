@@ -12,5 +12,10 @@ import UIKit
 
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
+
+    // STT モデルの実パスを Dart に返すネイティブブリッジを登録
+    if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "SttModelChannel") {
+      SttModelChannel.register(with: registrar.messenger())
+    }
   }
 }
