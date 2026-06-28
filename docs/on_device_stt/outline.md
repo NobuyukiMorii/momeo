@@ -132,7 +132,7 @@ sherpa-onnx OfflineRecognizer（NeMo CTC）でバッチ文字化
   - Android の本番配信（fast-follow）・初回DL未到着のUX・`INTERNET` の扱いは **Step 8** に分離した。
 - **詳細**: `docs/on_device_stt/step06_provision_models.md` を参照。
 
-### Step 7: sherpa-onnx による文字化（変換層）
+### Step 7: sherpa-onnx による文字化（変換層） ✅ 完了済み
 
 - **目的**: 用意したモデルで、発話チャンクを日本語テキストに変換できるようにする（dev 事前配置の上で**エンジンの core を最速で実証**する）。
 - **やること**:
@@ -141,6 +141,7 @@ sherpa-onnx OfflineRecognizer（NeMo CTC）でバッチ文字化
   - dev catalog に検証セクションを追加し、発話チャンクを文字化して結果と所要時間を表示する。
 - **完了の目安**: 検証セクションで、発話チャンクから妥当な日本語テキストが返ることを確認できる。
 - **備考**: 起動フローへの統合・アプリ全体で1個保持（シングルトン）は Step 9。ここでは dev catalog 上で単発に動けばよい。
+- **詳細**: `docs/on_device_stt/step07_transcribe_with_nemo.md` を参照。
 
 ### Step 8: Android fast-follow の本配信＋ネイティブブリッジ
 
