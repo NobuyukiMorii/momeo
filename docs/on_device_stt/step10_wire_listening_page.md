@@ -84,7 +84,7 @@ _addMemo()（DB 保存 → メモ一覧を更新）
 
 - アクティブカードは「聞いています」のインジケーター表示に徹する。
 - 文字化は 100〜300ms と速いので、話し終えるとすぐカードが積まれ、体感は損なわれない。
-- 仕様書（`listening_flow.md`）の改訂は **Step 12** で行う（このステップでは直さない）。
+- 仕様書（`listening_flow.md`）の改訂は **Step 14** で行う（このステップでは直さない）。
 
 ---
 
@@ -122,7 +122,7 @@ _addMemo()（DB 保存 → メモ一覧を更新）
 ## このステップでやらないこと
 
 - 準備ができるまで**待つ／待ち画面を出す**（Android 初回のDL待ちゲート） → Step 11
-- 仕様書（`listening_flow.md`・`overview.md`）の改訂 → Step 12
+- 仕様書（`listening_flow.md`・`overview.md`）の改訂 → Step 14
 - isolate 化 → ④の計測で実害が出たときだけ（先回りしない）
 - リアルタイム字幕（話している最中の途中経過表示） → 新方式では原理的に無し。やるなら別アーキテクチャの検討になるため、本計画のスコープ外
 
@@ -141,10 +141,10 @@ _addMemo()（DB 保存 → メモ一覧を更新）
 
 - [outline.md](outline.md) — 全体計画（Step 10 の位置づけ・実機確認時の宿題）
 - [step09_load_engine_on_splash.md](step09_load_engine_on_splash.md) — エンジンの常駐（このステップはそれを借りる側）
-- [step11_preparation_gate.md](step11_preparation_gate.md) — 準備待ちゲート（このステップの次に上載せする）
+- [step11_preparation_gate.md](step11_preparation_gate.md) — 準備待ちゲート（このステップの次に上載せする。表示の仕上げは step12、自動再試行は step13 に分割）
 - [../research/on_device_stt/continuous_listening_limitation.md](../research/on_device_stt/continuous_listening_limitation.md) — 旧方式が取りこぼした記録（このステップが答える失敗）
 - [../research/on_device_stt/heavy_processing_isolate_for_beginners.md](../research/on_device_stt/heavy_processing_isolate_for_beginners.md) — 取りこぼしが出たときの逃がし方（isolate）
-- [../specs/listening_flow.md](../specs/listening_flow.md) — 旧仕様（Step 12 で新方式前提に改訂予定）
+- [../specs/listening_flow.md](../specs/listening_flow.md) — 旧仕様（Step 14 で新方式前提に改訂予定）
 
 ---
 
