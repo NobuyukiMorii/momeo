@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:momeo/widgets/text_slide_transition.dart';
 
 // ---------------------------------
-// AnimatedTextSequence — 設定（外から受け取る値: texts, displayDuration, animationDuration, onFinished）
+// AnimatedTextSequence — 一定時間ごとに次のテキストへ進める時間駆動のラッパー
+// スライドの描画は TextSlideTransition に委譲する
 // ---------------------------------
 class AnimatedTextSequence extends StatefulWidget {
   const AnimatedTextSequence({
@@ -104,50 +106,15 @@ class _AnimatedTextSequenceState extends State<AnimatedTextSequence>
   // ---------------------------------
   @override
   Widget build(BuildContext context) {
-    // 親の DefaultTextStyle を継承する
-    final textStyle = DefaultTextStyle.of(context).style;
-
     return AnimatedBuilder(
       animation: _controller,
       builder: (context, child) {
-        // ---------------------------------
-        // 静止状態: 現在のテキストをそのまま表示
-        // ---------------------------------
-        if (!_isTransitioning) {
-          return Text(widget.texts[_currentIndex], style: textStyle);
-        }
-
-        // ---------------------------------
-        // スライドアニメーション中: 現テキストが左へ、次テキストが右から同時に動く
-        // ---------------------------------
-
-        // コンテナ幅を基準にピクセルで移動量を計算する
-        return LayoutBuilder(
-          builder: (context, constraints) {
-            final containerWidth = constraints.maxWidth;
-
-            // 現在のテキスト: 中央 → 左へ退場（コンテナ幅分だけ移動）
-            final currentOffset = -_controller.value * containerWidth;
-
-            // 次のテキスト: 右 → 中央へ登場（コンテナ幅分だけ移動）
-            final nextOffset = (1.0 - _controller.value) * containerWidth;
-
-            return Stack(
-              children: [
-                // 現在のテキスト（左へ退場）
-                Transform.translate(
-                  offset: Offset(currentOffset, 0),
-                  child: Text(widget.texts[_currentIndex], style: textStyle),
-                ),
-
-                // 次のテキスト（右から登場）
-                Transform.translate(
-                  offset: Offset(nextOffset, 0),
-                  child: Text(widget.texts[_currentIndex + 1], style: textStyle),
-                ),
-              ],
-            );
-          },
+        return TextSlideTransition(
+          currentText: widget.texts[_currentIndex],
+          nextText: _isTransitioning
+              ? widget.texts[_currentIndex + 1]
+              : null,
+          progress: _controller.value,
         );
       },
     );

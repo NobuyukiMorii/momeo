@@ -121,3 +121,21 @@ class SttEngineNotifier extends AsyncNotifier<SttTranscriber> {
     }
   }
 }
+
+// ============================================================
+// sttModelDownloadStateProvider — NeMo 自動DL（fast-follow）の進捗
+//
+//   sttEngineProvider の「準備中」だけでは DL中か読み込み中か分からないため併用する。
+//   iOS など自動DLが無い環境では常に ready が流れる。
+//   待ち画面でしか使わないので、誰も見ていない間は購読を止める（autoDispose）。
+// ============================================================
+final sttModelDownloadStateProvider =
+    StreamProvider.autoDispose<AssetPackState>((ref) async* {
+  final provisioner = SttModelProvisioner();
+
+  // 購読を開始した時点の状態をまず1回流す（変化通知は動いたときしか来ないため）
+  yield await provisioner.modelDownloadState();
+
+  // 以降は状態が変わるたびに流す
+  yield* provisioner.watchModelDownload();
+});
