@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:math' show min;
+
 import 'package:flutter/foundation.dart' show debugPrint, kDebugMode;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:sherpa_onnx/sherpa_onnx.dart' as sherpa;
@@ -9,29 +12,58 @@ import 'package:momeo/stt/stt_transcriber.dart';
 // ============================================================
 // sttEngineProvider — 文字化エンジン（SttTranscriber）をアプリ全体で1つだけ持つ
 //
-//   エンジンの読み込みは数秒かかるため、起動時に1回だけ行い全画面で使い回す。
-//   状態は AsyncValue の3状態のまま公開する:
-//     loading=準備中 / data=完了 / error=失敗
-//   準備ゲート（RootView・PreparationGatePage）とリスニング画面が消費する。
+//   読み込みは数秒かかるため、起動時に1回だけ行い全画面で使い回す。
+//   状態は AsyncValue で公開する（loading=準備中 / data=完了 / error=失敗）。
 //
-//   VAD（silero）の生成は録音セッション側の持ち物なのでここでは作らない。
-//   DL の開始・再取得（fetch）もしない（fast-follow は Play が自動で始める。
-//   ここは完了を待つだけで、失敗からの復帰は自動再試行が担う）。
+//   準備が失敗したら、この provider が自分でバックオフ付きの再試行を予約する。
+//   画面側（ゲート・待ち画面）は状態を表示するだけで、復帰には関与しない。
+//
+//   ※ VAD（silero）はここでは作らない（録音セッション側の持ち物）。
 // ============================================================
 
 final sttEngineProvider =
     AsyncNotifierProvider<SttEngineNotifier, SttTranscriber>(
   SttEngineNotifier.new,
+  // Riverpod 標準の自動リトライ（0.2〜6.4秒）を無効化。自前のバックオフと二重に走るため
+  retry: (retryCount, error) => null,
 );
 
 class SttEngineNotifier extends AsyncNotifier<SttTranscriber> {
+  // ---------------------------------
+  // 自動再試行の設定（間隔は失敗のたびに1段広げ、最後の値が上限）
+  // ---------------------------------
+  static const _retryDelaySeconds = [2, 4, 8, 16, 30];
+  static const _restartSuggestionThreshold = 5;
+
+  int _consecutiveFailures = 0;
+  Timer? _retryTimer;
+
+  // ---------------------------------
+  // エンジンの準備を実行する。失敗したら自動で再試行を予約する
+  // ---------------------------------
+  @override
+  Future<SttTranscriber> build() async {
+    // 再実行の入口。予約済みの再試行が残っていれば止める（多重予約を防ぐ）
+    _retryTimer?.cancel();
+    ref.onDispose(() => _retryTimer?.cancel());
+
+    try {
+      final transcriber = await _prepare();
+      _consecutiveFailures = 0;
+      ref.read(sttRestartSuggestedProvider.notifier).set(false);
+      return transcriber;
+    } catch (error) {
+      _scheduleRetry();
+      rethrow;
+    }
+  }
+
   // ---------------------------------
   // 起動時の準備処理
   //   ① ネイティブ初期化 → ② モデルパス取得 → ③ (Android初回のみ) DL完了待ち
   //   → ④ エンジン生成・保持
   // ---------------------------------
-  @override
-  Future<SttTranscriber> build() async {
+  Future<SttTranscriber> _prepare() async {
     // ① 複数回呼んでも安全
     sherpa.initBindings();
 
@@ -104,6 +136,83 @@ class SttEngineNotifier extends AsyncNotifier<SttTranscriber> {
       );
     }
   }
+
+  // ---------------------------------
+  // 次の再試行をバックオフ付きで予約する
+  // ---------------------------------
+  void _scheduleRetry() {
+    _consecutiveFailures++;
+    if (_consecutiveFailures >= _restartSuggestionThreshold) {
+      ref.read(sttRestartSuggestedProvider.notifier).set(true);
+    }
+
+    final delayIndex =
+        min(_consecutiveFailures - 1, _retryDelaySeconds.length - 1);
+    _retryTimer = Timer(
+      Duration(seconds: _retryDelaySeconds[delayIndex]),
+      _retry,
+    );
+
+    if (kDebugMode) {
+      debugPrint(
+        '[sttEngine] 準備に失敗しました（連続 $_consecutiveFailures 回目）。'
+        '${_retryDelaySeconds[delayIndex]}秒後に自動で再試行します',
+      );
+    }
+  }
+
+  // ---------------------------------
+  // 再試行の本体。DL起因の失敗なら再取得を頼んでから準備をやり直す
+  // ---------------------------------
+  Future<void> _retry() async {
+    try {
+      final provisioner = SttModelProvisioner();
+      final download = await provisioner.modelDownloadState();
+      if (download.phase == AssetPackPhase.notStarted ||
+          download.phase == AssetPackPhase.failed) {
+        await provisioner.requestModelDownload();
+        await _waitForDownloadingTransition(provisioner);
+      }
+    } catch (_) {
+      // 再取得の依頼に失敗しても準備のやり直しには進む
+      // （また失敗すれば次のバックオフに乗る）
+    }
+    ref.invalidateSelf();
+  }
+
+  // fetch 直後はDL状態の反映にラグがあるため、DLが始まるまで少しだけ待つ
+  Future<void> _waitForDownloadingTransition(
+    SttModelProvisioner provisioner,
+  ) async {
+    try {
+      await provisioner
+          .watchModelDownload()
+          .firstWhere(
+            (state) =>
+                state.phase != AssetPackPhase.notStarted &&
+                state.phase != AssetPackPhase.failed,
+          )
+          .timeout(const Duration(seconds: 5));
+    } on TimeoutException {
+      // 遷移が観測できなくても再試行は続ける
+    }
+  }
+}
+
+// ============================================================
+// sttRestartSuggestedProvider — 待ち画面を "Try restarting" に切り替えるべきか
+// ============================================================
+final sttRestartSuggestedProvider =
+    NotifierProvider<SttRestartSuggestionNotifier, bool>(
+  SttRestartSuggestionNotifier.new,
+);
+
+class SttRestartSuggestionNotifier extends Notifier<bool> {
+  @override
+  bool build() => false;
+
+  // SttEngineNotifier が成否に応じて呼ぶ（画面側は watch するだけ）
+  void set(bool suggested) => state = suggested;
 }
 
 // ============================================================

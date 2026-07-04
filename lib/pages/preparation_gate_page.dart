@@ -9,9 +9,15 @@ import 'package:momeo/widgets/intro_setting_layout.dart';
 import 'package:momeo/widgets/phase_slide_text.dart';
 
 // ---------------------------------
-// 待ち画面が出し分ける4つのフェーズ（表示文言は _resolveStatus が決める）
+// 待ち画面が出し分ける5つのフェーズ（表示文言は _resolveStatus が決める）
 // ---------------------------------
-enum PreparationPhase { gettingReady, downloading, almostThere, retrying }
+enum PreparationPhase {
+  gettingReady,
+  downloading,
+  almostThere,
+  retrying,
+  tryRestarting,
+}
 
 // ---------------------------------
 // PreparationGatePage — 文字化エンジンの準備が終わるまで受け止める待ち画面
@@ -25,8 +31,10 @@ class PreparationGatePage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final engineState = ref.watch(sttEngineProvider);
     final downloadState = ref.watch(sttModelDownloadStateProvider);
+    final restartSuggested = ref.watch(sttRestartSuggestedProvider);
 
-    final (phase, text) = _resolveStatus(engineState, downloadState);
+    final (phase, text) =
+        _resolveStatus(engineState, downloadState, restartSuggested);
 
     return Scaffold(
       body: IntroSettingLayout(
@@ -44,12 +52,18 @@ class PreparationGatePage extends ConsumerWidget {
   (PreparationPhase, String) _resolveStatus(
     AsyncValue<SttTranscriber> engineState,
     AsyncValue<AssetPackState> downloadState,
+    bool restartSuggested,
   ) {
     // ---------------------------------
-    // エンジンが失敗 → 再試行中（実際の自動再試行は Step 13）
+    // エンジンが失敗し、次の自動再試行を待っている間 → 再試行中の表示
+    //   連続失敗が閾値を超えていたら再起動の提案に切り替える（裏の再試行は続く）。
+    //   再実行中（isLoading）は直前のエラーが保持されたままになるため除外し、
+    //   DLが再開していれば下の Downloading 表示へ戻す
     // ---------------------------------
-    if (engineState.hasError) {
-      return (PreparationPhase.retrying, 'Retrying');
+    if (engineState.hasError && !engineState.isLoading) {
+      return restartSuggested
+          ? (PreparationPhase.tryRestarting, 'Try restarting')
+          : (PreparationPhase.retrying, 'Retrying');
     }
 
     // ---------------------------------
@@ -73,7 +87,10 @@ class PreparationGatePage extends ConsumerWidget {
       case AssetPackPhase.completed:
         return (PreparationPhase.almostThere, 'Almost there');
       case AssetPackPhase.failed:
-        return (PreparationPhase.retrying, 'Retrying');
+        // エンジン側の失敗確定を待つ間もフェーズを揺らさないよう、同じ判定で出す
+        return restartSuggested
+            ? (PreparationPhase.tryRestarting, 'Try restarting')
+            : (PreparationPhase.retrying, 'Retrying');
     }
   }
 }

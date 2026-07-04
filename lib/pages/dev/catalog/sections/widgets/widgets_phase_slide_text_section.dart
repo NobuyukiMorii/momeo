@@ -31,6 +31,8 @@ class _WidgetsPhaseSlideTextSectionState
         return 'Almost there';
       case PreparationPhase.retrying:
         return 'Retrying';
+      case PreparationPhase.tryRestarting:
+        return 'Try restarting';
     }
   }
 
