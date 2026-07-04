@@ -5,6 +5,7 @@ import 'package:momeo/foundation/app_theme.dart';
 import 'package:momeo/pages/dev/console/console_page.dart';
 import 'package:momeo/pages/dev/catalog/catalog_page.dart';
 import 'package:momeo/pages/permissions/permission_flow_page.dart';
+import 'package:momeo/pages/preparation_gate_page.dart';
 import 'package:momeo/pages/splash_page.dart';
 import 'package:momeo/pages/listening_page.dart';
 import 'package:momeo/providers/stt_providers.dart';
@@ -31,7 +32,7 @@ class MyApp extends StatelessWidget {
 
 // ---------------------------------
 // RootView — アプリのルート画面
-// Splash → Permission → メインコンテンツ の順に遷移する
+// Splash → Permission → 準備ゲート → メインコンテンツ の順に遷移する
 // ---------------------------------
 class RootView extends ConsumerStatefulWidget {
   const RootView({super.key});
@@ -77,6 +78,15 @@ class _RootViewState extends ConsumerState<RootView> {
           setState(() => _permissionFinished = true);
         },
       );
+    }
+
+    // ---------------------------------
+    // 準備ゲート
+    // ---------------------------------
+    final sttEngineState = ref.watch(sttEngineProvider);
+    final isSttEngineReady = sttEngineState.hasValue && !sttEngineState.isLoading;
+    if (!isSttEngineReady) {
+      return const PreparationGatePage();
     }
 
     // ---------------------------------
