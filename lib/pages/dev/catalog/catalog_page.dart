@@ -14,6 +14,7 @@ import 'package:momeo/pages/dev/catalog/sections/packages/packages_sherpa_onnx_s
 import 'package:momeo/pages/dev/catalog/sections/stt/stt_vad_section.dart';
 import 'package:momeo/pages/dev/catalog/sections/stt/stt_models_section.dart';
 import 'package:momeo/pages/dev/catalog/sections/stt/stt_transcription_section.dart';
+import 'package:momeo/pages/dev/catalog/sections/stt/stt_engine_section.dart';
 
 // ---------------------------------
 // データ定義
@@ -57,6 +58,7 @@ const _sections = [
     _Item(title: 'VAD 区切り', body: SttVadSection()),
     _Item(title: 'モデル配置', body: SttModelsSection()),
     _Item(title: '文字化', body: SttTranscriptionSection()),
+    _Item(title: 'エンジン常駐', body: SttEngineSection()),
   ]),
 ];
 

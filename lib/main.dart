@@ -7,6 +7,7 @@ import 'package:momeo/pages/dev/catalog/catalog_page.dart';
 import 'package:momeo/pages/permissions/permission_flow_page.dart';
 import 'package:momeo/pages/splash_page.dart';
 import 'package:momeo/pages/listening_page.dart';
+import 'package:momeo/providers/stt_providers.dart';
 
 void main() {
   // ---------------------------------
@@ -32,16 +33,27 @@ class MyApp extends StatelessWidget {
 // RootView — アプリのルート画面
 // Splash → Permission → メインコンテンツ の順に遷移する
 // ---------------------------------
-class RootView extends StatefulWidget {
+class RootView extends ConsumerStatefulWidget {
   const RootView({super.key});
 
   @override
-  State<RootView> createState() => _RootViewState();
+  ConsumerState<RootView> createState() => _RootViewState();
 }
 
-class _RootViewState extends State<RootView> {
+class _RootViewState extends ConsumerState<RootView> {
   bool _splashFinished = false;
   bool _permissionFinished = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // ---------------------------------
+    // 起動と同時に文字化エンジンの準備（メモリ読み込み）を始める。
+    // ここでは発火するだけで、完了を待たない・画面もブロックしない
+    // （準備できたかの確認と足止めはリスニング直前のゲートが行う）
+    // ---------------------------------
+    ref.read(sttEngineProvider);
+  }
 
   @override
   Widget build(BuildContext context) {
