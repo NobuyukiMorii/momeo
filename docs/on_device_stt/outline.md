@@ -195,7 +195,7 @@ sherpa-onnx OfflineRecognizer（NeMo CTC）でバッチ文字化
 - **目的**: 待ち画面をスプラッシュと同じ「中央の1行テキストが流れていく」デザインに仕上げ、いま何をしているかを短い英語ひとこと＋DL%の数字で伝える。**進捗バーは置かない**（起動体験を「短い言葉が流れる」で統一する）。
 - **やること**:
   - 「渡されたテキストが変わったらスライドで切り替わる」**状態駆動版**のスライドテキストウィジェットを作る。`AnimatedTextSequence`（時間駆動）とはスライド演出の**描画部分だけを共通ウィジェットとして共有**し、切り替えトリガーのロジックは作り分ける（スプラッシュの挙動は変えない）。
-  - フェーズ別の文言を出し分ける: DL開始待ち **"Getting ready"** ／ DL中 **"Downloading 37%"** ／ メモリ読み込み中 **"Almost there"** ／ 再試行中 **"Retrying"**（発動は Step 13）。DL中の判定は Step 8 の公開データを併読する。
+  - フェーズ別の文言を出し分ける: DL開始待ち **"Getting ready"** ／ DL中 **"Downloading 37%"** ／ メモリ読み込み中 **"Almost there"** ／ 再試行中 **"Retrying"** ／ 再試行が続けて失敗 **"Try restarting"**（"Retrying" 以降の発動は Step 13）。DL中の判定は Step 8 の公開データを併読する。
   - スライド演出はフェーズ切替時のみ。DL% は数字だけその場で更新する（毎%スライドはさせない）。
 - **完了の目安**: Android 初回（模擬配信）で Getting ready → Downloading n% → Almost there と流れてリスニングへ繋がる。見た目がスプラッシュと揃っている。
 - **詳細**: `docs/on_device_stt/step12_gate_status_display.md` を参照。
