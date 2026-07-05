@@ -117,23 +117,13 @@ class _ListeningPageState extends ConsumerState<ListeningPage> {
       body: SafeArea(
         child: ListView.separated(
           padding: const EdgeInsets.all(AppSpacing.xl),
-          // ---------------------------------
-          // 先頭のアクティブカード + 確定済みメモ
-          // ---------------------------------
-          itemCount: _memos.length + 1,
+          itemCount: _memos.length,
           separatorBuilder: (_, _) => const SizedBox(height: AppSpacing.xl),
           itemBuilder: (context, index) {
             // ---------------------------------
-            // 先頭はアクティブカード（リスニング中インジケーター。日時なし）
-            // ---------------------------------
-            if (index == 0) {
-              return const VoiceCard(text: '', isListening: true);
-            }
-
-            // ---------------------------------
             // 確定済みメモカード（日時付き）
             // ---------------------------------
-            final memo = _memos[index - 1];
+            final memo = _memos[index];
             return VoiceCard(
               text: memo.content,
               dateTime: _formatDateTime(memo.createdAt),
