@@ -1,0 +1,159 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
+import 'package:momeo/foundation/app_colors.dart';
+import 'package:momeo/foundation/app_spacing.dart';
+import 'package:momeo/pages/listening/memo_card_view_data.dart';
+import 'package:momeo/providers/listening_providers.dart';
+import 'package:momeo/widgets/voice_card.dart';
+
+// =====================================================================
+// ListeningPage — リスニング画面
+//
+//   状態（メモ一覧・発話中かどうか・演出の対象）は listeningProvider が
+//   一元管理する。この画面は watch して描画し、状態の変化をアクティブ
+//   カードのアニメーションに翻訳するだけの View に徹する。
+// =====================================================================
+class ListeningPage extends ConsumerStatefulWidget {
+  const ListeningPage({super.key});
+
+  @override
+  ConsumerState<ListeningPage> createState() => _ListeningPageState();
+}
+
+class _ListeningPageState extends ConsumerState<ListeningPage>
+    with SingleTickerProviderStateMixin {
+  // 表示用日時フォーマット（生成コストを抑えて使い回す）
+  static final _dateFormat = DateFormat('y/M/d HH:mm');
+
+  // アクティブカード（リスニング中インジケーター）の出入りを司る
+  //   forward = スライドダウンで登場、reverse = スライドアウトで退場、
+  //   value に 0.0 を代入 = 即時に消す（確定メモへの置き換え＝モーフ用）
+  late final AnimationController _activeCardController;
+  late final CurvedAnimation _activeCardAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _activeCardController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 250),
+    );
+    _activeCardAnimation = CurvedAnimation(
+      parent: _activeCardController,
+      curve: Curves.easeOut,
+    );
+  }
+
+  @override
+  void dispose() {
+    _activeCardAnimation.dispose();
+    _activeCardController.dispose();
+    super.dispose();
+  }
+
+  // ---------------------------------
+  // 状態の変化をアクティブカードのアニメーションに翻訳する
+  // ---------------------------------
+  void _onListeningChanged(
+    AsyncValue<ListeningState>? previous,
+    AsyncValue<ListeningState> next,
+  ) {
+    final before = previous?.value;
+    final after = next.value;
+    if (after == null) return;
+
+    // 発話開始 → スライドダウンで登場
+    final wasActive = before?.speechActive ?? false;
+    if (after.speechActive && !wasActive) {
+      _activeCardController.forward();
+    }
+
+    // メモ確定（先頭の id が変わった）→ 即時に消し、同じ位置に確定カードを
+    // 見せる（ドットが文字に置き換わったように見えるモーフ）。まだ発話が
+    // 続いていれば（30秒上限の強制区切り）、新しいカードを出し直す
+    final firstIdBefore =
+        (before == null || before.memos.isEmpty) ? null : before.memos.first.id;
+    final firstIdAfter = after.memos.isEmpty ? null : after.memos.first.id;
+    if (firstIdAfter != null && firstIdAfter != firstIdBefore) {
+      _activeCardController.value = 0.0;
+      if (after.speechActive) _activeCardController.forward();
+    }
+
+    // 空の認識結果（咳・物音の誤検知）→ 上へスライドアウト
+    if (before != null &&
+        after.emptyResultCount > before.emptyResultCount &&
+        !after.speechActive) {
+      _activeCardController.reverse();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    ref.listen(listeningProvider, _onListeningChanged);
+
+    // 読み込み中・エラー時は空の一覧として扱う（この画面のエラーUIはまだ無い）
+    final listening =
+        ref.watch(listeningProvider).value ?? const ListeningState();
+    final cards = buildMemoCardViewData(listening.memos);
+
+    return Scaffold(
+      backgroundColor: AppColors.surface,
+      body: SafeArea(
+        child: ListView.separated(
+          padding: const EdgeInsets.all(AppSpacing.xl),
+          // 先頭のアクティブカード + 確定済みメモ
+          itemCount: cards.length + 1,
+          // アクティブカードの直後の間隔はカード側が持つ（非表示時に余白を残さないため）
+          separatorBuilder: (_, index) =>
+              SizedBox(height: index == 0 ? 0 : AppSpacing.xl),
+          itemBuilder: (context, index) {
+            // 先頭はアクティブカード。発話中だけ上からスライドダウンして現れる
+            if (index == 0) {
+              return AnimatedBuilder(
+                animation: _activeCardController,
+                builder: (context, _) {
+                  // 完全に隠れている間は中身ごとツリーから外し、
+                  // ドット増減のタイマーも止めて常時負荷を避ける
+                  if (_activeCardController.isDismissed) {
+                    return const SizedBox.shrink();
+                  }
+                  return SizeTransition(
+                    sizeFactor: _activeCardAnimation,
+                    axisAlignment: -1,
+                    child: SlideTransition(
+                      position: Tween<Offset>(
+                        begin: const Offset(0, -1),
+                        end: Offset.zero,
+                      ).animate(_activeCardAnimation),
+                      child: const Padding(
+                        padding: EdgeInsets.only(bottom: AppSpacing.xl),
+                        child: VoiceCard(text: '', isListening: true),
+                      ),
+                    ),
+                  );
+                },
+              );
+            }
+
+            // 確定済みメモカード（直前に確定した1件だけタイピング演出）
+            final card = cards[index - 1];
+            return VoiceCard(
+              key: ValueKey(card.memo.id),
+              text: card.memo.content,
+              dateTime: card.showDateTime
+                  ? _dateFormat.format(card.memo.createdAt)
+                  : null,
+              typeIn: card.memo.id == listening.typeInMemoId,
+              // 演出を使い切ったら Notifier に返して再再生を防ぐ
+              onTypingComplete: () {
+                if (!mounted) return;
+                ref.read(listeningProvider.notifier).onTypingComplete(card.memo.id);
+              },
+            );
+          },
+        ),
+      ),
+    );
+  }
+}

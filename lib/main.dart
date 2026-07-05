@@ -7,7 +7,7 @@ import 'package:momeo/pages/dev/catalog/catalog_page.dart';
 import 'package:momeo/pages/permissions/permission_flow_page.dart';
 import 'package:momeo/pages/preparation_gate_page.dart';
 import 'package:momeo/pages/splash_page.dart';
-import 'package:momeo/pages/listening_page.dart';
+import 'package:momeo/pages/listening/listening_page.dart';
 import 'package:momeo/providers/stt_providers.dart';
 
 void main() {

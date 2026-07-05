@@ -22,9 +22,9 @@ class VoiceMemoRepository {
   }
 
   // ---------------------------------
-  // 1件追加する（挿入は Companion を使う）
+  // 1件追加し、採番された id を返す（挿入は Companion を使う）
   // ---------------------------------
-  Future<void> insert({required String content, required DateTime createdAt}) {
+  Future<int> insert({required String content, required DateTime createdAt}) {
     return _db.into(_db.voiceMemos).insert(
           VoiceMemosCompanion.insert(
             content: content,

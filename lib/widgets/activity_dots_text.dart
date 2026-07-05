@@ -10,6 +10,7 @@ class ActivityDotsText extends StatefulWidget {
     this.label, {
     super.key,
     this.interval = const Duration(milliseconds: 500),
+    this.maxDotCount = 3,
   });
 
   // ドットの前に表示する固定ラベル
@@ -18,16 +19,17 @@ class ActivityDotsText extends StatefulWidget {
   // ドットが1段階進むまでの間隔
   final Duration interval;
 
+  // ドットの最大数（0〜この数を巡回する）
+  final int maxDotCount;
+
   @override
   State<ActivityDotsText> createState() => _ActivityDotsTextState();
 }
 
 class _ActivityDotsTextState extends State<ActivityDotsText> {
-  static const int _maxDotCount = 3;
-
   late final Timer _timer;
 
-  // 現在表示中のドット数（0〜_maxDotCount を巡回）
+  // 現在表示中のドット数（0〜maxDotCount を巡回）
   int _dotCount = 0;
 
   @override
@@ -36,7 +38,7 @@ class _ActivityDotsTextState extends State<ActivityDotsText> {
 
     _timer = Timer.periodic(widget.interval, (_) {
       setState(() {
-        _dotCount = (_dotCount + 1) % (_maxDotCount + 1);
+        _dotCount = (_dotCount + 1) % (widget.maxDotCount + 1);
       });
     });
   }

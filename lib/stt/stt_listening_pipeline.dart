@@ -50,6 +50,7 @@ class SttListeningPipeline {
     required SttTranscriber transcriber,
     required String sileroPath,
     required this.onText,
+    this.onSpeechActiveChanged,
   })  : _transcriber = transcriber,
         _vad = _createVad(sileroPath);
 
@@ -59,6 +60,11 @@ class SttListeningPipeline {
   // 1発話確定するたびに呼ばれる通知先（リスニング画面の _addMemo につなぐ）
   final void Function(String text) onText;
 
+  // VAD の「発話中かどうか」が切り替わるたびに呼ばれる通知先（任意）
+  //   true: 発話の開始を検出した（発話開始から約 minSpeechDuration 後）
+  //   false: 発話の終了を検出した（無音 minSilenceDuration 後 = 確定と同時）
+  final void Function(bool isActive)? onSpeechActiveChanged;
+
   final AudioRecorder _recorder = AudioRecorder();
   final sherpa.VoiceActivityDetector _vad;
   StreamSubscription<Uint8List>? _subscription;
@@ -67,6 +73,9 @@ class SttListeningPipeline {
   final List<double> _floatBuffer = <double>[];
 
   bool _running = false;
+
+  // 直近に通知した「発話中かどうか」（変化したときだけ通知するため）
+  bool _speechActive = false;
 
   // silero の住所から VAD を生成する
   static sherpa.VoiceActivityDetector _createVad(String sileroPath) {
@@ -121,6 +130,7 @@ class SttListeningPipeline {
 
     await _subscription?.cancel();
     _subscription = null;
+    _notifySpeechActive(detected: false);
     try {
       await _recorder.stop();
     } catch (_) {
@@ -148,8 +158,18 @@ class SttListeningPipeline {
       _vad.acceptWaveform(window);
     }
 
+    // 「発話中かどうか」の変化を通知する（区切り＝onText より先に知らせる）
+    _notifySpeechActive(detected: _vad.isDetected());
+
     // ③ 区切られた発話を取り出して文字化する
     _drainAndTranscribe();
+  }
+
+  // 発話中かどうかが前回通知から変化していたら通知する
+  void _notifySpeechActive({required bool detected}) {
+    if (detected == _speechActive) return;
+    _speechActive = detected;
+    onSpeechActiveChanged?.call(detected);
   }
 
   // PCM16 little-endian の生バイトを [-1, 1] の Float32 へ

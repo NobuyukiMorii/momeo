@@ -16,6 +16,7 @@ class WidgetsVoiceCardSection extends StatelessWidget {
     // リストアイテムの設定
     // ---------------------------------
     const items = [
+      (label: 'リスニング中インジケーター（テキストなし・左端にドット）', text: '', isListening: true, dateTime: null),
       (label: '認識中（VoiceIcon 付き）', text: 'Lorem ipsum dolor sit amet, consectetur adipiscing elit.', isListening: true, dateTime: null),
       (label: '確定済み', text: 'Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.', isListening: false, dateTime: null),
       (label: '日時付き', text: 'Lorem ipsum dolor sit amet.', isListening: false, dateTime: '2026/01/15 14:30'),
