@@ -20,6 +20,7 @@ momeoはライブ音声入力を前提とする音声ファーストのメモア
 | ステップ表示 | hidden | 必要権限が1つのみのため常に非表示 |
 
 - **settings**: アプリ内の通常リクエストでは許可できず、OSの設定画面への誘導が必要な状態です。
+  - 設定アプリへ誘導した後は、アプリ復帰時に権限状態を自動で再チェックします。許可されていれば操作なしで次へ進みます。
 - **unavailable**: 端末や環境上、その機能が利用できない状態です。
 
 ## 権限フロー図
@@ -30,6 +31,7 @@ App Start
 → Splash
 → Check permissions
 → Microphone permission if needed
+→ Preparation Gate（文字化エンジンの準備待ち。通常は素通り。docs/specs/preparation_gate.md）
 → Listening Screen
 ```
 
@@ -41,8 +43,10 @@ App Start
 
 | プラットフォーム | マイク権限 | 画面遷移フロー |
 | --- | --- | --- |
-| iOS / Android | 未許可 | マイク → リスニング |
-| iOS / Android | 許可済み | リスニング |
+| iOS / Android | 未許可 | マイク → 準備ゲート → リスニング |
+| iOS / Android | 許可済み | 準備ゲート → リスニング |
+
+※ 準備ゲートは通常素通りするため、体感上は権限画面からそのままリスニングに進みます。
 
 ## 参照する既存デザインドキュメント
 
