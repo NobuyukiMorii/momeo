@@ -5,24 +5,33 @@ import 'package:momeo/foundation/app_text_styles.dart';
 import 'package:momeo/platform/asset_pack_delivery.dart';
 import 'package:momeo/providers/stt_providers.dart';
 import 'package:momeo/stt/stt_transcriber.dart';
+import 'package:momeo/widgets/activity_dots_text.dart';
+import 'package:momeo/widgets/downloading_progress_text.dart';
 import 'package:momeo/widgets/intro_setting_layout.dart';
-import 'package:momeo/widgets/phase_slide_text.dart';
+import 'package:momeo/widgets/content_slide_switcher.dart';
 
 // ---------------------------------
-// 待ち画面が出し分ける5つのフェーズ（表示文言は _resolveStatus が決める）
+// 待ち画面の5フェーズ
 // ---------------------------------
 enum PreparationPhase {
+  /// DL開始前・DL状態未取得。準備を始めた直後の状態
   gettingReady,
+
+  /// モデルDLが進行中。DL%を表示する
   downloading,
+
+  /// DLは完了、エンジンの初期化を待っている状態
   almostThere,
+
+  /// エンジン初期化に失敗し、自動再試行を待っている状態
   retrying,
+
+  /// 連続失敗が閾値を超え、ユーザーに再起動を促す状態
   tryRestarting,
 }
 
 // ---------------------------------
-// PreparationGatePage — 文字化エンジンの準備が終わるまで受け止める待ち画面
-// スプラッシュと同じ見た目（IntroSettingLayout ＋ スライドテキスト）に揃える。
-// スライドの要否は PhaseSlideText 側の判断に任せ、ここではフェーズと文言だけ決める。
+// 文字化エンジンの準備が終わるまでの待ち画面
 // ---------------------------------
 class PreparationGatePage extends ConsumerWidget {
   const PreparationGatePage({super.key});
@@ -33,37 +42,36 @@ class PreparationGatePage extends ConsumerWidget {
     final downloadState = ref.watch(sttModelDownloadStateProvider);
     final restartSuggested = ref.watch(sttRestartSuggestedProvider);
 
-    final (phase, text) =
-        _resolveStatus(engineState, downloadState, restartSuggested);
+    final phase = _resolvePhase(engineState, downloadState, restartSuggested);
 
     return Scaffold(
       body: IntroSettingLayout(
         title: DefaultTextStyle(
           style: AppTextStyles.headline.copyWith(color: AppColors.onSurface),
-          child: PhaseSlideText(phase: phase, text: text),
+          child: ContentSlideSwitcher(
+            contentKey: phase,
+            child: _buildPhaseContent(phase, downloadState),
+          ),
         ),
       ),
     );
   }
 
   // ---------------------------------
-  // エンジンの準備状態・DL状態から、出すべきフェーズと文言を決める
+  // エンジン・DLの状態からフェーズを判定する
   // ---------------------------------
-  (PreparationPhase, String) _resolveStatus(
+  PreparationPhase _resolvePhase(
     AsyncValue<SttTranscriber> engineState,
     AsyncValue<AssetPackState> downloadState,
     bool restartSuggested,
   ) {
     // ---------------------------------
-    // エンジンが失敗し、次の自動再試行を待っている間 → 再試行中の表示
-    //   連続失敗が閾値を超えていたら再起動の提案に切り替える（裏の再試行は続く）。
-    //   再実行中（isLoading）は直前のエラーが保持されたままになるため除外し、
-    //   DLが再開していれば下の Downloading 表示へ戻す
+    // エンジン失敗中（再試行のisLoading中は除く。前回のエラーが残り続けるため）
     // ---------------------------------
     if (engineState.hasError && !engineState.isLoading) {
       return restartSuggested
-          ? (PreparationPhase.tryRestarting, 'Try restarting')
-          : (PreparationPhase.retrying, 'Retrying');
+          ? PreparationPhase.tryRestarting
+          : PreparationPhase.retrying;
     }
 
     // ---------------------------------
@@ -71,7 +79,7 @@ class PreparationGatePage extends ConsumerWidget {
     // ---------------------------------
     final download = downloadState.value;
     if (download == null) {
-      return (PreparationPhase.gettingReady, 'Getting ready');
+      return PreparationPhase.gettingReady;
     }
 
     // ---------------------------------
@@ -80,17 +88,40 @@ class PreparationGatePage extends ConsumerWidget {
     // ---------------------------------
     switch (download.phase) {
       case AssetPackPhase.notStarted:
-        return (PreparationPhase.gettingReady, 'Getting ready');
+        return PreparationPhase.gettingReady;
       case AssetPackPhase.downloading:
-        final percent = ((download.progress ?? 0.0) * 100).round();
-        return (PreparationPhase.downloading, 'Downloading $percent%');
+        return PreparationPhase.downloading;
       case AssetPackPhase.completed:
-        return (PreparationPhase.almostThere, 'Almost there');
+        return PreparationPhase.almostThere;
       case AssetPackPhase.failed:
         // エンジン側の失敗確定を待つ間もフェーズを揺らさないよう、同じ判定で出す
         return restartSuggested
-            ? (PreparationPhase.tryRestarting, 'Try restarting')
-            : (PreparationPhase.retrying, 'Retrying');
+            ? PreparationPhase.tryRestarting
+            : PreparationPhase.retrying;
+    }
+  }
+
+  // ---------------------------------
+  // フェーズのコンテンツを組み立てる
+  // ---------------------------------
+  Widget _buildPhaseContent(
+    PreparationPhase phase,
+    AsyncValue<AssetPackState> downloadState,
+  ) {
+    switch (phase) {
+      case PreparationPhase.gettingReady:
+        return const ActivityDotsText('Getting ready');
+      case PreparationPhase.downloading:
+        // DL% は数字だけその場更新（フェーズが同じなのでスライドは起きない）
+        final percent = ((downloadState.value?.progress ?? 0.0) * 100).round();
+        return DownloadingProgressText(percent: percent);
+      case PreparationPhase.almostThere:
+        return const ActivityDotsText('Almost there');
+      case PreparationPhase.retrying:
+        return const ActivityDotsText('Retrying');
+      case PreparationPhase.tryRestarting:
+        // 「処理中」ではなくユーザーへの依頼なので、動きは付けない
+        return const Text('Try restarting');
     }
   }
 }
