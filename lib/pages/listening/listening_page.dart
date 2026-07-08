@@ -72,9 +72,8 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
     // メモ確定（先頭の id が変わった）→ 即時に消し、同じ位置に確定カードを
     // 見せる（ドットが文字に置き換わったように見えるモーフ）。まだ発話が
     // 続いていれば（30秒上限の強制区切り）、新しいカードを出し直す
-    final firstIdBefore =
-        (before == null || before.memos.isEmpty) ? null : before.memos.first.id;
-    final firstIdAfter = after.memos.isEmpty ? null : after.memos.first.id;
+    final firstIdBefore = before?.memos.firstOrNull?.id;
+    final firstIdAfter = after.memos.firstOrNull?.id;
     if (firstIdAfter != null && firstIdAfter != firstIdBefore) {
       _activeCardController.value = 0.0;
       if (after.speechActive) _activeCardController.forward();
@@ -86,6 +85,36 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
         !after.speechActive) {
       _activeCardController.reverse();
     }
+  }
+
+  // ---------------------------------
+  // アクティブカード（リスニング中インジケーター）
+  // ---------------------------------
+  // 発話中だけ上からスライドダウンして現れる。完全に隠れている間は
+  // 中身ごとツリーから外し、ドット増減のタイマーも止めて常時負荷を避ける
+  Widget _buildActiveCard() {
+    return AnimatedBuilder(
+      animation: _activeCardController,
+      builder: (context, _) {
+        if (_activeCardController.isDismissed) {
+          return const SizedBox.shrink();
+        }
+        return SizeTransition(
+          sizeFactor: _activeCardAnimation,
+          axisAlignment: -1,
+          child: SlideTransition(
+            position: Tween<Offset>(
+              begin: const Offset(0, -1),
+              end: Offset.zero,
+            ).animate(_activeCardAnimation),
+            child: const Padding(
+              padding: EdgeInsets.only(bottom: AppSpacing.xl),
+              child: VoiceCard(text: '', isListening: true),
+            ),
+          ),
+        );
+      },
+    );
   }
 
   @override
@@ -108,33 +137,8 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
           separatorBuilder: (_, index) =>
               SizedBox(height: index == 0 ? 0 : AppSpacing.xl),
           itemBuilder: (context, index) {
-            // 先頭はアクティブカード。発話中だけ上からスライドダウンして現れる
-            if (index == 0) {
-              return AnimatedBuilder(
-                animation: _activeCardController,
-                builder: (context, _) {
-                  // 完全に隠れている間は中身ごとツリーから外し、
-                  // ドット増減のタイマーも止めて常時負荷を避ける
-                  if (_activeCardController.isDismissed) {
-                    return const SizedBox.shrink();
-                  }
-                  return SizeTransition(
-                    sizeFactor: _activeCardAnimation,
-                    axisAlignment: -1,
-                    child: SlideTransition(
-                      position: Tween<Offset>(
-                        begin: const Offset(0, -1),
-                        end: Offset.zero,
-                      ).animate(_activeCardAnimation),
-                      child: const Padding(
-                        padding: EdgeInsets.only(bottom: AppSpacing.xl),
-                        child: VoiceCard(text: '', isListening: true),
-                      ),
-                    ),
-                  );
-                },
-              );
-            }
+            // 先頭はアクティブカード
+            if (index == 0) return _buildActiveCard();
 
             // 確定済みメモカード（直前に確定した1件だけタイピング演出）
             final card = cards[index - 1];
@@ -148,7 +152,9 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
               // 演出を使い切ったら Notifier に返して再再生を防ぐ
               onTypingComplete: () {
                 if (!mounted) return;
-                ref.read(listeningProvider.notifier).onTypingComplete(card.memo.id);
+                ref
+                    .read(listeningProvider.notifier)
+                    .onTypingComplete(card.memo.id);
               },
             );
           },

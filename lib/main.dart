@@ -84,7 +84,8 @@ class _RootViewState extends ConsumerState<RootView> {
     // 準備ゲート
     // ---------------------------------
     final sttEngineState = ref.watch(sttEngineProvider);
-    final isSttEngineReady = sttEngineState.hasValue && !sttEngineState.isLoading;
+    final isSttEngineReady =
+        sttEngineState.hasValue && !sttEngineState.isLoading;
     if (!isSttEngineReady) {
       return const PreparationGatePage();
     }
