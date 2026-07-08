@@ -126,39 +126,47 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
         ref.watch(listeningProvider).value ?? const ListeningState();
     final cards = buildMemoCardViewData(listening.memos);
 
+    // 安全領域（ステータスバー・ホームインジケーター）は SafeArea で切り取らず、
+    // スクロールの内側余白として足す。カードがシステム表示の下へ透けて
+    // 滑り込みつつ、端までスクロールすれば全体が見えるようにする
+    final safeArea = MediaQuery.paddingOf(context);
+
     return Scaffold(
       backgroundColor: AppColors.surface,
-      body: SafeArea(
-        child: ListView.separated(
-          padding: const EdgeInsets.all(AppSpacing.xl),
-          // 先頭のアクティブカード + 確定済みメモ
-          itemCount: cards.length + 1,
-          // アクティブカードの直後の間隔はカード側が持つ（非表示時に余白を残さないため）
-          separatorBuilder: (_, index) =>
-              SizedBox(height: index == 0 ? 0 : AppSpacing.xl),
-          itemBuilder: (context, index) {
-            // 先頭はアクティブカード
-            if (index == 0) return _buildActiveCard();
-
-            // 確定済みメモカード（直前に確定した1件だけタイピング演出）
-            final card = cards[index - 1];
-            return VoiceCard(
-              key: ValueKey(card.memo.id),
-              text: card.memo.content,
-              dateTime: card.showDateTime
-                  ? _dateFormat.format(card.memo.createdAt)
-                  : null,
-              typeIn: card.memo.id == listening.typeInMemoId,
-              // 演出を使い切ったら Notifier に返して再再生を防ぐ
-              onTypingComplete: () {
-                if (!mounted) return;
-                ref
-                    .read(listeningProvider.notifier)
-                    .onTypingComplete(card.memo.id);
-              },
-            );
-          },
+      body: ListView.separated(
+        padding: EdgeInsets.only(
+          left: AppSpacing.l,
+          right: AppSpacing.l,
+          top: AppSpacing.xl + safeArea.top,
+          bottom: AppSpacing.xl + safeArea.bottom,
         ),
+        // 先頭のアクティブカード + 確定済みメモ
+        itemCount: cards.length + 1,
+        // アクティブカードの直後の間隔はカード側が持つ（非表示時に余白を残さないため）
+        separatorBuilder: (_, index) =>
+            SizedBox(height: index == 0 ? 0 : AppSpacing.xl),
+        itemBuilder: (context, index) {
+          // 先頭はアクティブカード
+          if (index == 0) return _buildActiveCard();
+
+          // 確定済みメモカード（直前に確定した1件だけタイピング演出）
+          final card = cards[index - 1];
+          return VoiceCard(
+            key: ValueKey(card.memo.id),
+            text: card.memo.content,
+            dateTime: card.showDateTime
+                ? _dateFormat.format(card.memo.createdAt)
+                : null,
+            typeIn: card.memo.id == listening.typeInMemoId,
+            // 演出を使い切ったら Notifier に返して再再生を防ぐ
+            onTypingComplete: () {
+              if (!mounted) return;
+              ref
+                  .read(listeningProvider.notifier)
+                  .onTypingComplete(card.memo.id);
+            },
+          );
+        },
       ),
     );
   }

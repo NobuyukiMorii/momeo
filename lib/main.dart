@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:momeo/foundation/app_theme.dart';
 import 'package:momeo/pages/dev/console/console_page.dart';
@@ -11,6 +12,14 @@ import 'package:momeo/pages/listening/listening_page.dart';
 import 'package:momeo/providers/stt_providers.dart';
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // ---------------------------------
+  // Android でもシステムバーの裏までコンテンツを描画する（エッジトゥエッジ）。
+  // 安全領域の避け方は各画面が SafeArea や MediaQuery の padding で行う
+  // ---------------------------------
+  SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+
   // ---------------------------------
   // ProviderScope で包むと、配下のどこからでも Provider を参照できる
   // ---------------------------------
