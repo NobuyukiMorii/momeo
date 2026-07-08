@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:momeo/foundation/app_colors.dart';
@@ -117,6 +118,16 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
     );
   }
 
+  // ---------------------------------
+  // メモ本文のコピー（塗りつぶし完了時）
+  // ---------------------------------
+  // 本文のみをコピーする（日時は含めない）。完了の合図はカード側の
+  // COPY 表示と、ここでの振動で伝える
+  void _copyMemoText(String text) {
+    Clipboard.setData(ClipboardData(text: text));
+    HapticFeedback.vibrate();
+  }
+
   @override
   Widget build(BuildContext context) {
     ref.listen(listeningProvider, _onListeningChanged);
@@ -158,6 +169,8 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
                 ? _dateFormat.format(card.memo.createdAt)
                 : null,
             typeIn: card.memo.id == listening.typeInMemoId,
+            // 塗りつぶし切ったら本文をコピー（タイピング演出中でも全文を対象にする）
+            onCopy: () => _copyMemoText(card.memo.content),
             // 演出を使い切ったら Notifier に返して再再生を防ぐ
             onTypingComplete: () {
               if (!mounted) return;

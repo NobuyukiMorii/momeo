@@ -81,6 +81,8 @@ class WidgetsVoiceCardSection extends StatelessWidget {
                 text: item.text,
                 isListening: item.isListening,
                 dateTime: item.dateTime,
+                // 確定済みカードでは長押しの塗りつぶし演出を確認できる（コピーはしない）
+                onCopy: item.isListening ? null : () {},
               ),
             ],
           );

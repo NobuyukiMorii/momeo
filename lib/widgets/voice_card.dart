@@ -4,6 +4,7 @@ import 'package:momeo/foundation/app_radius.dart';
 import 'package:momeo/foundation/app_spacing.dart';
 import 'package:momeo/foundation/app_text_styles.dart';
 import 'package:momeo/widgets/activity_dots_text.dart';
+import 'package:momeo/widgets/hold_to_copy_effect.dart';
 import 'package:momeo/widgets/typewriter_text.dart';
 import 'package:momeo/widgets/voice_icon.dart';
 
@@ -15,11 +16,16 @@ class VoiceCard extends StatefulWidget {
     this.dateTime,
     this.typeIn = false,
     this.onTypingComplete,
+    this.onCopy,
   });
 
   final String text;
   final bool isListening;
   final String? dateTime;
+
+  // 長押しの塗りつぶし演出が完了したときの通知（＝テキストコピーの合図）。
+  // null なら長押しを受け付けない
+  final VoidCallback? onCopy;
 
   // 確定演出: テキストを1文字ずつ素早くタイピング表示する
   final bool typeIn;
@@ -59,40 +65,45 @@ class _VoiceCardState extends State<VoiceCard> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(AppSpacing.l),
-          decoration: BoxDecoration(
-            color: AppColors.surface,
-            borderRadius: BorderRadius.circular(AppRadius.l),
-            border: Border.all(color: AppColors.onSurface, width: 1.5),
-          ),
-          // テキストが空のリスニング中は、左端のドットの増減で処理中の気配を出す
-          child: widget.isListening && widget.text.isEmpty
-              ? DefaultTextStyle(
-                  style: AppTextStyles.caption.copyWith(
-                    color: AppColors.onSurfaceVariant,
-                  ),
-                  child: const ActivityDotsText('', maxDotCount: 10),
-                )
-              : Row(
-                  children: [
-                    if (widget.isListening) ...[
-                      const VoiceIcon(),
-                      const SizedBox(width: AppSpacing.l),
-                    ],
-                    Expanded(
-                      child: TypewriterText(
-                        widget.text,
-                        enabled: widget.typeIn,
-                        style: AppTextStyles.caption.copyWith(
-                          color: AppColors.onSurface,
-                        ),
-                        onFinished: _handleTypingFinished,
-                      ),
+        // 長押しで右から左へ黒く塗りつぶし、塗り切ったらコピー
+        HoldToCopyEffect(
+          borderRadius: AppRadius.l,
+          onCopied: widget.onCopy,
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(AppSpacing.l),
+            decoration: BoxDecoration(
+              color: AppColors.surface,
+              borderRadius: BorderRadius.circular(AppRadius.l),
+              border: Border.all(color: AppColors.onSurface, width: 1.5),
+            ),
+            // テキストが空のリスニング中は、左端のドットの増減で処理中の気配を出す
+            child: widget.isListening && widget.text.isEmpty
+                ? DefaultTextStyle(
+                    style: AppTextStyles.caption.copyWith(
+                      color: AppColors.onSurfaceVariant,
                     ),
-                  ],
-                ),
+                    child: const ActivityDotsText('', maxDotCount: 10),
+                  )
+                : Row(
+                    children: [
+                      if (widget.isListening) ...[
+                        const VoiceIcon(),
+                        const SizedBox(width: AppSpacing.l),
+                      ],
+                      Expanded(
+                        child: TypewriterText(
+                          widget.text,
+                          enabled: widget.typeIn,
+                          style: AppTextStyles.caption.copyWith(
+                            color: AppColors.onSurface,
+                          ),
+                          onFinished: _handleTypingFinished,
+                        ),
+                      ),
+                    ],
+                  ),
+          ),
         ),
         // 日時はタイピングが終わってからフェードイン
         if (widget.dateTime != null) ...[
