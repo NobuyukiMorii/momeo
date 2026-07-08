@@ -65,7 +65,7 @@ class _VoiceCardState extends State<VoiceCard> {
           decoration: BoxDecoration(
             color: AppColors.surface,
             borderRadius: BorderRadius.circular(AppRadius.l),
-            border: Border.all(color: AppColors.outline),
+            border: Border.all(color: AppColors.onSurface, width: 1.5),
           ),
           // テキストが空のリスニング中は、左端のドットの増減で処理中の気配を出す
           child: widget.isListening && widget.text.isEmpty
@@ -104,9 +104,7 @@ class _VoiceCardState extends State<VoiceCard> {
               alignment: Alignment.centerRight,
               child: Text(
                 widget.dateTime!,
-                style: AppTextStyles.micro.copyWith(
-                  color: AppColors.onSurfaceVariant,
-                ),
+                style: AppTextStyles.micro.copyWith(color: AppColors.onSurface),
               ),
             ),
           ),
