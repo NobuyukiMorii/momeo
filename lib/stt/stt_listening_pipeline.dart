@@ -51,6 +51,7 @@ class SttListeningPipeline {
     required String sileroPath,
     required this.onText,
     this.onSpeechActiveChanged,
+    this.onLevelChanged,
   })  : _transcriber = transcriber,
         _vad = _createVad(sileroPath);
 
@@ -64,6 +65,9 @@ class SttListeningPipeline {
   //   true: 発話の開始を検出した（発話開始から約 minSpeechDuration 後）
   //   false: 発話の終了を検出した（無音 minSilenceDuration 後 = 確定と同時）
   final void Function(bool isActive)? onSpeechActiveChanged;
+
+  // マイク音量メーター用：チャンクごとのピーク音量（0.0=無音 〜 1.0=最大）を外へ出す通知先（任意）
+  final void Function(double level)? onLevelChanged;
 
   final AudioRecorder _recorder = AudioRecorder();
   final sherpa.VoiceActivityDetector _vad;
@@ -149,7 +153,8 @@ class SttListeningPipeline {
 
   void _onAudioChunk(Uint8List bytes) {
     // ① PCM16（整数）を Float32（小数）に変換して貯める
-    _floatBuffer.addAll(_pcm16ToFloat32(bytes));
+    final samples = _pcm16ToFloat32(bytes);
+    _floatBuffer.addAll(samples);
 
     // ② 512サンプルたまるごとに VAD へ渡す
     while (_floatBuffer.length >= _kVadWindow) {
@@ -163,6 +168,9 @@ class SttListeningPipeline {
 
     // ③ 区切られた発話を取り出して文字化する
     _drainAndTranscribe();
+
+    // 音量メーター用：このチャンクのピーク音量を外へ出す（0.0=無音 〜 1.0=最大）
+    onLevelChanged?.call(_peakLevel(samples));
   }
 
   // 発話中かどうかが前回通知から変化していたら通知する
@@ -182,6 +190,18 @@ class SttListeningPipeline {
           view.getInt16(i * _kBytesPerSample, Endian.little) / _kInt16Amplitude;
     }
     return out;
+  }
+
+  // チャンクのピーク音量（最大振幅）を 0.0〜1.0 で返す。
+  // サンプルはすでに [-1,1] に正規化済みなので、絶対値の最大がそのまま音量になる。
+  // 正規化の考え方は catalog の _peakLevel（packages_record_section.dart）と同じ。
+  double _peakLevel(Float32List samples) {
+    var maxAbs = 0.0;
+    for (final sample in samples) {
+      final abs = sample < 0 ? -sample : sample;
+      if (abs > maxAbs) maxAbs = abs;
+    }
+    return maxAbs;
   }
 
   // VAD が区切った発話チャンクを順に取り出し、文字化して onText へ渡す

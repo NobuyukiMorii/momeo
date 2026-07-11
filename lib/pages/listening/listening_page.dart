@@ -6,6 +6,7 @@ import 'package:momeo/foundation/app_colors.dart';
 import 'package:momeo/foundation/app_spacing.dart';
 import 'package:momeo/pages/listening/memo_card_view_data.dart';
 import 'package:momeo/providers/listening_providers.dart';
+import 'package:momeo/widgets/listening_backdrop.dart';
 import 'package:momeo/widgets/voice_card.dart';
 
 // =====================================================================
@@ -144,42 +145,54 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
 
     return Scaffold(
       backgroundColor: AppColors.surface,
-      body: ListView.separated(
-        padding: EdgeInsets.only(
-          left: AppSpacing.l,
-          right: AppSpacing.l,
-          top: AppSpacing.xl + safeArea.top,
-          bottom: AppSpacing.xl + safeArea.bottom,
-        ),
-        // 先頭のアクティブカード + 確定済みメモ
-        itemCount: cards.length + 1,
-        // アクティブカードの直後の間隔はカード側が持つ（非表示時に余白を残さないため）
-        separatorBuilder: (_, index) =>
-            SizedBox(height: index == 0 ? 0 : AppSpacing.xl),
-        itemBuilder: (context, index) {
-          // 先頭はアクティブカード
-          if (index == 0) return _buildActiveCard();
+      body: Stack(
+        children: [
+          // 背景レイヤー：常時マイク音量に連動する縦棒メーター（カードの隙間から覗く）
+          Positioned.fill(
+            child: ListeningBackdrop(
+              levelReader: () =>
+                  ref.read(listeningProvider.notifier).latestLevel,
+            ),
+          ),
+          // 前景：メモ一覧（透明なので背景のメーターが隙間から覗く）
+          ListView.separated(
+            padding: EdgeInsets.only(
+              left: AppSpacing.l,
+              right: AppSpacing.l,
+              top: AppSpacing.xl + safeArea.top,
+              bottom: AppSpacing.xl + safeArea.bottom,
+            ),
+            // 先頭のアクティブカード + 確定済みメモ
+            itemCount: cards.length + 1,
+            // アクティブカードの直後の間隔はカード側が持つ（非表示時に余白を残さないため）
+            separatorBuilder: (_, index) =>
+                SizedBox(height: index == 0 ? 0 : AppSpacing.xl),
+            itemBuilder: (context, index) {
+              // 先頭はアクティブカード
+              if (index == 0) return _buildActiveCard();
 
-          // 確定済みメモカード（直前に確定した1件だけタイピング演出）
-          final card = cards[index - 1];
-          return VoiceCard(
-            key: ValueKey(card.memo.id),
-            text: card.memo.content,
-            dateTime: card.showDateTime
-                ? _dateFormat.format(card.memo.createdAt)
-                : null,
-            typeIn: card.memo.id == listening.typeInMemoId,
-            // 塗りつぶし切ったら本文をコピー（タイピング演出中でも全文を対象にする）
-            onCopy: () => _copyMemoText(card.memo.content),
-            // 演出を使い切ったら Notifier に返して再再生を防ぐ
-            onTypingComplete: () {
-              if (!mounted) return;
-              ref
-                  .read(listeningProvider.notifier)
-                  .onTypingComplete(card.memo.id);
+              // 確定済みメモカード（直前に確定した1件だけタイピング演出）
+              final card = cards[index - 1];
+              return VoiceCard(
+                key: ValueKey(card.memo.id),
+                text: card.memo.content,
+                dateTime: card.showDateTime
+                    ? _dateFormat.format(card.memo.createdAt)
+                    : null,
+                typeIn: card.memo.id == listening.typeInMemoId,
+                // 塗りつぶし切ったら本文をコピー（タイピング演出中でも全文を対象にする）
+                onCopy: () => _copyMemoText(card.memo.content),
+                // 演出を使い切ったら Notifier に返して再再生を防ぐ
+                onTypingComplete: () {
+                  if (!mounted) return;
+                  ref
+                      .read(listeningProvider.notifier)
+                      .onTypingComplete(card.memo.id);
+                },
+              );
             },
-          );
-        },
+          ),
+        ],
       ),
     );
   }

@@ -103,6 +103,11 @@ class ListeningNotifier extends AsyncNotifier<ListeningState> {
   late VoiceMemoRepository _repository;
   SttListeningPipeline? _pipeline;
 
+  // 直近のマイク音量（0.0〜1.0）。音量メーターが毎フレーム読みに行く。
+  // チャンク頻度で飛んでくるため state には載せず、ただのフィールド保持にする。
+  double _latestLevel = 0;
+  double get latestLevel => _latestLevel;
+
   // 破棄後は state に触れないためのフラグ（DB への保存だけは続ける）
   bool _disposed = false;
 
@@ -141,6 +146,7 @@ class ListeningNotifier extends AsyncNotifier<ListeningState> {
         sileroPath: sileroPath,
         onText: _onText,
         onSpeechActiveChanged: _onSpeechActiveChanged,
+        onLevelChanged: (level) => _latestLevel = level,
       );
       await pipeline.start();
 
