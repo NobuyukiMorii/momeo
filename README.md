@@ -8,16 +8,19 @@
 - 音声メモの一覧表示
 - マイク・音声認識の設定
 
+## 開発環境での起動
+
+```bash
+flutter pub get
+make run d=<デバイスID>   # 起動（ID は flutter devices で確認。指定必須）
+```
+
+STT モデル（約625MB・Git 管理外）の取得と端末への配置は `make run` が自動で行う（冪等）。
+
+- iOS はアプリに同梱、Android は端末へ `adb push`（アンインストールで消える → 再度 `make run`）
+- 本番ビルド: `make build-ios` / `make build-android`
+- 詳細: `docs/on_device_stt/model_distribution.md`
+
 ## ドキュメント
 
 本プロジェクトの仕様書および関連ドキュメントは `docs/` ディレクトリに集約されています。
-
-### デザイン仕様 (`docs/design/`)
-Figma APIから抽出した「純粋な事実データ（数値・構成）」を、Flutterの実装にそのまま直結する形で構造化して整理しています。
-
-* **`00_raw_assets/`**: Figma APIの生データ・参考スクリーンショット群
-* **`01_system_tokens/`**: カラー・タイポグラフィ・余白などのシステム定数（トークン）
-* **`02_components/`**: 再利用可能なUIコンポーネントの構造および数値事実
-* **`03_screen_states/`**: 実装する画面状態（State）ごとの全体構成レシピカタログ
-
-> **Figma原本**: https://www.figma.com/design/ErddJebG6AfGqaGTCKfDuk/momery

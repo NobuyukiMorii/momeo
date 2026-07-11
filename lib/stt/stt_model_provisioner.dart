@@ -25,8 +25,8 @@ import 'package:momeo/platform/asset_pack_delivery.dart';
 
 // ---------------------------------
 // 定数（ファイル名・正しいバイト数・契約）を1か所に集約
-//   サイズは scripts/fetch_nemo_model.sh と同じ値（整合性チェック用）。
-//   ※ NeMo のバイト数は scripts/fetch_nemo_model.sh でも使う。更新時は両方直すこと。
+//   サイズは scripts/lib/nemo_model_constants.sh と同じ値（整合性チェック用）。
+//   ※ NeMo のバイト数は scripts/lib/nemo_model_constants.sh でも使う。更新時は両方直すこと。
 // ---------------------------------
 
 // NeMo 本体（音声 → 番号）

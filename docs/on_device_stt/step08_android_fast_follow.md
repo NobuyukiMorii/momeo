@@ -113,7 +113,7 @@ Step 6 で、その住所を返す**ひとつの窓口**（パス契約。後述
 
 ```bash
 # 1) モデルを取得（未取得なら）。.dev_models/ に置かれる
-bash scripts/fetch_nemo_model.sh
+bash scripts/download_nemo_model.sh
 
 # 2) 検証ビルド用に、モデルをアセットパックへ置く（実体は .gitignore 済み）
 cp .dev_models/model.int8.onnx android/nemo_models/src/main/assets/models/
