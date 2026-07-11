@@ -4,7 +4,7 @@
 #
 #   何をするか:
 #     1. 対象が Android 端末かを確かめる（iOS 端末や端末なしなら何もせず正常終了）
-#     2. アプリ（jp.momeo.momeo）が未インストールなら debug ビルドを入れる
+#     2. アプリ（jp.momeo）が未インストールなら debug ビルドを入れる
 #        （手置き先がアプリの内部ストレージなので、アプリが先に必要）
 #     3. 端末内のモデルのバイト数を確かめ、正しく揃っていれば何もしない
 #     4. 足りなければ .dev_models/ から push して内部ストレージへコピーする
@@ -17,7 +17,7 @@
 
 set -euo pipefail
 
-readonly APP_ID="jp.momeo.momeo"
+readonly APP_ID="jp.momeo"
 
 readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"

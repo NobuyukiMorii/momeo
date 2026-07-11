@@ -197,9 +197,9 @@ adb push .dev_models/tokens.txt      /data/local/tmp/
 adb shell chmod 644 /data/local/tmp/model.int8.onnx /data/local/tmp/tokens.txt
 
 # 2) アプリの権限(run-as)で内部ストレージへコピー（アプリが所有＝読める）
-adb shell run-as jp.momeo.momeo mkdir -p files/models
-adb shell run-as jp.momeo.momeo cp /data/local/tmp/model.int8.onnx files/models/
-adb shell run-as jp.momeo.momeo cp /data/local/tmp/tokens.txt      files/models/
+adb shell run-as jp.momeo mkdir -p files/models
+adb shell run-as jp.momeo cp /data/local/tmp/model.int8.onnx files/models/
+adb shell run-as jp.momeo cp /data/local/tmp/tokens.txt      files/models/
 ```
 
 push したら、カタログ「STT → モデル配置」を開いて**「再取得」**を押し、NeMo・tokens が **OK（緑）** になることを確認する。

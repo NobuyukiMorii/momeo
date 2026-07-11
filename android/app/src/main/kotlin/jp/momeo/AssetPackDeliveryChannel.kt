@@ -1,4 +1,4 @@
-package jp.momeo.momeo
+package jp.momeo
 
 import android.content.Context
 import android.os.Handler
