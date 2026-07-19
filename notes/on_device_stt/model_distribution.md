@@ -135,5 +135,5 @@
 
 ## 7. 関連ドキュメント
 
-- `docs/on_device_stt/outline.md` — 実装計画の全体像（本書はそのうち「モデル配布」の詳細）
-- `docs/research/on_device_stt/vad_whisper_impl_log.md` — エンジン/モデル選定の検証記録（NeMo 採用の根拠）
+- `notes/on_device_stt/outline.md` — 実装計画の全体像（本書はそのうち「モデル配布」の詳細）
+- `notes/research/on_device_stt/vad_whisper_impl_log.md` — エンジン/モデル選定の検証記録（NeMo 採用の根拠）

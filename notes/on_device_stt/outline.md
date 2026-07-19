@@ -2,18 +2,18 @@
 
 ## この文書について
 
-- **目的**: 調査（`docs/research/on_device_stt/`）と検証（`docs/on_device_stt/verification/`）で固まった方針を、本番実装へ落とし込むための作業計画をまとめる。
+- **目的**: 調査（`notes/research/on_device_stt/`）と検証（`notes/on_device_stt/verification/`）で固まった方針を、本番実装へ落とし込むための作業計画をまとめる。
 - **進め方**: `main` 上で進める。**1 step = 1 commit = 1つの明確な目的**になるよう分割する。
 - **記載方針**: 具体的なソースコードは書かない。各ステップの「目的・やること・完了の目安」を言葉で表す。
 - **検証方法**: 各レイヤーの動作確認は dev catalog（`lib/pages/dev/catalog`）に**恒久的な検証セクション**を追加して行う。
-- **前提の裏取り**: 本計画の中核（sherpa 内蔵 VAD + record の配線）は、使い捨てブランチ `research/stt-sherpa-builtin-vad` で実機実証済み。合否と根拠は `docs/on_device_stt/verification/README.md` を参照。
+- **前提の裏取り**: 本計画の中核（sherpa 内蔵 VAD + record の配線）は、使い捨てブランチ `research/stt-sherpa-builtin-vad` で実機実証済み。合否と根拠は `notes/on_device_stt/verification/README.md` を参照。
 
 ---
 
 ## 採用が決まっていること（前提）
 
 - **エンジン**: `sherpa_onnx` + 日本語モデル **NeMo parakeet CTC 0.6B**（int8 単一ファイル 約625MB ＋ tokens）。
-  - 精度オンデバイス最高・句読点あり・体感ゼロ遅延（実機で約75〜215ms/発話）。決定経緯は `docs/research/on_device_stt/vad_whisper_impl_log.md` 参照。
+  - 精度オンデバイス最高・句読点あり・体感ゼロ遅延（実機で約75〜215ms/発話）。決定経緯は `notes/research/on_device_stt/vad_whisper_impl_log.md` 参照。
 - **録音**: `record` パッケージでマイクを連続キャプチャし、**PCM ストリーム（16bit / 16kHz / モノラル）**を取得する。
 - **区切り**: `sherpa_onnx` に**内蔵された Silero VAD** で発話の開始・終了を検出する（モデル `silero_vad.onnx` 約2MB をローカル同梱）。
 - **不採用**:
@@ -68,7 +68,7 @@ sherpa-onnx OfflineRecognizer（NeMo CTC）でバッチ文字化
 
 **オフラインと権限の整理**: ユーザーに許可を求めるのはマイク（`RECORD_AUDIO`）だけ。モデルが端末にあれば音声認識も VAD も**実行は完全オフライン**（両OS）。Android の NeMo の初回DLは **Google Play が代行する**ので、アプリ自身はネットにつながない。配信ライブラリ（`asset-delivery`）は自分の常駐サービス用の権限を自動で足すが、インストール時に自動で付くだけでダイアログは出ない。iOS は NeMo も同梱でDLが無く、追加の権限もなし。
 
-→ 配布方式の詳細は `docs/on_device_stt/model_distribution.md`、判断の経緯は `docs/research/on_device_stt/model_delivery_decision_for_beginners.md` を参照。
+→ 配布方式の詳細は `notes/on_device_stt/model_distribution.md`、判断の経緯は `notes/research/on_device_stt/model_delivery_decision_for_beginners.md` を参照。
 
 ---
 
@@ -130,7 +130,7 @@ sherpa-onnx OfflineRecognizer（NeMo CTC）でバッチ文字化
 - **備考**:
   - iOS をバンドルリソースにする理由（Flutter アセットだと 625MB コピーが要る）は `model_distribution.md` §3-1。
   - Android の本番配信（fast-follow）・初回DL未到着のUX・権限の扱いは **Step 8** に分離した。
-- **詳細**: `docs/on_device_stt/step06_provision_models.md` を参照。
+- **詳細**: `notes/on_device_stt/step06_provision_models.md` を参照。
 
 ### Step 7: sherpa-onnx による文字化（変換層） ✅ 完了済み
 
@@ -141,7 +141,7 @@ sherpa-onnx OfflineRecognizer（NeMo CTC）でバッチ文字化
   - dev catalog に検証セクションを追加し、発話チャンクを文字化して結果と所要時間を表示する。
 - **完了の目安**: 検証セクションで、発話チャンクから妥当な日本語テキストが返ることを確認できる。
 - **備考**: 起動フローへの統合・アプリ全体で1個保持（シングルトン）は Step 9。ここでは dev catalog 上で単発に動けばよい。
-- **詳細**: `docs/on_device_stt/step07_transcribe_with_nemo.md` を参照。
+- **詳細**: `notes/on_device_stt/step07_transcribe_with_nemo.md` を参照。
 
 ### Step 8: Android fast-follow の本配信＋ネイティブブリッジ ✅ 完了済み
 
@@ -154,8 +154,8 @@ sherpa-onnx OfflineRecognizer（NeMo CTC）でバッチ文字化
   - dev 確認画面に、Android のダウンロード状態・進捗・再試行ボタンを足す。
   - **bundletool で本物の配信を模擬**して「自動DL → 住所取得」を確認。ビルド後、**ユーザーに許可を求める権限はマイクだけ**であること（配信ライブラリが足す権限は自動付与でダイアログ無し）を確認。
 - **完了の目安**: 開発機（bundletool で模擬配信）で「自動DL → モデルの住所取得」が通り、ダウンロード状態が dev 確認画面で見える。
-- **備考**: 権限の整理（ユーザーに見える権限はマイクだけ・モデルDLは Play 代行で実行はオフライン）と、既製部品との比較は `model_distribution.md` と `docs/research/on_device_stt/model_delivery_flutter_impl.md` に詳しい。ストア申請設定はリリース準備時に別途。
-- **詳細**: `docs/on_device_stt/step08_android_fast_follow.md` を参照。
+- **備考**: 権限の整理（ユーザーに見える権限はマイクだけ・モデルDLは Play 代行で実行はオフライン）と、既製部品との比較は `model_distribution.md` と `notes/research/on_device_stt/model_delivery_flutter_impl.md` に詳しい。ストア申請設定はリリース準備時に別途。
+- **詳細**: `notes/on_device_stt/step08_android_fast_follow.md` を参照。
 
 ### Step 9: 準備を起動時に開始し、エンジンをシングルトンで保持する ✅ 完了済み
 
@@ -167,7 +167,7 @@ sherpa-onnx OfflineRecognizer（NeMo CTC）でバッチ文字化
   - このステップでは**画面をブロックしない**（足止め・待ち画面は Step 11）。
 - **完了の目安**: 起動時に読み込みが始まり、エンジンが1個だけ保持される。準備の状態を後段から参照できる。読み込み中も画面を固めない。
 - **備考**: 重い読み込みは数秒メインスレッドを止めうる（spike 指摘C）。実機でカクつき・取りこぼしが出たら isolate 化を検討（末尾「実機確認時の宿題」）。「待つ／待ち画面を出す」のは **Step 11** の担当。
-- **詳細**: `docs/on_device_stt/step09_load_engine_on_splash.md` を参照。
+- **詳細**: `notes/on_device_stt/step09_load_engine_on_splash.md` を参照。
 
 ### Step 10: リスニング画面への結線（エンドツーエンド）
 
@@ -177,7 +177,7 @@ sherpa-onnx OfflineRecognizer（NeMo CTC）でバッチ文字化
   - 確定したテキストを確定済みメモカードとして表示する（当初あった先頭のアクティブカードは、途中経過を表示できないため後に廃止した）。
 - **完了の目安**: 実機で話すと、確定テキストがメモカードとして保存・表示される（取りこぼしが起きにくいこと）。
 - **備考**: dev では Step 6 の事前配置でモデルが常に揃っているため、**待ち画面なしで E2E を完成・確認できる**。本番（Android 初回でモデル未到着）の準備待ち＝ゲート画面は Step 11 で上載せする。
-- **詳細**: `docs/on_device_stt/step10_wire_listening_page.md` を参照。
+- **詳細**: `notes/on_device_stt/step10_wire_listening_page.md` を参照。
 
 ### Step 11: 準備ゲート（リスニング直前の分岐）
 
@@ -188,7 +188,7 @@ sherpa-onnx OfflineRecognizer（NeMo CTC）でバッチ文字化
   - 準備済みなら待ち画面を出さずに素通りでリスニングへ進む（メモリ展開は実測約1.5秒のため、通常起動は素通りが基本）。
   - これにより、スプラッシュ・オンボーディングでは足止めせず、その時間を裏の準備に充てられる。
 - **完了の目安**: 準備済みなら待ち画面が出ずに素通りする。未完了なら足止めされ、完了後に自動でリスニングへ進む。待ちがこの1か所だけで、スプラッシュ側に足止めが残っていない。
-- **詳細**: `docs/on_device_stt/step11_preparation_gate.md` を参照。
+- **詳細**: `notes/on_device_stt/step11_preparation_gate.md` を参照。
 
 ### Step 12: 待ち画面のステータス表示（スプラッシュ風）
 
@@ -198,7 +198,7 @@ sherpa-onnx OfflineRecognizer（NeMo CTC）でバッチ文字化
   - フェーズ別の文言を出し分ける: DL開始待ち **"Getting ready"** ／ DL中 **"Downloading 37%"** ／ メモリ読み込み中 **"Almost there"** ／ 再試行中 **"Retrying"** ／ 再試行が続けて失敗 **"Try restarting"**（"Retrying" 以降の発動は Step 13）。DL中の判定は Step 8 の公開データを併読する。
   - スライド演出はフェーズ切替時のみ。DL% は数字だけその場で更新する（毎%スライドはさせない）。
 - **完了の目安**: Android 初回（模擬配信）で Getting ready → Downloading n% → Almost there と流れてリスニングへ繋がる。見た目がスプラッシュと揃っている。
-- **詳細**: `docs/on_device_stt/step12_gate_status_display.md` を参照。
+- **詳細**: `notes/on_device_stt/step12_gate_status_display.md` を参照。
 
 ### Step 13: 失敗からの自動復帰（自動再試行）
 
@@ -209,14 +209,14 @@ sherpa-onnx OfflineRecognizer（NeMo CTC）でバッチ文字化
   - バックオフ付き（失敗のたびに間隔を広げる）で自動リトライする。表示は "Retrying"（文言は Step 12 で定義済み。ただし待ち画面の判定はエンジンのエラーを最優先しているため、再試行中にDL状態へ戻れるよう判定順の修正だけ Step 13 でやる）。
   - 閾値（連続5回の失敗）を超えたら表示を "Try restarting" に切り替え、以降は遅いペース（30秒間隔）で再試行を続ける（待てば直る失敗は再起動なしで復帰させる）。失敗原因の分類（直る系/直らない系）はしない。
 - **完了の目安**: DLを失敗させても、通信回復後に操作なしでリスニングまで復帰する。失敗が続くと "Try restarting" に切り替わり、その後も通信回復で操作なしに復帰する。
-- **詳細**: `docs/on_device_stt/step13_auto_retry.md` を参照。
+- **詳細**: `notes/on_device_stt/step13_auto_retry.md` を参照。
 
 ### Step 14: 仕様ドキュメントの改訂
 
 - **目的**: 実装に合わせて仕様文書を最新化する。
 - **やること**:
-  - `docs/specs/listening_flow.md` を「VAD の発話終了を確定トリガーとする／speech_to_text は廃止」前提に改訂。
-  - `docs/specs/overview.md` 等の権限・フロー記述から音声認識権限の前提を更新。
+  - `notes/specs/listening_flow.md` を「VAD の発話終了を確定トリガーとする／speech_to_text は廃止」前提に改訂。
+  - `notes/specs/overview.md` 等の権限・フロー記述から音声認識権限の前提を更新。
 - **完了の目安**: 仕様文書が新方式の実装と一致している。
 
 ---
@@ -231,7 +231,7 @@ sherpa-onnx OfflineRecognizer（NeMo CTC）でバッチ文字化
 > - ① 起動時の生成（数秒）で、スプラッシュ／オンボーディングが目に見えてカクつくか。 → **計測済み（下記）**
 > - ② 転写中（100〜300ms）に喋った音声を取りこぼすか（長い発話・連続発話）。 → **Step 10 で計測する**
 >
-> どちらも出なければ isolate 化は不要。出た側だけ着手する。逃がし方の設計・理由・発火条件の詳細は [`docs/research/on_device_stt/heavy_processing_isolate_for_beginners.md`](../research/on_device_stt/heavy_processing_isolate_for_beginners.md) を参照。
+> どちらも出なければ isolate 化は不要。出た側だけ着手する。逃がし方の設計・理由・発火条件の詳細は [`notes/research/on_device_stt/heavy_processing_isolate_for_beginners.md`](../research/on_device_stt/heavy_processing_isolate_for_beginners.md) を参照。
 
 ### ①の計測結果（Step 9・iPhone 実機・2026-06-29）
 

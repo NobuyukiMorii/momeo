@@ -42,7 +42,7 @@ dev catalog には、区切りの設定値を**スライダーで調整しなが
 | `minSpeechDuration` | これより短い音は発話と認めない | 短いノイズをカードにしない | 既定から |
 | `maxSpeechDuration` | **安全弁**：一度も間を空けず話し続けた時だけ、強制的に区切る上限 | 暴走（黙らず喋り続ける）を止めるだけで、普段は効かない | **30秒**（※2） |
 
-- ※1 `minSilenceDuration` の初期値 1.5秒は、[docs/specs/listening_flow.md](../specs/listening_flow.md) の「無音が1.5秒続いたら発話終了」という製品意図に合わせたもの。
+- ※1 `minSilenceDuration` の初期値 1.5秒は、[notes/specs/listening_flow.md](../specs/listening_flow.md) の「無音が1.5秒続いたら発話終了」という製品意図に合わせたもの。
 - ※2 `maxSpeechDuration` は安全弁なので長めにとり、初期値は **30秒**（スライダー上限）にしている。普段の区切りは主役の `minSilenceDuration` が担うため、ここに達するのは「黙らず喋り続けた」例外時だけ。30秒の発話を余裕で収めるため、VAD のバッファ（`bufferSizeInSeconds`）は **60秒**にしている。いずれも実機で調整する。
 
 ---

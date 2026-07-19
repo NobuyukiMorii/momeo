@@ -30,7 +30,7 @@
 - 各テキストの停止時間
 
 ## 参照ドキュメント
-- `docs/design/03_screen_states/details/AnimatedSplashSequence.md`
+- `notes/design/03_screen_states/details/AnimatedSplashSequence.md`
 
 ## アニメーション時間
 

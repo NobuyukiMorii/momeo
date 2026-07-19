@@ -2,7 +2,7 @@
 
 ## この文書について
 
-- **目的**: 実装計画 `docs/on_device_stt/outline.md` に出てくる **「`sherpa_onnx` 内蔵の Silero VAD ＋ `record`」** という構成が、何を指していて、なぜそれを選んだのかを、専門外でも分かるように噛み砕いて説明する。
+- **目的**: 実装計画 `notes/on_device_stt/outline.md` に出てくる **「`sherpa_onnx` 内蔵の Silero VAD ＋ `record`」** という構成が、何を指していて、なぜそれを選んだのかを、専門外でも分かるように噛み砕いて説明する。
 - **対象読者**: この構成がピンと来ていない開発者（＝この文書を依頼した本人）。
 - **作成日**: 2026-06-20
 - **前に読むとよい**: `asr_basics_for_beginners.md`（エンジン・モデル・VAD の超基礎）。本書はその続きで、「**録音とVADの“担当者”をどう組むか**」に絞って説明する。
@@ -115,7 +115,7 @@ record  ── ① 録音
 
 > 冷蔵庫が最初から1台しかないので、搬入係はそもそも困らない。応急処置（`pickFirst` 等）も要らない。
 
-これが「案Cが本質的にクリーン」と言っている意味。実際に検証ブランチで試したら、応急処置を一切入れずに Android ビルドが通った（`docs/on_device_stt/verification/README.md`）。
+これが「案Cが本質的にクリーン」と言っている意味。実際に検証ブランチで試したら、応急処置を一切入れずに Android ビルドが通った（`notes/on_device_stt/verification/README.md`）。
 
 ### 5-4. ついでに良くなったこと（おまけの利点）
 
@@ -194,13 +194,13 @@ record  ── ① 録音
 - やることは **①録音 → ②区切り → ③文字化** の3つ。
 - 案C ＝ **①は `record`、②と③は `sherpa_onnx`（内蔵VAD＋NeMoモデル）にまかせる**。
 - 区切り専用の `vad` パッケージを使わないことで、**裏方（onnxruntime）が1つで済み、ビルドが安定・iOSも古い端末対応・完全オフライン・権限も最小**になった。
-- これらは**実機で実証済み**（`docs/on_device_stt/verification/README.md`）。だから `outline.md` はこの案Cを前提に書かれている。
+- これらは**実機で実証済み**（`notes/on_device_stt/verification/README.md`）。だから `outline.md` はこの案Cを前提に書かれている。
 
 ---
 
 ## 関連ドキュメント
 
-- `docs/research/on_device_stt/asr_basics_for_beginners.md` — エンジン・モデル・VAD の超基礎（本書の前提）
-- `docs/on_device_stt/outline.md` — 実装計画（本書はこれを読むための補助）
-- `docs/on_device_stt/verification/README.md` — 案Cを実機で確かめた検証の記録
-- `docs/research/on_device_stt/vad_whisper_impl_log.md` — エンジン／モデル選定の実証記録
+- `notes/research/on_device_stt/asr_basics_for_beginners.md` — エンジン・モデル・VAD の超基礎（本書の前提）
+- `notes/on_device_stt/outline.md` — 実装計画（本書はこれを読むための補助）
+- `notes/on_device_stt/verification/README.md` — 案Cを実機で確かめた検証の記録
+- `notes/research/on_device_stt/vad_whisper_impl_log.md` — エンジン／モデル選定の実証記録

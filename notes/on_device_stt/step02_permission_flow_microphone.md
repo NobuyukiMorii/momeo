@@ -45,7 +45,7 @@
 
 > 音声認識「権限」に関する記述は本ステップで整理する（§1 の決定）。
 
-### 3-A. 仕様: `docs/specs/permission_flow.md`
+### 3-A. 仕様: `notes/specs/permission_flow.md`
 
 音声認識権限前提で全体が書かれているため、**マイクのみ前提**へ改訂する。
 
@@ -58,7 +58,7 @@
 
 ### 3-B. デザイン資料（Figma エクスポート記録）→ 本ステップでは触らない（決定）
 
-- `docs/design/03_screen_states/details/PermissionSpeechRecognition*.md`（3ファイル）と `state_catalog.md` は **Figma からのエクスポート記録**であり、Figma 本体には今も「Setting Recognition」画面（`CLAUDE.md`: `849:151` / `849:164` / `850:219`）が存在する。
+- `notes/design/03_screen_states/details/PermissionSpeechRecognition*.md`（3ファイル）と `state_catalog.md` は **Figma からのエクスポート記録**であり、Figma 本体には今も「Setting Recognition」画面（`CLAUDE.md`: `849:151` / `849:164` / `850:219`）が存在する。
 - ドキュメントとデザインの整合はデザイン側の作業範囲のため、**本ステップでは変更しない**（そのまま残す）。
 
 ---
@@ -90,7 +90,7 @@
 | `ios/Runner/Info.plist` の `NSMicrophoneUsageDescription`（L29-30） | マイク利用目的 | **残す** |
 | `ios/Podfile` の `PERMISSION_MICROPHONE=1`（L45） | マイクのマクロ | **残す** |
 | `permission_handler` 依存 | マイク権限で引き続き使用 | **削除しない** |
-| `docs/specs/listening_flow.md` / `docs/specs/overview.md` | 確定トリガー・全体フローの記述 | **Step 12** で改訂 |
+| `notes/specs/listening_flow.md` / `notes/specs/overview.md` | 確定トリガー・全体フローの記述 | **Step 12** で改訂 |
 | `pubspec.lock` / `ios/Podfile.lock` | ロック情報 | **手で編集しない**。§6 で自動再生成 |
 
 ---
@@ -103,13 +103,13 @@
 
 ## 7. 完了の目安
 
-- コードから `Permission.speech` への参照が消えている（grep で 0 件 ※ docs を除く）。
+- コードから `Permission.speech` への参照が消えている（grep で 0 件 ※ notes を除く）。
 - `ios/Runner/Info.plist` に `NSSpeechRecognitionUsageDescription` がない。
 - `ios/Podfile` に `PERMISSION_SPEECH_RECOGNIZER=1` がない。
 - iOS・Android とも**マイク権限のみ**を要求し、許可後にリスニングへ進む（マイクのみのためステップ表示は非表示）。
 - `flutter analyze` が通り、`flutter build` がビルドできる。
 - dev catalog のレイアウトサンプルに「Allow Speech Recognition」が残っていない。
-- `docs/specs/permission_flow.md` から音声認識権限の記述が消え、マイクのみ前提に整合している（デザイン資料は対象外）。
+- `notes/specs/permission_flow.md` から音声認識権限の記述が消え、マイクのみ前提に整合している（デザイン資料は対象外）。
 
 ---
 
@@ -123,7 +123,7 @@
 - [ ] dev catalog `widgets_intro_setting_layout_section.dart` の音声認識サンプル（L44-49）を削除 ← **outline 未記載の追加項目**
 
 ### ドキュメント
-- [ ] `docs/specs/permission_flow.md` をマイクのみ前提に改訂（§3-A）
+- [ ] `notes/specs/permission_flow.md` をマイクのみ前提に改訂（§3-A）
 - [ ] デザイン資料（`PermissionSpeechRecognition*.md` / `state_catalog.md`）は触らない（§3-B 決定）
 
 ### 確認

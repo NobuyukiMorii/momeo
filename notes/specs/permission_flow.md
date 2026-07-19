@@ -31,7 +31,7 @@ App Start
 → Splash
 → Check permissions
 → Microphone permission if needed
-→ Preparation Gate（文字化エンジンの準備待ち。通常は素通り。docs/specs/preparation_gate.md）
+→ Preparation Gate（文字化エンジンの準備待ち。通常は素通り。notes/specs/preparation_gate.md）
 → Listening Screen
 ```
 
@@ -50,9 +50,9 @@ App Start
 
 ## 参照する既存デザインドキュメント
 
-- docs/design/03_screen_states/details/PermissionMicrophoneRequest.md
-- docs/design/03_screen_states/details/PermissionMicrophoneSettings.md
-- docs/design/03_screen_states/details/PermissionMicrophoneUnavailable.md
+- notes/design/03_screen_states/details/PermissionMicrophoneRequest.md
+- notes/design/03_screen_states/details/PermissionMicrophoneSettings.md
+- notes/design/03_screen_states/details/PermissionMicrophoneUnavailable.md
 
 ## iOSで権限をoffにした時の挙動
 

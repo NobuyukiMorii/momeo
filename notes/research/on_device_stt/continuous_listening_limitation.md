@@ -5,7 +5,7 @@
 - **目的**: `speech_to_text` を使って「常時リスニングして話した内容を自動でメモ化する」アプローチを実装した結果、何が問題になったかを記録する。
 - **調査日**: 2026-06-07
 - **対象**: `speech_to_text` 7.4.0（iOS = `SFSpeechRecognizer` / Android = `SpeechRecognizer` をラップ）
-- **きっかけ**: リスニングフロー（`docs/specs/listening_flow.md`）を実装し、Android 実機（Pixel 8a）で検証したところ、話した内容の **2割程度しかテキスト化されない**という問題に直面した。
+- **きっかけ**: リスニングフロー（`notes/specs/listening_flow.md`）を実装し、Android 実機（Pixel 8a）で検証したところ、話した内容の **2割程度しかテキスト化されない**という問題に直面した。
 
 ---
 
@@ -110,6 +110,6 @@ onStatus: listening      ← ようやく再開
 
 ## 5. 関連ドキュメント
 
-- `docs/specs/listening_flow.md` — 今回実装したリスニングフローの仕様
-- `docs/research/speech_recognition_accuracy.md` — ストリーミング型 vs バッチ型（Whisper）の精度差
-- `docs/research/on_device_llm.md` — オンデバイス処理の調査
+- `notes/specs/listening_flow.md` — 今回実装したリスニングフローの仕様
+- `notes/research/speech_recognition_accuracy.md` — ストリーミング型 vs バッチ型（Whisper）の精度差
+- `notes/research/on_device_llm.md` — オンデバイス処理の調査

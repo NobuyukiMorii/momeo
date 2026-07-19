@@ -5,7 +5,7 @@
 
 音声認識はオンデバイス STT（`sherpa_onnx` + NeMo CTC）で行います。OS の音声認識サービスには依存せず、モデルが端末にあれば実行は完全オフラインです。
 
-> リスニング画面に入る前提として、文字化エンジンの準備完了を待つ「準備ゲート」があります（`docs/specs/preparation_gate.md`）。リスニング画面に到達した時点でエンジンは常に使用可能です。
+> リスニング画面に入る前提として、文字化エンジンの準備完了を待つ「準備ゲート」があります（`notes/specs/preparation_gate.md`）。リスニング画面に到達した時点でエンジンは常に使用可能です。
 
 ## 画面構成
 
@@ -120,21 +120,21 @@ Silero VAD の区切り設定（`stt_listening_pipeline.dart` の定数）:
 ## 今後の検証項目
 
 - 無音 1.5秒 の区切りが実際の利用感として心地よいかどうかは、実機検証を通じて調整します。
-- 転写中（100〜300ms・メインスレッド）に喋った音声を取りこぼさないかを実機で計測します（`docs/on_device_stt/outline.md` 末尾「実機確認時の宿題」参照）。
+- 転写中（100〜300ms・メインスレッド）に喋った音声を取りこぼさないかを実機で計測します（`notes/on_device_stt/outline.md` 末尾「実機確認時の宿題」参照）。
 
 ## 参照する既存デザインドキュメント
 
-- docs/design/03_screen_states/details/ListeningInitial.md
-- docs/design/03_screen_states/details/ListeningFirstItem.md
-- docs/design/03_screen_states/details/ListeningSecondItem.md
-- docs/design/03_screen_states/details/ListeningThirdItem.md
-- docs/design/03_screen_states/details/ListeningManyItemsOverview.md
+- notes/design/03_screen_states/details/ListeningInitial.md
+- notes/design/03_screen_states/details/ListeningFirstItem.md
+- notes/design/03_screen_states/details/ListeningSecondItem.md
+- notes/design/03_screen_states/details/ListeningThirdItem.md
+- notes/design/03_screen_states/details/ListeningManyItemsOverview.md
 
 ## 関連ドキュメント
 
-- 実装計画・採用経緯: `docs/on_device_stt/outline.md`
-- モデルの配布方式: `docs/on_device_stt/model_distribution.md`
-- 権限フロー（マイクのみ）: `docs/specs/permission_flow.md`
+- 実装計画・採用経緯: `notes/on_device_stt/outline.md`
+- モデルの配布方式: `notes/on_device_stt/model_distribution.md`
+- 権限フロー（マイクのみ）: `notes/specs/permission_flow.md`
 
 ## 一次情報・参考リンク
 

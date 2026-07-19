@@ -19,8 +19,8 @@ STT モデル（約625MB・Git 管理外）の取得と端末への配置は `ma
 
 - iOS はアプリに同梱、Android は端末へ `adb push`（アンインストールで消える → 再度 `make run`）
 - 本番ビルド: `make build-ios` / `make build-android`
-- 詳細: `docs/on_device_stt/model_distribution.md`
+- 詳細: `notes/on_device_stt/model_distribution.md`
 
 ## ドキュメント
 
-本プロジェクトの仕様書および関連ドキュメントは `docs/` ディレクトリに集約されています。
+本プロジェクトの仕様書および関連ドキュメントは `notes/` ディレクトリに集約されています。

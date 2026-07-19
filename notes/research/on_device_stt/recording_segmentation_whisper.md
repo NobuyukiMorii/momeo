@@ -95,7 +95,7 @@
 
 ### 重要な気づき1: VAD の発話区切り ＝ メモカードの区切り
 
-momeo は「発話ごとに1枚のメモカード」を作る（[listening_flow.md](docs/specs/listening_flow.md)）。VAD の **発話終了（onSpeechEnd）が、そのまま「カード確定トリガー」**になる。
+momeo は「発話ごとに1枚のメモカード」を作る（[listening_flow.md](notes/specs/listening_flow.md)）。VAD の **発話終了（onSpeechEnd）が、そのまま「カード確定トリガー」**になる。
 
 - これまで `speech_to_text` の `pauseFor=1.5秒 → onStatus='done'` で確定していた仕組みを、**VAD の発話終了に置き換えられる**。
 - つまり VAD は「チャンク境界の決定」と「メモ確定の合図」を**一石二鳥**でこなす。→ `listening_flow.md` の確定条件の節は、新方式向けに**改訂が必要**（後述）。
@@ -215,11 +215,11 @@ record or vad（連続キャプチャ＋発話切り出し） → whisper_ggml/w
 
 ## 8. 関連ドキュメント
 
-- `docs/research/on_device_stt/continuous_listening_limitation.md` — `speech_to_text` の限界（再起動の空白）
-- `docs/research/on_device_stt/next_stt_approaches.md` — 次の方向づけ（オンデバイス Whisper ＋ 分離）
-- `docs/research/speech_recognition_accuracy.md` — ストリーミング vs バッチの精度差
-- `docs/research/on_device_llm.md` — 確定後の整文（オンデバイス LLM 後処理）
-- `docs/specs/listening_flow.md` — 確定条件は新方式向けに改訂が必要
+- `notes/research/on_device_stt/continuous_listening_limitation.md` — `speech_to_text` の限界（再起動の空白）
+- `notes/research/on_device_stt/next_stt_approaches.md` — 次の方向づけ（オンデバイス Whisper ＋ 分離）
+- `notes/research/speech_recognition_accuracy.md` — ストリーミング vs バッチの精度差
+- `notes/research/on_device_llm.md` — 確定後の整文（オンデバイス LLM 後処理）
+- `notes/specs/listening_flow.md` — 確定条件は新方式向けに改訂が必要
 
 ## 参考リンク
 
