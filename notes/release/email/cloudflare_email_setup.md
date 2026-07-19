@@ -57,12 +57,13 @@ Email Routing は受信転送専用で、メールボックスは作られない
   | A   | momeo.jp | 185.199.109.153 | DNS only           |
   | A   | momeo.jp | 185.199.110.153 | DNS only           |
   | A   | momeo.jp | 185.199.111.153 | DNS only           |
+  | CNAME | www    | nobuyukimorii.github.io | DNS only    |
 
   - パーキング用の A レコード(150.95.255.38)が取り込まれていたら削除する
   - 自動スキャンは実在しないレコードも拾ってくることがある。
   `_dmarc` / `mail` / `www` / `test` などの **NS レコード(値が dns1/dns2.onamae.com)や
   パーキング由来の TXT(**`v=spf1 -all`**)が並んでいたら、すべて削除**してよい。
-  残すのは GitHub Pages 用の A レコード 4 つだけ
+  残すのは GitHub Pages 用の上記 5 レコード(A 4 つ + www の CNAME)だけ
   - **プロキシ(オレンジ雲)は使わない**。GitHub Pages の前に Cloudflare の CDN を
   重ねると証明書発行やリダイレクトのトラブルの元になるため、全レコード DNS only にする
 
