@@ -1,0 +1,99 @@
+/* momeo.jp サイト共通スタイル */
+/* アプリ本体（lib/foundation/app_colors.dart, app_text_styles.dart）のトークンに合わせる */
+
+:root {
+  --surface: #ffffff;
+  --on-surface: #111827;
+  --on-surface-variant: #6b7280;
+  --outline: #e5e7eb;
+  --primary: #436eef;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Hiragino Sans",
+    "Noto Sans JP", sans-serif;
+  color: var(--on-surface);
+  background: var(--surface);
+  line-height: 1.9;
+  font-size: 16px;
+}
+
+main {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 3rem 1.5rem 4rem;
+}
+
+h1 {
+  font-size: 2rem;
+  font-weight: 700;
+  margin-bottom: 2rem;
+}
+
+h2 {
+  font-size: 1.1rem;
+  font-weight: 700;
+  margin: 2.5rem 0 0.75rem;
+  padding-bottom: 0.4rem;
+  border-bottom: 1px solid var(--outline);
+}
+
+p,
+ul {
+  margin-bottom: 1rem;
+}
+
+ul {
+  padding-left: 1.4rem;
+}
+
+a {
+  color: var(--primary);
+}
+
+.site-name {
+  font-weight: 700;
+  text-decoration: none;
+  color: var(--on-surface);
+}
+
+header.site-header {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 1.5rem 1.5rem 0;
+}
+
+footer {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 0 1.5rem 3rem;
+  color: var(--on-surface);
+  font-size: 0.85rem;
+}
+
+.note {
+  color: var(--on-surface);
+  font-size: 0.9rem;
+}
+
+/* トップページの導線リンク */
+.links {
+  list-style: none;
+  padding: 0;
+}
+
+.links li {
+  margin-bottom: 0.5rem;
+}
+
+.links a {
+  display: inline-block;
+  padding: 0.5rem 0;
+  font-weight: 600;
+}
