@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:momeo/foundation/app_theme.dart';
 import 'package:momeo/pages/dev/console/console_page.dart';
 import 'package:momeo/pages/dev/catalog/catalog_page.dart';
+import 'package:momeo/pages/dev/screenshot/screenshot_app.dart';
 import 'package:momeo/pages/permissions/permission_flow_page.dart';
 import 'package:momeo/pages/preparation_gate_page.dart';
 import 'package:momeo/pages/splash_page.dart';
@@ -19,6 +20,16 @@ void main() {
   // 安全領域の避け方は各画面が SafeArea や MediaQuery の padding で行う
   // ---------------------------------
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+
+  // ---------------------------------
+  // ストア掲載用スクリーンショットの撮影モード
+  // --dart-define=SCREENSHOT_SCENE=シーン名 でビルドしたときだけ有効になる
+  // ---------------------------------
+  const screenshotSceneName = String.fromEnvironment('SCREENSHOT_SCENE');
+  if (screenshotSceneName.isNotEmpty) {
+    runApp(const ScreenshotApp(sceneName: screenshotSceneName));
+    return;
+  }
 
   // ---------------------------------
   // ProviderScope で包むと、配下のどこからでも Provider を参照できる
