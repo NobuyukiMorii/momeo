@@ -45,12 +45,14 @@ require-device:
 	  exit 1; \
 	fi
 
+# 本番ビルドのビルド番号はエポック分（1970年からの経過分数）で自動採番する。
+# ストアが要求する単調増加を人手なしで満たすため。詳細: notes/release/versioning/version_management.md
 # iOS の本番ビルド（モデルはバンドルリソースとして同梱される）
 build-ios: models
 	bash scripts/place_ios_models.sh
-	flutter build ipa
+	flutter build ipa --build-number=$$(( $$(date +%s) / 60 ))
 
 # Android の本番ビルド（モデルは fast-follow アセットパックに入れて AAB 化する）
 build-android: models
 	bash scripts/place_android_pack_models.sh
-	flutter build appbundle
+	flutter build appbundle --build-number=$$(( $$(date +%s) / 60 ))
