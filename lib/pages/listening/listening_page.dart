@@ -2,11 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:momeo/database/app_database.dart';
 import 'package:momeo/foundation/app_colors.dart';
 import 'package:momeo/foundation/app_spacing.dart';
 import 'package:momeo/pages/listening/memo_card_view_data.dart';
 import 'package:momeo/providers/listening_providers.dart';
 import 'package:momeo/widgets/listening_backdrop.dart';
+import 'package:momeo/widgets/selection_action_button.dart';
 import 'package:momeo/widgets/voice_card.dart';
 
 // =====================================================================
@@ -27,6 +29,9 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
     with SingleTickerProviderStateMixin {
   // 表示用日時フォーマット（生成コストを抑えて使い回す）
   static final _dateFormat = DateFormat('y/M/d HH:mm');
+
+  // 選択中のメモの id 一覧（選択中のカードは枠線が太くなる）
+  final Set<int> _selectedMemoIds = {};
 
   // アクティブカード（リスニング中インジケーター）の出入りを司る
   //   forward = スライドダウンで登場、reverse = スライドアウトで退場、
@@ -120,13 +125,34 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
   }
 
   // ---------------------------------
-  // メモ本文のコピー（塗りつぶし完了時）
+  // カードの選択
   // ---------------------------------
-  // 本文のみをコピーする（日時は含めない）。完了の合図はカード側の
-  // COPY 表示と、ここでの振動で伝える
-  void _copyMemoText(String text) {
-    Clipboard.setData(ClipboardData(text: text));
-    HapticFeedback.vibrate();
+  void _toggleMemoSelection(int memoId) {
+    setState(() {
+      if (_selectedMemoIds.contains(memoId)) {
+        // 選択中のメモを除外
+        _selectedMemoIds.remove(memoId);
+      } else {
+        // 選択中のメモを追加
+        _selectedMemoIds.add(memoId);
+      }
+    });
+  }
+
+  // ---------------------------------
+  // 選択中メモの連結コピー
+  // ---------------------------------
+  void _copySelectedMemos(List<VoiceMemo> memos) {
+    // memos は新しい順なので、逆順に走査して時系列順に組み立てる
+    final selectedTexts = [
+      for (final memo in memos.reversed)
+        if (_selectedMemoIds.contains(memo.id)) memo.content,
+    ];
+    if (selectedTexts.isEmpty) return;
+    // クリップボードにコピー
+    Clipboard.setData(ClipboardData(text: selectedTexts.join('\n')));
+    // 選択中のメモをクリア
+    setState(() => _selectedMemoIds.clear());
   }
 
   @override
@@ -180,8 +206,8 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
                     ? _dateFormat.format(card.memo.createdAt)
                     : null,
                 typeIn: card.memo.id == listening.typeInMemoId,
-                // 塗りつぶし切ったら本文をコピー（タイピング演出中でも全文を対象にする）
-                onCopy: () => _copyMemoText(card.memo.content),
+                selected: _selectedMemoIds.contains(card.memo.id),
+                onTap: () => _toggleMemoSelection(card.memo.id),
                 // 演出を使い切ったら Notifier に返して再再生を防ぐ
                 onTypingComplete: () {
                   if (!mounted) return;
@@ -191,6 +217,17 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
                 },
               );
             },
+          ),
+          // 右下のコピーボタン（選択中のカードがある間だけ現れる。
+          // 出入り・タップ反応の演出はボタン側が持つ）
+          Positioned(
+            right: AppSpacing.l,
+            bottom: AppSpacing.l + safeArea.bottom,
+            child: SelectionActionButton(
+              visible: _selectedMemoIds.isNotEmpty,
+              icon: Icons.copy,
+              onPressed: () => _copySelectedMemos(listening.memos),
+            ),
           ),
         ],
       ),

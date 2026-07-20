@@ -20,12 +20,14 @@ class WidgetsVoiceCardSection extends StatelessWidget {
         text: '',
         isListening: true,
         dateTime: null,
+        selected: false,
       ),
       (
         label: '認識中（VoiceIcon 付き）',
         text: 'Lorem ipsum dolor sit amet, consectetur adipiscing elit.',
         isListening: true,
         dateTime: null,
+        selected: false,
       ),
       (
         label: '確定済み',
@@ -33,12 +35,21 @@ class WidgetsVoiceCardSection extends StatelessWidget {
             'Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.',
         isListening: false,
         dateTime: null,
+        selected: false,
       ),
       (
         label: '日時付き',
         text: 'Lorem ipsum dolor sit amet.',
         isListening: false,
         dateTime: '2026/01/15 14:30',
+        selected: false,
+      ),
+      (
+        label: '選択中（枠線が太くなる）',
+        text: 'Lorem ipsum dolor sit amet, consectetur adipiscing elit.',
+        isListening: false,
+        dateTime: null,
+        selected: true,
       ),
     ];
 
@@ -81,8 +92,7 @@ class WidgetsVoiceCardSection extends StatelessWidget {
                 text: item.text,
                 isListening: item.isListening,
                 dateTime: item.dateTime,
-                // 確定済みカードでは長押しの塗りつぶし演出を確認できる（コピーはしない）
-                onCopy: item.isListening ? null : () {},
+                selected: item.selected,
               ),
             ],
           );

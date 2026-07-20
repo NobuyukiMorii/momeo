@@ -4,7 +4,6 @@ import 'package:momeo/foundation/app_radius.dart';
 import 'package:momeo/foundation/app_spacing.dart';
 import 'package:momeo/foundation/app_text_styles.dart';
 import 'package:momeo/widgets/activity_dots_text.dart';
-import 'package:momeo/widgets/hold_to_copy_effect.dart';
 import 'package:momeo/widgets/typewriter_text.dart';
 import 'package:momeo/widgets/voice_icon.dart';
 
@@ -16,16 +15,20 @@ class VoiceCard extends StatefulWidget {
     this.dateTime,
     this.typeIn = false,
     this.onTypingComplete,
-    this.onCopy,
+    this.selected = false,
+    this.onTap,
   });
 
   final String text;
   final bool isListening;
   final String? dateTime;
 
-  // 長押しの塗りつぶし演出が完了したときの通知（＝テキストコピーの合図）。
-  // null なら長押しを受け付けない
-  final VoidCallback? onCopy;
+  // 選択中はカードの枠線が太くなる
+  final bool selected;
+
+  // カード本体をタップしたときの通知（選択の切り替えに使う）。
+  // null ならタップを受け付けない
+  final VoidCallback? onTap;
 
   // 確定演出: テキストを1文字ずつ素早くタイピング表示する
   final bool typeIn;
@@ -38,6 +41,10 @@ class VoiceCard extends StatefulWidget {
 }
 
 class _VoiceCardState extends State<VoiceCard> {
+  // 枠線の太さ（通常時・選択中）
+  static const _borderWidth = 1.5;
+  static const _selectedBorderWidth = 3.0;
+
   // 日時のフェードインをタイピングの打ち終わりまで待たせるためのフラグ
   bool _typingFinished = false;
 
@@ -62,20 +69,22 @@ class _VoiceCardState extends State<VoiceCard> {
 
   @override
   Widget build(BuildContext context) {
+    // 選択で枠線が太くなるぶん padding を減らし、コンテンツの位置と幅を固定する
+    final borderWidth = widget.selected ? _selectedBorderWidth : _borderWidth;
+    final contentPadding = AppSpacing.l - (borderWidth - _borderWidth);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // 長押しで右から左へ黒く塗りつぶし、塗り切ったらコピー
-        HoldToCopyEffect(
-          borderRadius: AppRadius.l,
-          onCopied: widget.onCopy,
+        GestureDetector(
+          onTap: widget.onTap,
           child: Container(
             width: double.infinity,
-            padding: const EdgeInsets.all(AppSpacing.l),
+            padding: EdgeInsets.all(contentPadding),
             decoration: BoxDecoration(
               color: AppColors.surface,
               borderRadius: BorderRadius.circular(AppRadius.l),
-              border: Border.all(color: AppColors.onSurface, width: 1.5),
+              border: Border.all(color: AppColors.onSurface, width: borderWidth),
             ),
             // テキストが空のリスニング中は、左端のドットの増減で処理中の気配を出す
             child: widget.isListening && widget.text.isEmpty
