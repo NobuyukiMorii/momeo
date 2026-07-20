@@ -100,6 +100,14 @@ done
 # run-as が通る = debug ビルドのアプリが入っている
 if ! run_adb shell run-as "$APP_ID" sh -c 'true' >/dev/null 2>&1; then
   echo "→ アプリが未インストールのため、debug ビルドをインストールします …"
+
+  # flutter install はビルドしないため、APK が無い（flutter clean 直後など）なら先にビルドする
+  debug_apk="$PROJECT_ROOT/build/app/outputs/flutter-apk/app-debug.apk"
+  if [ ! -f "$debug_apk" ]; then
+    echo "→ debug APK が無いため、先にビルドします …"
+    (cd "$PROJECT_ROOT" && flutter build apk --debug)
+  fi
+
   # flutter へ渡す ID。無線接続の adb シリアルは mDNS 接尾辞を剥がすと Flutter の表示 ID になる
   flutter_device_id="${FLUTTER_DEVICE_ID:-${ADB_SERIAL%._adb-tls-connect._tcp.}}"
   (cd "$PROJECT_ROOT" && flutter install --debug -d "$flutter_device_id")
