@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:momeo/foundation/app_theme.dart';
 import 'package:momeo/pages/dev/console/console_page.dart';
 import 'package:momeo/pages/dev/catalog/catalog_page.dart';
+import 'package:momeo/pages/dev/recording/recording_app.dart';
 import 'package:momeo/pages/dev/screenshot/screenshot_app.dart';
 import 'package:momeo/pages/permissions/permission_flow_page.dart';
 import 'package:momeo/pages/preparation_gate_page.dart';
@@ -28,6 +29,18 @@ void main() {
   const screenshotSceneName = String.fromEnvironment('SCREENSHOT_SCENE');
   if (screenshotSceneName.isNotEmpty) {
     runApp(const ScreenshotApp(sceneName: screenshotSceneName));
+    return;
+  }
+
+  // ---------------------------------
+  // サイト掲載用の画面収録モード
+  // --dart-define=RECORDING_MODE=true でビルドしたときだけ有効になる
+  // ---------------------------------
+  const recordingMode = bool.fromEnvironment('RECORDING_MODE');
+  if (recordingMode) {
+    // 収録した映像に時計や電池を写したくないのでステータスバーを消す
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.manual, overlays: []);
+    runApp(const RecordingApp());
     return;
   }
 

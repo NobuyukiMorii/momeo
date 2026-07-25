@@ -7,12 +7,7 @@ import 'package:momeo/widgets/animated_text_sequence.dart';
 import 'package:momeo/widgets/intro_setting_layout.dart';
 
 // 初回起動時に表示するフルシーケンス
-const _splashFullTexts = [
-  'momeo',
-  'Just Speak.',
-  'Auto-start',
-  'Auto-stop',
-];
+const _splashFullTexts = ['momeo', 'Just Speak.', 'Auto-start', 'Auto-stop'];
 
 // 2回目以降に表示する短縮シーケンス
 const _splashShortTexts = ['momeo'];
@@ -23,7 +18,10 @@ const _splashShortTexts = ['momeo'];
 // 2回目以降: 'momeo' だけ表示して即座に次のフローへ進む
 // ---------------------------------
 class SplashPage extends StatefulWidget {
-  const SplashPage({super.key, this.onFinished});
+  const SplashPage({super.key, this.overrideTexts, this.onFinished});
+
+  // 指定時は初回判定を使わず、この文字列だけを表示する
+  final List<String>? overrideTexts;
 
   // 全テキストの表示が終わった時に呼ばれるコールバック
   final VoidCallback? onFinished;
@@ -42,11 +40,17 @@ class _SplashPageState extends State<SplashPage> {
   @override
   void initState() {
     super.initState();
+
+    // 指定された文字列をそのまま表示
+    if (widget.overrideTexts != null) {
+      _texts = widget.overrideTexts;
+      return;
+    }
+
     _loadTexts();
   }
 
   Future<void> _loadTexts() async {
-
     // ---------------------------------
     // SharedPreferences を読んで初回起動かどうかを判断
     // ---------------------------------
@@ -70,8 +74,11 @@ class _SplashPageState extends State<SplashPage> {
   // シーケンス完了時: 初回フラグを書き込んで親へ通知
   // ---------------------------------
   Future<void> _onSequenceFinished() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(PreferencesKeys.isFirstLaunch, false);
+    // 通常表示の場合だけ初回フラグを更新
+    if (widget.overrideTexts == null) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(PreferencesKeys.isFirstLaunch, false);
+    }
 
     widget.onFinished?.call();
   }
@@ -89,9 +96,7 @@ class _SplashPageState extends State<SplashPage> {
     return Scaffold(
       body: IntroSettingLayout(
         title: DefaultTextStyle(
-          style: AppTextStyles.headline.copyWith(
-            color: AppColors.onSurface,
-          ),
+          style: AppTextStyles.headline.copyWith(color: AppColors.onSurface),
           child: AnimatedTextSequence(
             texts: _texts!,
             onFinished: _onSequenceFinished,
