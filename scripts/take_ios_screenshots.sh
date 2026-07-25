@@ -21,7 +21,7 @@ OUT_DIR="$PWD/notes/release/screenshots/ios"
 SCENES=(
   "01_splash_auto_start:splash_auto_start"
   "02_splash_auto_stop:splash_auto_stop"
-  "03_splash_open_speak_saved:splash_open_speak_saved"
+  "03_splash_just_speak:splash_just_speak"
   "04_listening_idle:listening_idle"
   "05_listening_first_memo:listening_first_memo"
   "06_listening_growing_memos:listening_growing_memos"

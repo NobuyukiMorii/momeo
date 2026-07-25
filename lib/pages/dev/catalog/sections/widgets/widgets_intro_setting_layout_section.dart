@@ -30,7 +30,7 @@ class WidgetsIntroSettingLayoutSection extends StatelessWidget {
         title: DefaultTextStyle(
           style: headlineStyle,
           child: const AnimatedTextSequence(
-            texts: ['momeo', 'Open. Speak. Saved.', 'Auto-start', 'Auto-stop'],
+            texts: ['momeo', 'Just Speak.', 'Auto-start', 'Auto-stop'],
           ),
         ) as Widget,
         actionLabel: null,

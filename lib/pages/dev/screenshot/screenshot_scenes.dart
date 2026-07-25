@@ -54,10 +54,7 @@ List<ScreenshotScene> buildScreenshotScenes() {
     // スプラッシュ演出の3コマ
     const ScreenshotScene(name: 'splash_auto_start', splashText: 'Auto-start'),
     const ScreenshotScene(name: 'splash_auto_stop', splashText: 'Auto-stop'),
-    const ScreenshotScene(
-      name: 'splash_open_speak_saved',
-      splashText: 'Open. Speak. Saved.',
-    ),
+    const ScreenshotScene(name: 'splash_just_speak', splashText: 'Just Speak.'),
 
     // ---------------------------------
     // リスニング: 波線のみ

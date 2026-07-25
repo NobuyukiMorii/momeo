@@ -18,7 +18,7 @@
 ## 表示テキスト例（Figma参照）
 初回起動時に表示するテキスト項目は以下の通りです。
 1. `momeo`
-2. `Open. Speak. Saved.`
+2. `Just Speak.`
 3. `Auto-start`
 4. `Auto-stop`
 

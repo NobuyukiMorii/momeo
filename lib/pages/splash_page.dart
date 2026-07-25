@@ -9,7 +9,7 @@ import 'package:momeo/widgets/intro_setting_layout.dart';
 // 初回起動時に表示するフルシーケンス
 const _splashFullTexts = [
   'momeo',
-  'Open. Speak. Saved.',
+  'Just Speak.',
   'Auto-start',
   'Auto-stop',
 ];

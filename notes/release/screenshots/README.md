@@ -102,7 +102,7 @@ ProviderScope(
 |---|---|---|
 | `01_splash_auto_start` | `splash_auto_start` | スプラッシュ「Auto-start」 |
 | `02_splash_auto_stop` | `splash_auto_stop` | スプラッシュ「Auto-stop」 |
-| `03_splash_open_speak_saved` | `splash_open_speak_saved` | スプラッシュ「Open. Speak. Saved.」 |
+| `03_splash_just_speak` | `splash_just_speak` | スプラッシュ「Just Speak.」 |
 | `04_listening_idle` | `listening_idle` | 波線だけの静かなリスニング画面 |
 | `05_listening_first_memo` | `listening_first_memo` | 発話中ドット＋確定1枚 |
 | `06_listening_growing_memos` | `listening_growing_memos` | 発話を重ねて確定3枚＋発話中 |
