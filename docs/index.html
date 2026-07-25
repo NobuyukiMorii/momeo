@@ -1,36 +1,124 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ja">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>momeo - 話すだけで、メモになる</title>
-  <meta name="description" content="momeo は、話した言葉をその場でメモカードにする音声メモアプリです。音声はすべて端末内で処理され、外部に送信されません。">
-  <link rel="stylesheet" href="style.css">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <title>momeo — Just Speak.</title>
+  <meta name="description" content="アプリを開いて話すだけ。ただ声を文字で残すだけのアプリ。音声認識は端末の中だけで完結し、音声もメモも外部に送信されません。">
+
+  <!-- SNS でリンクを共有したときの表示 -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="momeo">
+  <meta property="og:description" content="アプリを開いて話すだけ。ただ声を文字で残すだけのアプリ。">
+  <meta property="og:url" content="https://momeo.jp/">
+  <meta property="og:image" content="https://momeo.jp/images/og.png">
+  <meta name="twitter:card" content="summary_large_image">
+
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&family=Noto+Sans+JP:wght@400;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./style.css">
+
+  <!-- スクロール表示を CSS 側で有効にする目印。
+       JavaScript が無効な環境ではこの class が付かず、本文は最初から表示される -->
+  <script>document.documentElement.classList.add("js");</script>
 </head>
+
 <body>
-  <header class="site-header">
-    <a class="site-name" href="./">momeo</a>
-  </header>
   <main>
-    <h1>話すだけで、メモになる。</h1>
-    <p>
-      momeo は、話した言葉をその場でテキストのメモカードにする音声メモアプリです。
-    </p>
-    <p>
-      音声認識はすべて端末の中だけで行われ、音声もメモも外部に送信されません。
-      アカウント登録も不要です。
-    </p>
+    <!-- ---------------------------------
+         ヒーロー：1 画面をまるごと使い、内容は下端に寄せる。
+         アプリ名の文字サイズの決め方は style.css 側のコメントを参照
+         --------------------------------- -->
+    <section class="hero">
+      <h1 class="hero__title">momeo</h1>
+      <p class="hero__meta">Just Speak.</p>
 
-    <!-- ストア公開後に App Store / Google Play のバッジリンクをここに追加する -->
+      <!-- ストア公開後に App Store / Google Play のバッジリンクをここに追加する -->
+    </section>
 
-    <h2>ページ</h2>
-    <ul class="links">
-      <li><a href="privacy.html">プライバシーポリシー</a></li>
-      <li><a href="support.html">サポート・お問い合わせ</a></li>
-    </ul>
+    <!-- ---------------------------------
+         本文ブロック（.band）を積んでいく。
+         増やすときは <section class="band"> ごと複製する
+         --------------------------------- -->
+    <section class="band reveal">
+      <h2 class="band__label">Concept</h2>
+      <div class="band__body">
+        <!-- 導入。ここだけ本文より大きく組む -->
+        <p class="lede">
+          ただ、話すだけのアプリ。
+        </p>
+
+        <p>流れる思考を自然に残すためにつくられたアプリです。</p>
+
+        <ul class="thoughts">
+          <li>未来のこと。</li>
+          <li>仕事のこと。</li>
+          <li>人間関係のこと。</li>
+          <li>今日の晩ごはん。</li>
+        </ul>
+
+        <p>時の流れの中で生まれ、薄れ、消えていく思考。</p>
+
+        <p>それが消えてしまう前に、そっと残しておくために。</p>
+      </div>
+    </section>
+
+    <section class="band reveal">
+      <h2 class="band__label">How It Works</h2>
+      <div class="band__body">
+        <p>アプリを開くと、すぐに音声認識が始まります。</p>
+
+        <p>あとは思いついたことを、そのまま話すだけ。</p>
+      </div>
+
+      <!-- 画面収録。アプリの地色がページと同じなので、端末の輪郭だけを細い罫線で示す。
+           無音・インライン再生の指定が揃っていないと、スマートフォンで自動再生されない -->
+      <div class="demo">
+        <div class="demo__device">
+          <div class="demo__screen">
+            <video width="660" height="1356"
+                   autoplay muted loop playsinline preload="metadata"
+                   aria-label="話すたびにメモカードが増えていく momeo の画面">
+              <source src="videos/how-it-works.mp4" type="video/mp4">
+            </video>
+          </div>
+        </div>
+      </div>
+    </section>
   </main>
-  <footer>
-    &copy; 2026 momeo
+
+  <!-- ---------------------------------
+       ページ末尾の導線。本文の邪魔をしないよう見出しを持たせず、
+       小さく右端に寄せて置く
+       --------------------------------- -->
+  <footer class="site-footer">
+    <ul>
+      <li><a href="support.html">サポート・お問い合わせ</a></li>
+      <li><a href="privacy.html">プライバシーポリシー</a></li>
+    </ul>
   </footer>
+
+  <!-- ---------------------------------
+       画面に入ったブロックから順に表示する。
+       一度出したら監視をやめ、戻ってきたときに再び消えないようにする
+       --------------------------------- -->
+  <script>
+    const revealTargets = document.querySelectorAll(".reveal");
+
+    const revealObserver = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (!entry.isIntersecting) return;
+        entry.target.classList.add("is-visible");
+        revealObserver.unobserve(entry.target);
+      });
+    }, { rootMargin: "0px 0px -12% 0px" });
+
+    revealTargets.forEach((target) => revealObserver.observe(target));
+  </script>
 </body>
 </html>

@@ -1,99 +1,350 @@
-/* momeo.jp サイト共通スタイル */
-/* アプリ本体（lib/foundation/app_colors.dart, app_text_styles.dart）のトークンに合わせる */
-
+/* ---------------------------------
+   デザイントークン
+   アプリ本体（lib/foundation/app_colors.dart）の surface / onSurface をそのまま使う。
+   画面に出す色はこの 2 色が基本。OS の設定に追従させず、常に明るい配色で固定する
+   --------------------------------- */
 :root {
-  --surface: #ffffff;
-  --on-surface: #111827;
-  --on-surface-variant: #6b7280;
-  --outline: #e5e7eb;
-  --primary: #436eef;
+  /* スクロールバーなどブラウザ側が描く部分も明るくする */
+  color-scheme: light;
+
+  --color-bg: #ffffff;
+  --color-fg: #111827;
+
+  /* アプリの outline トークン。端末フレームの罫線にだけ使う */
+  --color-line: #e5e7eb;
+
+  /* 画面幅に応じて伸縮する左右の余白 */
+  --space-page: clamp(1.5rem, 6vw, 7rem);
+
+  /* フッターをページ下端に近づけつつ、端末操作領域との間には余裕を残す */
+  --space-footer-bottom: clamp(1.5rem, 2.5vw, 2.5rem);
+
+  /* ブロックどうしの間隔。罫線を使わないぶん、区切りはこの余白と見出しの大きさで作る */
+  --space-block: clamp(3.5rem, 7vw, 6.5rem);
 }
 
-* {
-  margin: 0;
-  padding: 0;
+/* ---------------------------------
+   ベース
+   --------------------------------- */
+*,
+*::before,
+*::after {
   box-sizing: border-box;
 }
 
 body {
-  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Hiragino Sans",
-    "Noto Sans JP", sans-serif;
-  color: var(--on-surface);
-  background: var(--surface);
-  line-height: 1.9;
-  font-size: 16px;
+  margin: 0;
+  /* ページ末尾はブロック間隔より狭くし、端末のセーフエリアだけを加算する */
+  padding: 0 var(--space-page)
+    calc(var(--space-footer-bottom) + env(safe-area-inset-bottom, 0px));
+
+  background-color: var(--color-bg);
+  color: var(--color-fg);
+
+  /* 欧文は Inter、和文は macOS なら Hiragino、それ以外は Noto Sans JP に落ちる */
+  font-family: "Inter", "Hiragino Sans", "Noto Sans JP", "Yu Gothic Medium",
+    -apple-system, BlinkMacSystemFont, sans-serif;
+  font-weight: 400;
+  -webkit-font-smoothing: antialiased;
+
+  /* 画面が広いほど視距離が長くなる（スマホ 約30cm / PC 約60cm）。
+     同じ px でも遠いほど小さく見えるので、広い画面では文字も大きくする。
+     16px（狭い画面）→ 18px（1143px 以上）。
+     1rem を足しているのは、vw だけにするとブラウザの文字サイズ設定を無視してしまうため */
+  font-size: clamp(1rem, 0.94rem + 0.3vw, 1.125rem);
+
+  /* 和文は字面が大きく画数も多いので、欧文より行間を空けないと読みにくい */
+  line-height: 1.95;
+  letter-spacing: 0.02em;
 }
 
-main {
-  max-width: 640px;
-  margin: 0 auto;
-  padding: 3rem 1.5rem 4rem;
-}
-
-h1 {
-  font-size: 2rem;
-  font-weight: 700;
-  margin-bottom: 2rem;
-}
-
-h2 {
-  font-size: 1.1rem;
-  font-weight: 700;
-  margin: 2.5rem 0 0.75rem;
-  padding-bottom: 0.4rem;
-  border-bottom: 1px solid var(--outline);
-}
-
+/* 見出しのサイズと太さは各クラスで指定するので、ここでは一度リセットする。
+   figure はブラウザ既定で左右に 40px の余白を持つため、あわせて消す */
+h1,
+h2,
 p,
-ul {
-  margin-bottom: 1rem;
+ul,
+li,
+figure,
+figcaption {
+  margin: 0;
+  padding: 0;
+  font-size: inherit;
+  font-weight: inherit;
 }
 
 ul {
-  padding-left: 1.4rem;
+  list-style: none;
 }
 
 a {
-  color: var(--primary);
+  color: inherit;
 }
 
-.site-name {
+img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+::selection {
+  background-color: var(--color-fg);
+  color: var(--color-bg);
+}
+
+/* ---------------------------------
+   3 つの点
+   アプリアイコンと、認識中に表示される点の記号。ブランドの目印として置く
+   --------------------------------- */
+.mark {
+  display: flex;
+  gap: 0.75em;
+  /* 点の大きさは font-size に連動させる。数値は 1 個ぶんの直径 */
+  font-size: clamp(0.5rem, 1.1vw, 0.7rem);
+}
+
+.mark__dot {
+  width: 1em;
+  height: 1em;
+  border-radius: 50%;
+  background-color: var(--color-fg);
+
+  /* 声を待っている状態。順に灯って消える */
+  animation: mark-pulse 2.4s ease-in-out infinite;
+}
+
+.mark__dot:nth-child(2) {
+  animation-delay: 0.25s;
+}
+
+.mark__dot:nth-child(3) {
+  animation-delay: 0.5s;
+}
+
+@keyframes mark-pulse {
+  0%,
+  100% {
+    opacity: 0.2;
+  }
+  45% {
+    opacity: 1;
+  }
+}
+
+/* ---------------------------------
+   ヒーロー：1 画面を使い切り、内容は下端に寄せる
+   --------------------------------- */
+.hero {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+
+  /* svh はモバイルのアドレスバーぶんを除いた高さ。未対応ブラウザは vh に落ちる */
+  min-height: 100vh;
+  min-height: 100svh;
+
+  padding-bottom: var(--space-block);
+}
+
+/* アプリ名。幅いっぱいには広げず、画面幅の 4 割ほどに収める。
+   右に大きく余白を残すことで、拡大した文字ではなく「置かれたロゴ」として読ませる。
+
+   m は字面の左にわずかな余白を持つ。margin-left の em 指定は、
+   文字サイズが変わってもズレ量に追従させるため（光学的な左揃え） */
+.hero__title {
+  margin-left: -0.03em;
+
+  font-size: clamp(4rem, 12vw, 13rem);
   font-weight: 700;
+  letter-spacing: -0.045em;
+
+  /* momeo は m o m e o のみで、上に伸びる字も下に伸びる字もない。
+     行の高さをそのままにすると字面の上下に大きな空白が残るので、
+     0.72 まで詰めて字面そのものの高さに合わせる */
+  line-height: 0.72;
+}
+
+/* 巨大なアプリ名に対するキャプション。本文より少しだけ大きくする */
+.hero__meta {
+  margin-top: clamp(1.25rem, 2.5vw, 2rem);
+  font-size: clamp(1.125rem, 1rem + 0.8vw, 1.75rem);
+  letter-spacing: 0.01em;
+}
+
+/* ---------------------------------
+   本文ブロック
+   見出しと本文を縦に積むだけ。罫線は引かず、
+   大きな太字の見出しそのものが区切りの役目を果たす
+   --------------------------------- */
+.band {
+  padding-top: var(--space-block);
+  padding-bottom: var(--space-block);
+}
+
+/* アプリ名より一段小さく、太字にする。この重さが罫線の代わりになる */
+.band__label {
+  font-size: clamp(2.25rem, 7.5vw, 7.5rem);
+  font-weight: 700;
+  letter-spacing: -0.035em;
+
+  /* 見出しにも下に伸びる字がほとんどないため、ヒーローと同じ考え方で行の高さを詰める */
+  line-height: 0.9;
+}
+
+/* 和文は 1 行 35〜40 字あたりが読みやすい上限。em 基準なら文字サイズに追従する */
+.band__body {
+  max-width: 34em;
+  margin-top: clamp(1.5rem, 3vw, 2.5rem);
+}
+
+/* 段落間のアキ。em にして文字サイズに連動させる。
+   rem のままだと文字を大きくしてもアキが取り残されて、段落の切れ目が読み取れなくなる */
+.band__body > * + * {
+  margin-top: 1.6em;
+}
+
+/* 見出しを持たない導入文。本文より大きく組み、最初のひと呼吸を作る */
+.lede {
+  max-width: 24em;
+  font-size: clamp(1.25rem, 1rem + 1.4vw, 2.125rem);
+  line-height: 1.75;
+  letter-spacing: 0.005em;
+}
+
+/* 頭の中に浮かぶ言葉の例。1 行ずつ短く落として、本文の流れに間を作る */
+.thoughts {
+  font-size: clamp(1.0625rem, 1rem + 0.5vw, 1.375rem);
+}
+
+.thoughts li + li {
+  margin-top: 0.35em;
+}
+
+/* ---------------------------------
+   画面収録
+   アプリ自体が白地に #111827 なので、ページの地色とそのままつながる。
+   端末の輪郭は細い罫線だけで示す
+   --------------------------------- */
+.demo {
+  margin-top: clamp(2.5rem, 5vw, 4rem);
+}
+
+/* 端末の外枠。細いベゼルを全周に取り、上下だけが太く見えないようにする */
+.demo__device {
+  --device-radius: 2.75rem;
+  --bezel-width: 4px;
+
+  width: min(100%, 20rem);
+  padding: var(--bezel-width);
+
+  background-color: var(--color-bg);
+  border: 1px solid var(--color-fg);
+  border-radius: var(--device-radius);
+}
+
+/* 実際の表示面。動画を端まで見せながら、端末の内側に沿う角丸で切り抜く */
+.demo__screen {
+  overflow: hidden;
+  aspect-ratio: 660 / 1356;
+  background-color: var(--color-bg);
+  border-radius: calc(var(--device-radius) - var(--bezel-width));
+}
+
+.demo__screen video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background-color: var(--color-bg);
+  object-fit: cover;
+}
+
+/* ---------------------------------
+   リンク
+   本文中は下線、導線として並べるものは行として置く
+   --------------------------------- */
+.band__body a {
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.25em;
+}
+
+/* ---------------------------------
+   ページ末尾の導線
+   読ませたい要素ではないので小さく置くが、色は本文と同じまま薄めない。
+   下線はホバーのときだけ引く（下層ページの戻る導線と同じ反応）
+   --------------------------------- */
+.site-footer {
+  padding-top: var(--space-block);
+  font-size: 0.8125rem;
+  letter-spacing: 0.02em;
+}
+
+.site-footer ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5em 1.75em;
+}
+
+.site-footer a {
   text-decoration: none;
-  color: var(--on-surface);
 }
 
-header.site-header {
-  max-width: 640px;
-  margin: 0 auto;
-  padding: 1.5rem 1.5rem 0;
+.site-footer a:hover {
+  text-decoration: underline;
+  text-underline-offset: 0.25em;
 }
 
-footer {
-  max-width: 640px;
-  margin: 0 auto;
-  padding: 0 1.5rem 3rem;
-  color: var(--on-surface);
-  font-size: 0.85rem;
+/* ---------------------------------
+   下層ページ（プライバシーポリシー・サポート）
+   トップと同じ組み方のまま、小見出しだけを足す
+   --------------------------------- */
+
+/* 巨大な英字ラベルの直後に置く、日本語のページ名 */
+.doc__title {
+  margin-top: clamp(1.25rem, 2.5vw, 2rem);
+  font-size: clamp(1.125rem, 1rem + 0.8vw, 1.5rem);
+  font-weight: 700;
 }
 
-.note {
-  color: var(--on-surface);
-  font-size: 0.9rem;
+/* 条文の小見出し。本文と同じ大きさのまま、太字と上のアキだけで区別する */
+.doc__heading {
+  margin-top: 2.75em;
+  font-weight: 700;
 }
 
-/* トップページの導線リンク */
-.links {
-  list-style: none;
-  padding: 0;
+.doc__heading + p {
+  margin-top: 0.5em;
 }
 
-.links li {
-  margin-bottom: 0.5rem;
+/* 制定日など、本文の補足 */
+.doc__note {
+  margin-top: 3em;
+  font-size: 0.875rem;
 }
 
-.links a {
-  display: inline-block;
-  padding: 0.5rem 0;
-  font-weight: 600;
+/* ---------------------------------
+   スクロールに合わせた表示
+   JavaScript が動く環境でだけ隠してから出す（html.js が付いたときのみ適用）
+   --------------------------------- */
+.js .reveal {
+  opacity: 0;
+  transform: translateY(1.25rem);
+  transition: opacity 0.9s ease, transform 0.9s ease;
+}
+
+.js .reveal.is-visible {
+  opacity: 1;
+  transform: none;
+}
+
+/* 動きを減らす設定の環境では、点滅も出現も止めて最初から表示する */
+@media (prefers-reduced-motion: reduce) {
+  .mark__dot {
+    animation: none;
+  }
+
+  .js .reveal {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
 }
