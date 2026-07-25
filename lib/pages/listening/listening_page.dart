@@ -70,7 +70,7 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
     final after = next.value;
     if (after == null) return;
 
-    // 発話開始 → スライドダウンで登場
+    // 発話開始 → スライドアップで登場
     final wasActive = before?.speechActive ?? false;
     if (after.speechActive && !wasActive) {
       _activeCardController.forward();
@@ -86,7 +86,7 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
       if (after.speechActive) _activeCardController.forward();
     }
 
-    // 空の認識結果（咳・物音の誤検知）→ 上へスライドアウト
+    // 空の認識結果（咳・物音の誤検知）→ 下へスライドアウト
     if (before != null &&
         after.emptyResultCount > before.emptyResultCount &&
         !after.speechActive) {
@@ -97,7 +97,7 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
   // ---------------------------------
   // アクティブカード（リスニング中インジケーター）
   // ---------------------------------
-  // 発話中だけ上からスライドダウンして現れる。完全に隠れている間は
+  // 発話中だけ下からスライドアップして現れる。完全に隠れている間は
   // 中身ごとツリーから外し、ドット増減のタイマーも止めて常時負荷を避ける
   Widget _buildActiveCard() {
     return AnimatedBuilder(
@@ -108,14 +108,14 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
         }
         return SizeTransition(
           sizeFactor: _activeCardAnimation,
-          axisAlignment: -1,
+          axisAlignment: 1,
           child: SlideTransition(
             position: Tween<Offset>(
-              begin: const Offset(0, -1),
+              begin: const Offset(0, 1),
               end: Offset.zero,
             ).animate(_activeCardAnimation),
             child: const Padding(
-              padding: EdgeInsets.only(bottom: AppSpacing.xl),
+              padding: EdgeInsets.only(top: AppSpacing.xl),
               child: VoiceCard(text: '', isListening: true),
             ),
           ),
@@ -180,21 +180,24 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
                   ref.read(listeningProvider.notifier).latestLevel,
             ),
           ),
-          // 前景：メモ一覧（透明なので背景のメーターが隙間から覗く）
+          // 前景：メモ一覧（透明なので背景のメーターが隙間から覗く）。
+          // 古いメモが上・新しいメモが下のチャット式。reverse で index 0 が
+          // 画面下端になり、一覧は下端に固定されて新着で上へ押し上がる
           ListView.separated(
+            reverse: true,
             padding: EdgeInsets.only(
               left: AppSpacing.l,
               right: AppSpacing.l,
               top: AppSpacing.xl + safeArea.top,
               bottom: AppSpacing.xl + safeArea.bottom,
             ),
-            // 先頭のアクティブカード + 確定済みメモ
+            // 下端のアクティブカード + 確定済みメモ（新しい順 = 下から順）
             itemCount: cards.length + 1,
-            // アクティブカードの直後の間隔はカード側が持つ（非表示時に余白を残さないため）
+            // アクティブカードとの間隔はカード側が持つ（非表示時に余白を残さないため）
             separatorBuilder: (_, index) =>
                 SizedBox(height: index == 0 ? 0 : AppSpacing.xl),
             itemBuilder: (context, index) {
-              // 先頭はアクティブカード
+              // 一番下はアクティブカード
               if (index == 0) return _buildActiveCard();
 
               // 確定済みメモカード（直前に確定した1件だけタイピング演出）
