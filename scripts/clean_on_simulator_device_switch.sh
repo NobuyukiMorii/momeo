@@ -118,10 +118,10 @@ previous_device_kind="$(cat "$LAST_IOS_KIND_FILE" 2>/dev/null || echo "記録な
 
 # ---- build/ がまだ無ければ、そもそも持ち越す成果物が無い
 if [ -d "$BUILD_DIR" ] && [ "$previous_device_kind" != "$current_device_kind" ]; then
-  echo "→ 前回は $previous_device_kind、今回は $current_device_kind のため flutter clean します …"
+  echo "→ 前回は ${previous_device_kind}、今回は $current_device_kind のため flutter clean します …"
   (cd "$PROJECT_ROOT" && flutter clean)
 else
-  echo "✓ そのままビルドします（$current_device_kind）"
+  echo "✓ そのままビルドします（${current_device_kind}）"
 fi
 
 # ---------------------------------

@@ -33,7 +33,7 @@ SCENES=(
 # ---------------------------------
 UDID=$(xcrun simctl list devices available | grep "$DEVICE_NAME (" | head -1 | grep -oE '[0-9A-F-]{36}')
 if [ -z "$UDID" ]; then
-  echo "エラー: シミュレータ「$DEVICE_NAME」が見つかりません" >&2
+  echo "エラー: シミュレータ「${DEVICE_NAME}」が見つかりません" >&2
   exit 1
 fi
 
