@@ -25,34 +25,43 @@ help:
 	@echo "make build-android      … モデルを揃えてから flutter build appbundle"
 	@echo "make models             … モデルのダウンロードだけ行う"
 
-# NeMo を .dev_models/ へダウンロードする（配置は端末・ビルドごとの各スクリプトが行う）
+# ---------------------------------
+# モデルの取得（.dev_models/ まで。端末やビルドへの配置は各スクリプトが行う）
+# ---------------------------------
+
 models:
 	bash scripts/download_nemo_model.sh
 
-# 開発実行。端末は必ず指定させ、OS の判定は各配置スクリプトに任せる
+# ---------------------------------
+# 開発実行（端末は必ず指定させ、端末の種類の判定は各スクリプトに任せる）
+# ---------------------------------
+#   実機 ⇄ シミュレータ … 前の成果物が居座ると署名エラーで入らないので、切り替えたら捨てる
 #   Android 端末 → place_android_device_models.sh が内部ストレージへ手置き（iOS 配置はスキップ）
 #   iOS 端末     → place_ios_models.sh が ios/Runner/Models/ へ配置（手置きはスキップ）
 run: require-device models
+	bash scripts/clean_on_simulator_device_switch.sh $(d)
 	bash scripts/place_android_device_models.sh $(d)
 	bash scripts/place_ios_models.sh $(d)
 	flutter run -d $(d)
 
-# run の前提: d=<デバイスID> が無ければ、モデル取得より前に即エラーで止める
-#   （複数台つなぐ環境で対象を取り違えたり無駄な処理を走らせたりしないため）
+# ---- 対象の取り違えと無駄な処理を避けるため、モデル取得より前に即エラーで止める
 require-device:
 	@if [ -z "$(strip $(d))" ]; then \
 	  echo "エラー: d=<デバイスID> を指定してください。例: make run d=<ID>（ID は flutter devices で確認）" >&2; \
 	  exit 1; \
 	fi
 
-# 本番ビルドのビルド番号はエポック分（1970年からの経過分数）で自動採番する。
-# ストアが要求する単調増加を人手なしで満たすため。詳細: notes/release/versioning/version_management.md
-# iOS の本番ビルド（モデルはバンドルリソースとして同梱される）
+# ---------------------------------
+# 本番ビルド（ビルド番号はエポック分で自動採番）
+# ---------------------------------
+#   ストアが要求する単調増加を人手なしで満たすため → notes/release/versioning/version_management.md
+
+# ---- iOS: モデルはバンドルリソースとして同梱する
 build-ios: models
 	bash scripts/place_ios_models.sh
 	flutter build ipa --build-number=$$(( $$(date +%s) / 60 ))
 
-# Android の本番ビルド（モデルは fast-follow アセットパックに入れて AAB 化する）
+# ---- Android: モデルは fast-follow アセットパックに入れて AAB 化する
 build-android: models
 	bash scripts/place_android_pack_models.sh
 	flutter build appbundle --build-number=$$(( $$(date +%s) / 60 ))
