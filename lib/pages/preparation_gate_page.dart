@@ -110,18 +110,18 @@ class PreparationGatePage extends ConsumerWidget {
   ) {
     switch (phase) {
       case PreparationPhase.gettingReady:
-        return const ActivityDotsText('Getting ready');
+        return const ActivityDotsText('準備しています');
       case PreparationPhase.downloading:
         // DL% は数字だけその場更新（フェーズが同じなのでスライドは起きない）
         final percent = ((downloadState.value?.progress ?? 0.0) * 100).round();
         return DownloadingProgressText(percent: percent);
       case PreparationPhase.almostThere:
-        return const ActivityDotsText('Almost there');
+        return const ActivityDotsText('もうすぐ完了します');
       case PreparationPhase.retrying:
-        return const ActivityDotsText('Retrying');
+        return const ActivityDotsText('再試行しています');
       case PreparationPhase.tryRestarting:
         // 「処理中」ではなくユーザーへの依頼なので、動きは付けない
-        return const Text('Try restarting');
+        return const Text('アプリを再起動してください');
     }
   }
 }

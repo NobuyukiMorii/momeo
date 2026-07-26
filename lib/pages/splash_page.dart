@@ -7,7 +7,15 @@ import 'package:momeo/widgets/animated_text_sequence.dart';
 import 'package:momeo/widgets/intro_setting_layout.dart';
 
 // 初回起動時に表示するフルシーケンス
-const _splashFullTexts = ['momeo', 'Just Speak.', 'Auto-start', 'Auto-stop'];
+// 4行のコピーで世界観を伝え、最後にアプリ名で受ける
+// 見出し32pxでは1行10文字までしか入らないため、各行は10文字以内に収める
+const _splashFullTexts = [
+  '時の流れの中で生まれ',
+  '薄れ消えゆく思考を',
+  'そっと残すために',
+  'ただ話しかけるだけ',
+  'momeo',
+];
 
 // 2回目以降に表示する短縮シーケンス
 const _splashShortTexts = ['momeo'];

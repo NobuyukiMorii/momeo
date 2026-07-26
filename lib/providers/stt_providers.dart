@@ -200,7 +200,7 @@ class SttEngineNotifier extends AsyncNotifier<SttTranscriber> {
 }
 
 // ============================================================
-// sttRestartSuggestedProvider — 待ち画面を "Try restarting" に切り替えるべきか
+// sttRestartSuggestedProvider — 待ち画面を「アプリを再起動してください」に切り替えるべきか
 // ============================================================
 final sttRestartSuggestedProvider =
     NotifierProvider<SttRestartSuggestionNotifier, bool>(

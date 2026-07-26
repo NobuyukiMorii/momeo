@@ -30,7 +30,13 @@ class WidgetsIntroSettingLayoutSection extends StatelessWidget {
         title: DefaultTextStyle(
           style: headlineStyle,
           child: const AnimatedTextSequence(
-            texts: ['momeo', 'Just Speak.', 'Auto-start', 'Auto-stop'],
+            texts: [
+              '時の流れの中で生まれ',
+              '薄れ消えゆく思考を',
+              'そっと残すために',
+              'ただ話しかけるだけ',
+              'momeo',
+            ],
           ),
         ) as Widget,
         actionLabel: null,
@@ -38,19 +44,19 @@ class WidgetsIntroSettingLayoutSection extends StatelessWidget {
       (
         label: 'ステップ + ボタンあり',
         step: '1/2',
-        title: Text('Allow Microphone Access', style: headlineStyle) as Widget,
-        actionLabel: 'allow',
+        title: Text('音声を認識するためにマイクを使います', style: headlineStyle) as Widget,
+        actionLabel: '許可する',
       ),
       (
         label: 'ステップ + ボタンあり',
         step: '1/2',
-        title: Text('Allow Microphone Access', style: headlineStyle) as Widget,
-        actionLabel: 'Open Settings',
+        title: Text('設定からマイクの使用を許可してください', style: headlineStyle) as Widget,
+        actionLabel: '設定を開く',
       ),
       (
         label: 'テキストのみ',
         step: null,
-        title: Text('Allow Microphone Access\nNot Available', style: headlineStyle) as Widget,
+        title: Text('この端末では\nマイクを使えません', style: headlineStyle) as Widget,
         actionLabel: null,
       ),
     ];

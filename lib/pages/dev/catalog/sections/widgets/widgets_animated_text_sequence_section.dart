@@ -15,7 +15,13 @@ class WidgetsAnimatedTextSequenceSection extends StatelessWidget {
     const items = [
       (
         label: 'スプラッシュ（デフォルト設定）',
-        texts: ['momeo', 'Just Speak.', 'Auto-start', 'Auto-stop'],
+        texts: [
+          '時の流れの中で生まれ',
+          '薄れ消えゆく思考を',
+          'そっと残すために',
+          'ただ話しかけるだけ',
+          'momeo',
+        ],
       ),
     ];
 

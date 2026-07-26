@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 // ---------------------------------
-// DownloadingProgressText — DL進捗を「Downloading n%」で表示するテキスト。
+// DownloadingProgressText — DL進捗を「ダウンロード中 n%」で表示するテキスト。
 // 等幅数字（tabular figures）で、% の位置が数字の変化で揺れないようにする（桁上がり時のみ動く）。
 // ---------------------------------
 class DownloadingProgressText extends StatelessWidget {
@@ -13,7 +13,7 @@ class DownloadingProgressText extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Text(
-      'Downloading $percent%',
+      'ダウンロード中 $percent%',
       style: const TextStyle(fontFeatures: [FontFeature.tabularFigures()]),
     );
   }

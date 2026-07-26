@@ -36,15 +36,15 @@ class _WidgetsContentSlideSwitcherSectionState
   Widget get _content {
     switch (_phase) {
       case PreparationPhase.gettingReady:
-        return const ActivityDotsText('Getting ready');
+        return const ActivityDotsText('準備しています');
       case PreparationPhase.downloading:
         return DownloadingProgressText(percent: _percent);
       case PreparationPhase.almostThere:
-        return const ActivityDotsText('Almost there');
+        return const ActivityDotsText('もうすぐ完了します');
       case PreparationPhase.retrying:
-        return const ActivityDotsText('Retrying');
+        return const ActivityDotsText('再試行しています');
       case PreparationPhase.tryRestarting:
-        return const Text('Try restarting');
+        return const Text('アプリを再起動してください');
     }
   }
 
