@@ -18,13 +18,11 @@ OUT_DIR="notes/release/screenshots/android"
 
 # 撮影するシーン（保存ファイル名:シーン名。並び順はストアに載せる順）
 SCENES=(
-  "01_splash_auto_start:splash_auto_start"
-  "02_splash_auto_stop:splash_auto_stop"
-  "03_splash_just_speak:splash_just_speak"
-  "04_listening_idle:listening_idle"
-  "05_listening_first_memo:listening_first_memo"
-  "06_listening_growing_memos:listening_growing_memos"
-  "07_listening_memo_list:listening_memo_list"
+  "01_listening_idle:listening_idle"
+  "02_listening_first_memo:listening_first_memo"
+  "03_listening_growing_memos:listening_growing_memos"
+  "04_listening_many_memos:listening_many_memos"
+  "05_listening_memo_list:listening_memo_list"
 )
 
 # ---------------------------------

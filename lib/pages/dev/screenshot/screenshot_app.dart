@@ -2,13 +2,10 @@ import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:momeo/foundation/app_colors.dart';
-import 'package:momeo/foundation/app_text_styles.dart';
 import 'package:momeo/foundation/app_theme.dart';
 import 'package:momeo/pages/dev/screenshot/screenshot_scenes.dart';
 import 'package:momeo/pages/listening/listening_page.dart';
 import 'package:momeo/providers/listening_providers.dart';
-import 'package:momeo/widgets/intro_setting_layout.dart';
 
 // ============================================================
 // ストア掲載用スクリーンショットの撮影モード
@@ -45,33 +42,7 @@ class ScreenshotApp extends StatelessWidget {
         title: 'momeo',
         theme: AppTheme.light(),
         debugShowCheckedModeBanner: false,
-        home: scene.splashText != null
-            ? _SplashSceneScreen(text: scene.splashText!)
-            : const ListeningPage(),
-      ),
-    );
-  }
-}
-
-// ---------------------------------
-// スプラッシュの静止1コマ
-// ---------------------------------
-class _SplashSceneScreen extends StatelessWidget {
-  const _SplashSceneScreen({required this.text});
-
-  final String text;
-
-  // ---------------------------------
-  // ビルド
-  // ---------------------------------
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: IntroSettingLayout(
-        title: Text(
-          text,
-          style: AppTextStyles.headline.copyWith(color: AppColors.onSurface),
-        ),
+        home: const ListeningPage(),
       ),
     );
   }

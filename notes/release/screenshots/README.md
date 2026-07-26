@@ -20,15 +20,15 @@
 scripts/take_ios_screenshots.sh（Android 版も同じ構造）
   │
   │ ① シーンごとにループ:
-  │    flutter build ios --simulator --dart-define=SCREENSHOT_SCENE=listening_idle
+  │    flutter build ios --simulator --dart-define=SCREENSHOT_SCENE=listening_memo_list
   │                                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-  │                                   「listening_idle という文字列を埋め込んでビルドしろ」
+  │                                   「listening_memo_list という文字列を埋め込んでビルドしろ」
   ▼
 lib/main.dart
   │ ② 起動時に埋め込まれた文字列を読む:
   │    const screenshotSceneName = String.fromEnvironment('SCREENSHOT_SCENE');
   │    - 通常ビルド → 空文字 → いつも通り MyApp を起動（撮影モードのコードは無関係）
-  │    - 撮影ビルド → 'listening_idle' → ScreenshotApp を起動
+  │    - 撮影ビルド → 'listening_memo_list' → ScreenshotApp を起動
   ▼
 lib/pages/dev/screenshot/screenshot_app.dart
   │ ③ シーン名からシーン定義（固定データ）を引き、
@@ -48,16 +48,16 @@ lib/pages/listening/listening_page.dart（本物の画面。撮影用の変更�
 | `scripts/take_ios_screenshots.sh` | iOS の一括撮影。シミュレータ起動・ステータスバー整形（9:41、満充電）・ビルド・撮影 |
 | `scripts/take_android_screenshots.sh` | Android 版。エミュレータ起動・デモモードで時計を 9:41 に・ビルド・撮影 |
 | `lib/main.dart` | 起動の分岐点。埋め込み文字列が入っていたら撮影モードへ（追加された分岐は10行だけ） |
-| `lib/pages/dev/screenshot/screenshot_scenes.dart` | **7シーンの「台本」**。各シーンで見せるメモの文言・時刻・発話中かどうかの固定データ |
+| `lib/pages/dev/screenshot/screenshot_scenes.dart` | **5シーンの「台本」**。各シーンで見せるメモの文言・時刻・発話中かどうかの固定データ |
 | `lib/pages/dev/screenshot/screenshot_app.dart` | 撮影モードの本体。シーンの台本どおりに画面を表示する |
 
 ## 鍵になる仕組みは2つだけ
 
 ### 鍵①: `--dart-define` = ビルド時に文字列を焼き込むスイッチ
 
-`flutter build --dart-define=SCREENSHOT_SCENE=listening_idle` とすると、
+`flutter build --dart-define=SCREENSHOT_SCENE=listening_memo_list` とすると、
 Dart コード側の `String.fromEnvironment('SCREENSHOT_SCENE')` が
-`'listening_idle'` という**コンパイル時定数**になる。実行時の環境変数ではなく、
+`'listening_memo_list'` という**コンパイル時定数**になる。実行時の環境変数ではなく、
 アプリバイナリに焼き込まれる値、という点がポイント。
 
 - 何も指定せず普通にビルドすれば空文字になるので、`main()` の分岐は
@@ -91,27 +91,23 @@ ProviderScope(
   「発話らしい揺れ」を返す（マイクの代わり）
 
 だからマイク権限も STT モデルも不要で、シミュレータだけで撮影できる。
-スプラッシュの3シーンはもっと単純で、本物と同じレイアウト部品
-（`IntroSettingLayout`）に文字を静止表示しているだけ。
 
-## 7シーンの一覧（ストアに並べる順）
+## 5シーンの一覧（ストアに並べる順）
 
 台本の実体は `screenshot_scenes.dart`。文言・時刻を変えたらスクリプトを再実行するだけ。
+話しかけるほどメモが増えていく流れが伝わるよう、確定メモ 0→1→3→5→9 枚で並べる。
 
 | ファイル名 | シーン名 | 内容 |
 |---|---|---|
-| `01_splash_auto_start` | `splash_auto_start` | スプラッシュ「Auto-start」 |
-| `02_splash_auto_stop` | `splash_auto_stop` | スプラッシュ「Auto-stop」 |
-| `03_splash_just_speak` | `splash_just_speak` | スプラッシュ「Just Speak.」 |
-| `04_listening_idle` | `listening_idle` | 波線だけの静かなリスニング画面 |
-| `05_listening_first_memo` | `listening_first_memo` | 発話中ドット＋確定1枚 |
-| `06_listening_growing_memos` | `listening_growing_memos` | 発話を重ねて確定3枚＋発話中 |
-| `07_listening_memo_list` | `listening_memo_list` | 時刻付きの確定一覧5枚（発話なし） |
+| `01_listening_idle` | `listening_idle` | 波線だけの静かなリスニング画面 |
+| `02_listening_first_memo` | `listening_first_memo` | 発話中ドット＋確定1枚 |
+| `03_listening_growing_memos` | `listening_growing_memos` | 発話中ドット＋確定3枚 |
+| `04_listening_many_memos` | `listening_many_memos` | 発話中ドット＋確定5枚 |
+| `05_listening_memo_list` | `listening_memo_list` | 時刻付きの確定一覧9枚（発話なし） |
 
 シーン名は「対象画面＋状態」で付けてあり、表示する文言には依存しない。
-デモメモは差し替え可能な例文で、現在は「朝、今日の計画を声に出して
-立てている」という設定の5件（7:41〜7:45）。7:42 の2件で「同じ分の
-カードは日時を1つにまとめる」という実際の表示ルールが写るようにしてある。
+デモメモは同じ分に2件ずつ入れてあり、「同じ分のカードは日時を1つにまとめる」
+という実際の表示ルールが写るようにしてある。
 
 ## 撮り直し方
 
@@ -123,7 +119,7 @@ bash scripts/take_ios_screenshots.sh
 bash scripts/take_android_screenshots.sh
 ```
 
-シーンごとにビルドし直すため、全7シーンで数分〜十数分かかる。
+シーンごとにビルドし直すため、全5シーンで数分〜十数分かかる。
 撮影時のハマりどころ（スクショ保存先は絶対パス必須、実機接続中の adb の
 対象指定、Android debug ビルドの起動待ちなど）への対処は、
 各スクリプトのコメントに理由つきで書いてある。

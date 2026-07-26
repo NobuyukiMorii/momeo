@@ -149,39 +149,35 @@ List<SimulatedSpeech> _buildSimulatedSpeeches() {
     speech(
       1,
       41,
-      'ただ、話すだけのアプリです。',
-      duration: 900,
-      pauseAfter: 1300,
+      '流れゆく思考をそっと残すために作りました。',
+      duration: 1000,
+      pauseAfter: 1500,
     ),
-    speech(2, 41, 'ふと浮かんだアイデア。', duration: 450, pauseAfter: 650),
-    speech(3, 41, '一瞬のひらめき。', duration: 480, pauseAfter: 710),
     speech(
-      4,
-      42,
-      '流れる思考をそっと残すために作られたアプリです。',
-      duration: 1200,
-      pauseAfter: 2050,
+      2,
+      41,
+      '今考えてること、アプリに話しかけてください。',
+      duration: 1100,
+      pauseAfter: 1800,
     ),
 
     // 短い4連。話すたびにメモが増える様子を速いテンポで見せる
-    speech(5, 42, '未来のこと。', duration: 380, pauseAfter: 390),
-    speech(6, 42, '仕事のこと。', duration: 350, pauseAfter: 330),
-    speech(7, 43, '人間関係のこと。', duration: 380, pauseAfter: 390),
-    speech(8, 43, '今日の晩ごはん。', duration: 380, pauseAfter: 490),
+    speech(3, 42, '未来のこと。', duration: 380, pauseAfter: 390),
+    speech(4, 42, '仕事のこと。', duration: 350, pauseAfter: 330),
+    speech(5, 43, '人間関係のこと。', duration: 380, pauseAfter: 390),
+    speech(6, 43, '今日の晩ごはん。', duration: 380, pauseAfter: 490),
 
     speech(
-      9,
+      7,
       44,
       '時の流れの中で生まれ、薄れ、消えていく思考。',
       duration: 980,
       pauseAfter: 1420,
     ),
-    speech(
-      10,
-      44,
-      'それが消えてしまう前に、そっと残しておくために。',
-      duration: 800,
-      pauseAfter: 950,
-    ),
+
+    // 締めは短く2つに分けて、最後にアプリ名で受ける
+    speech(8, 44, 'それが消えてしまう前に。', duration: 500, pauseAfter: 700),
+    speech(9, 44, 'そっと残しておくために。', duration: 500, pauseAfter: 900),
+    speech(10, 44, 'momeo', duration: 400, pauseAfter: 1000),
   ];
 }

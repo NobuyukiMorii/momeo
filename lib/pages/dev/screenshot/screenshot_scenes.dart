@@ -7,16 +7,12 @@ import 'package:momeo/database/app_database.dart';
 class ScreenshotScene {
   const ScreenshotScene({
     required this.name,
-    this.splashText,
     this.memos = const [],
     this.speechActive = false,
   });
 
   // --dart-define=SCREENSHOT_SCENE に渡す識別子
   final String name;
-
-  // 非 null ならスプラッシュ演出の1コマを静止表示する
-  final String? splashText;
 
   // リスニング画面に表示する確定済みメモ（新しい順）
   final List<VoiceMemo> memos;
@@ -51,11 +47,6 @@ List<ScreenshotScene> buildScreenshotScenes() {
   // 一覧（掲載順）
   // ---------------------------------
   return [
-    // スプラッシュ演出の3コマ
-    const ScreenshotScene(name: 'splash_auto_start', splashText: 'Auto-start'),
-    const ScreenshotScene(name: 'splash_auto_stop', splashText: 'Auto-stop'),
-    const ScreenshotScene(name: 'splash_just_speak', splashText: 'Just Speak.'),
-
     // ---------------------------------
     // リスニング: 波線のみ
     // ---------------------------------
@@ -70,7 +61,6 @@ List<ScreenshotScene> buildScreenshotScenes() {
       speechActive: true,
     ),
 
-
     // ---------------------------------
     // リスニング: 発話中＋確定3枚
     // ---------------------------------
@@ -81,9 +71,18 @@ List<ScreenshotScene> buildScreenshotScenes() {
     ),
 
     // ---------------------------------
-    // リスニング: 確定メモの一覧
+    // リスニング: 発話中＋確定5枚
     // ---------------------------------
-    ScreenshotScene(name: 'listening_memo_list', memos: newestFirst(5)),
+    ScreenshotScene(
+      name: 'listening_many_memos',
+      memos: newestFirst(5),
+      speechActive: true,
+    ),
+
+    // ---------------------------------
+    // リスニング: 確定メモの一覧9枚（発話なし）
+    // ---------------------------------
+    ScreenshotScene(name: 'listening_memo_list', memos: newestFirst(9)),
   ];
 }
 
@@ -103,13 +102,17 @@ List<VoiceMemo> _buildDemoMemos() {
       );
 
   // ---------------------------------
-  // 例文（差し替え可）
+  // 例文（サイトの Concept 節・画面収録の台本と同じ文言）
   // ---------------------------------
   return [
-    memoAt(1, 7, 41, '今日やることを整理する まず午前中にプレゼン資料を仕上げて共有まで終わらせる'),
-    memoAt(2, 7, 42, '10時の打ち合わせが終わったら駅前の郵便局に寄る'),
-    memoAt(3, 7, 42, '昼は軽めに済ませて午後はレビュー対応に集中する'),
-    memoAt(4, 7, 43, '帰りに牛乳と卵を買う'),
-    memoAt(5, 7, 45, '夜は9時までに切り上げて明日の準備をしてから寝る'),
+    memoAt(1, 9, 41, '流れゆく思考をそっと残すために作りました。'),
+    memoAt(2, 9, 41, '今考えてること、アプリに話しかけてください。'),
+    memoAt(3, 9, 42, '未来のこと。'),
+    memoAt(4, 9, 42, '仕事のこと。'),
+    memoAt(5, 9, 43, '人間関係のこと。'),
+    memoAt(6, 9, 43, '今日の晩ごはん。'),
+    memoAt(7, 9, 44, '時の流れの中で生まれ、薄れ、消えていく思考。'),
+    memoAt(8, 9, 44, 'それが消えてしまう前に、そっと残しておくために。'),
+    memoAt(9, 9, 44, 'momeo'),
   ];
 }
