@@ -114,21 +114,24 @@ class _VoiceCardState extends State<VoiceCard> {
                   ),
           ),
         ),
-        // 日時はタイピングが終わってからフェードイン
-        if (widget.dateTime != null) ...[
-          const SizedBox(height: AppSpacing.xs),
-          AnimatedOpacity(
-            opacity: _typingFinished ? 1.0 : 0.0,
-            duration: const Duration(milliseconds: 250),
-            child: Align(
-              alignment: Alignment.centerRight,
+        // 日時はレイアウト上の高さを 0 として扱い、カードの下へはみ出させて描く。
+        // カードの高さが日時の有無で変わらなくなるので、日時が出入りしてもずれない
+        SizedOverflowBox(
+          size: const Size(double.infinity, 0),
+          alignment: Alignment.topRight,
+          child: Padding(
+            padding: const EdgeInsets.only(top: AppSpacing.xs),
+            // 日時はタイピングが終わってからフェードイン
+            child: AnimatedOpacity(
+              opacity: widget.dateTime != null && _typingFinished ? 1.0 : 0.0,
+              duration: const Duration(milliseconds: 250),
               child: Text(
-                widget.dateTime!,
+                widget.dateTime ?? '',
                 style: AppTextStyles.micro.copyWith(color: AppColors.onSurface),
               ),
             ),
           ),
-        ],
+        ),
       ],
     );
   }

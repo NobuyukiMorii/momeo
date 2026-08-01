@@ -34,7 +34,7 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
   final Set<int> _selectedMemoIds = {};
 
   // アクティブカード（リスニング中インジケーター）の出入りを司る
-  //   forward = スライドダウンで登場、reverse = スライドアウトで退場、
+  //   forward = せり上がって登場、reverse = 沈み込んで退場、
   //   value に 0.0 を代入 = 即時に消す（確定メモへの置き換え＝モーフ用）
   late final AnimationController _activeCardController;
   late final CurvedAnimation _activeCardAnimation;
@@ -97,7 +97,7 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
   // ---------------------------------
   // アクティブカード（リスニング中インジケーター）
   // ---------------------------------
-  // 発話中だけ下からスライドアップして現れる。完全に隠れている間は
+  // 発話中だけ下から滑り込んで現れる。完全に隠れている間は
   // 中身ごとツリーから外し、ドット増減のタイマーも止めて常時負荷を避ける
   Widget _buildActiveCard() {
     return AnimatedBuilder(
@@ -106,18 +106,15 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
         if (_activeCardController.isDismissed) {
           return const SizedBox.shrink();
         }
-        return SizeTransition(
-          sizeFactor: _activeCardAnimation,
-          axisAlignment: 1,
-          child: SlideTransition(
-            position: Tween<Offset>(
-              begin: const Offset(0, 1),
-              end: Offset.zero,
-            ).animate(_activeCardAnimation),
-            child: const Padding(
-              padding: EdgeInsets.only(top: AppSpacing.xl),
-              child: VoiceCard(text: '', isListening: true),
-            ),
+        // 一覧に占める高さが上のカードを押し上げる量になるので、カード自身は
+        // その箱の上辺に貼り付けて下へはみ出させ、押し上げと同じ速さで昇らせる。
+        // クリップしないので、はみ出した下辺は画面の外に隠れるだけで切れない
+        return Align(
+          alignment: Alignment.topCenter,
+          heightFactor: _activeCardAnimation.value,
+          child: const Padding(
+            padding: EdgeInsets.only(top: AppSpacing.xl),
+            child: VoiceCard(text: '', isListening: true),
           ),
         );
       },
