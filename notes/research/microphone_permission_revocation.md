@@ -149,7 +149,7 @@ Android のほうが操作が1段短い。ユーザーが設定から手動で r
 - `listeningProvider` は `autoDispose` だが、背面化では画面が unmount されないため dispose されない。
 - `SttListeningPipeline` は止まったまま残り、復帰時に `start()` を呼び直す仕組みがどこにもない。
 
-結果として「アプリは動いているのに聞いていない」という、3-3 と見分けのつかない状態になる。権限の検証をするときはこちらも同時に確認する必要がある。`notes/research/background_recording.md` の調査と地続きの論点である。
+結果として「アプリは動いているのに聞いていない」という、3-3 と見分けのつかない状態になる。権限の検証をするときはこちらも同時に確認する必要がある。`notes/background_recording/overview.md` の調査と地続きの論点である。
 
 ---
 
@@ -218,5 +218,5 @@ iOS の検証は**リリースビルドの実機**で行う。デバッグビル
 ## 8. 関連ドキュメント
 
 - `notes/specs/permission_flow.md` — 権限フローの仕様
-- `notes/research/background_recording.md` — バックグラウンド録音の可否調査
+- `notes/background_recording/overview.md` — バックグラウンド録音の可否調査
 - `notes/specs/listening_flow.md` — リスニングフローの仕様
