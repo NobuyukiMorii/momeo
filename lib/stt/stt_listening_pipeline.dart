@@ -114,10 +114,24 @@ class SttListeningPipeline {
     _vad.clear();
     _floatBuffer.clear();
 
+    // 中断（着信・他アプリのマイク奪取）からの復帰設定
+    //   既定の pause は自動停止・手動再開のため、再開処理が無いと止まったまま戻らない。
+    //   pauseResume は mixWithOthers との併用が必要（record のドキュメント）。
+    //   allowHapticsAndSystemSoundsDuringRecording は着信音だけでの中断を防ぐ。
     const config = RecordConfig(
       encoder: AudioEncoder.pcm16bits,
       sampleRate: _kSampleRate,
       numChannels: 1,
+      audioInterruption: AudioInterruptionMode.pauseResume,
+      iosConfig: IosRecordConfig(
+        categoryOptions: [
+          IosAudioCategoryOption.mixWithOthers,
+          IosAudioCategoryOption.defaultToSpeaker,
+          IosAudioCategoryOption.allowBluetooth,
+          IosAudioCategoryOption.allowBluetoothA2DP,
+        ],
+        allowHapticsAndSystemSoundsDuringRecording: true,
+      ),
     );
     final stream = await _recorder.startStream(config);
     _subscription = stream.listen(
