@@ -7,6 +7,7 @@
 #
 #   使い方:
 #     make run d=<デバイスID>   # 端末を指定して実行（ID は flutter devices。指定は必須）
+#     make run d=<ID> mode=release  # リリースモードで実行（デバッガが繋がらない状態を確認したいとき）
 #     make build-ios           # モデルを揃えてから flutter build ipa
 #     make build-android       # モデルを揃えてから flutter build appbundle
 #     make models              # モデルのダウンロードだけ行う
@@ -15,12 +16,15 @@
 # 実行対象のデバイスID（run では必須）。例: make run d=emulator-5554
 d ?=
 
+# 実行モード。debug / release / profile を受け付ける。例: make run d=<ID> mode=release
+mode ?= debug
+
 .DEFAULT_GOAL := help
 
 .PHONY: help models run build-ios build-android require-device
 
 help:
-	@echo "make run d=<デバイスID>  … 端末を指定してモデルを揃えてから flutter run"
+	@echo "make run d=<デバイスID> [mode=release]  … 端末を指定してモデルを揃えてから flutter run"
 	@echo "make build-ios          … モデルを揃えてから flutter build ipa"
 	@echo "make build-android      … モデルを揃えてから flutter build appbundle"
 	@echo "make models             … モデルのダウンロードだけ行う"
@@ -42,7 +46,7 @@ run: require-device models
 	bash scripts/clean_on_simulator_device_switch.sh $(d)
 	bash scripts/place_android_device_models.sh $(d)
 	bash scripts/place_ios_models.sh $(d)
-	flutter run -d $(d)
+	flutter run --$(mode) -d $(d)
 
 # ---- 対象の取り違えと無駄な処理を避けるため、モデル取得より前に即エラーで止める
 require-device:
