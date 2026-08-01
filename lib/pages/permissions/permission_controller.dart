@@ -1,3 +1,4 @@
+import 'dart:io' show Platform;
 import 'package:permission_handler/permission_handler.dart';
 
 // 権限画面の表示状態
@@ -5,10 +6,35 @@ import 'package:permission_handler/permission_handler.dart';
 enum PermissionScreenState { request, settings, unavailable }
 
 // ---------------------------------
+// プラットフォームごとの確認対象権限
+// ---------------------------------
+final _permissionsByPlatform = {
+  'ios':     [Permission.microphone],
+  'android': [Permission.microphone],
+};
+
+// ---------------------------------
 // PermissionController — 権限操作のロジック層
 // permission_handler をラップし、仕様の3状態（request/settings/unavailable）に変換する
 // ---------------------------------
 class PermissionController {
+
+  // ---------------------------------
+  // 現在のプラットフォームで必要な権限リスト
+  // ---------------------------------
+  List<Permission> get requiredPermissions =>
+      _permissionsByPlatform[Platform.operatingSystem] ?? [Permission.microphone];
+
+  // ---------------------------------
+  // 必要な権限がすべて許可されているかを確認する
+  // ---------------------------------
+  Future<bool> isAllGranted() async {
+    for (final permission in requiredPermissions) {
+      if (await check(permission) != null) return false;
+    }
+    return true;
+  }
+
   // ---------------------------------
   // 現在の権限状態を確認する
   // 許可済みの場合は null を返す（画面表示不要）

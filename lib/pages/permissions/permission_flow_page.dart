@@ -1,4 +1,3 @@
-import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:momeo/pages/permissions/permission_controller.dart';
@@ -23,20 +22,6 @@ class _PermissionFlowPageState extends State<PermissionFlowPage> with WidgetsBin
   // 権限の確認・リクエストを担うコントローラー
   // ---------------------------------
   final _controller = PermissionController();
-
-  // ---------------------------------
-  // プラットフォームごとの確認対象権限
-  // ---------------------------------
-  static final _permissionsByPlatform = {
-    'ios':     [Permission.microphone],
-    'android': [Permission.microphone],
-  };
-
-  // ---------------------------------
-  // 現在のプラットフォームで必要な権限リスト
-  // ---------------------------------
-  List<Permission> get _allPermissions =>
-      _permissionsByPlatform[Platform.operatingSystem] ?? [Permission.microphone];
 
   // 今回のセッションで通過が必要な権限リスト
   List<Permission> _neededPermissions = [];
@@ -85,7 +70,7 @@ class _PermissionFlowPageState extends State<PermissionFlowPage> with WidgetsBin
     // 許可が必要な権限リストを組み立てる
     // ---------------------------------
     final needed = <Permission>[];
-    for (final permission in _allPermissions) {
+    for (final permission in _controller.requiredPermissions) {
       final state = await _controller.check(permission);
       if (state != null) needed.add(permission);
     }

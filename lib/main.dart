@@ -7,6 +7,7 @@ import 'package:momeo/pages/dev/console/console_page.dart';
 import 'package:momeo/pages/dev/catalog/catalog_page.dart';
 import 'package:momeo/pages/dev/recording/recording_app.dart';
 import 'package:momeo/pages/dev/screenshot/screenshot_app.dart';
+import 'package:momeo/pages/permissions/permission_controller.dart';
 import 'package:momeo/pages/permissions/permission_flow_page.dart';
 import 'package:momeo/pages/preparation_gate_page.dart';
 import 'package:momeo/pages/splash_page.dart';
@@ -74,19 +75,60 @@ class RootView extends ConsumerStatefulWidget {
   ConsumerState<RootView> createState() => _RootViewState();
 }
 
-class _RootViewState extends ConsumerState<RootView> {
+class _RootViewState extends ConsumerState<RootView> with WidgetsBindingObserver {
+  // 権限の確認を担うコントローラー（復帰時の再チェックに使う）
+  final _permissionController = PermissionController();
+
   bool _splashFinished = false;
   bool _permissionFinished = false;
 
   @override
   void initState() {
     super.initState();
+
+    // アプリ復帰の通知イベント設定（登録）
+    WidgetsBinding.instance.addObserver(this);
+
     // ---------------------------------
     // 起動と同時に文字化エンジンの準備（メモリ読み込み）を始める。
     // ここでは発火するだけで、完了を待たない・画面もブロックしない
     // （準備できたかの確認と足止めはリスニング直前のゲートが行う）
     // ---------------------------------
     ref.read(sttEngineProvider);
+  }
+
+  @override
+  void dispose() {
+    // アプリ復帰の通知イベント解除（解除）
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  // ---------------------------------
+  // アプリ復帰時
+  // ---------------------------------
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) return;
+    // 権限の再確認
+    _recheckPermissions();
+  }
+
+  // ---------------------------------
+  // 権限の再確認
+  // ---------------------------------
+  Future<void> _recheckPermissions() async {
+    // 権限フロー表示中は、その画面が自分で再チェックするため何もしない
+    if (!_permissionFinished) return;
+
+    // 権限がすべて許可されているかを確認する
+    final granted = await _permissionController.isAllGranted();
+
+    // マウントされていないか、権限がすべて許可されていれば何もしない
+    if (!mounted || granted) return;
+
+    // 権限フロー画面を再表示する
+    setState(() => _permissionFinished = false);
   }
 
   @override
