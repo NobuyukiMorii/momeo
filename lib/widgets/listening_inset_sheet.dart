@@ -180,7 +180,12 @@ class _ListeningInsetSheetState extends ConsumerState<ListeningInsetSheet>
   // ---------------------------------
   void _open() => _controller.forward();
 
-  void _close() => _controller.reverse();
+  void _close() {
+    // --- バックグラウンド録音の選択肢カードを非表示にする
+    setState(() => _isOptionExpanded = false);
+    // --- シートを閉じる
+    _controller.reverse();
+  }
 
   // ---------------------------------
   // 録音の選択肢を開き閉じする
