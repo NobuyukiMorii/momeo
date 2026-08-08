@@ -818,7 +818,10 @@ class _ListeningInsetSheetState extends ConsumerState<ListeningInsetSheet>
     // ---------------------------------
     final openHeight = math.max(
       availableHeight * _openHeightRatio,
-      _peekHeight + _blackboardAreaMinHeight + _bottomAreaHeight,
+      _peekHeight +
+          _optionAreaMinHeight +
+          _blackboardAreaMinHeight +
+          _bottomAreaHeight,
     );
 
     // ---------------------------------
