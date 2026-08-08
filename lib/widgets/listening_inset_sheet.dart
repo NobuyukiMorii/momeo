@@ -60,8 +60,8 @@ const _optionDescriptionEnabled = 'アプリがバックグラウンドにあっ
 // コピーしたことを伝える文言
 const _copyNoticeLabel = 'クリップボードにコピーしました';
 
-// 削除ボタンの文言と、押したときに出す確認ダイアログの文言
-const _deleteLabel = '削除';
+// 削除ボタンを押したときに出す確認ダイアログの文言
+// （ボタン自体の文言は件数を含むので、_buildBottomArea で組み立てる）
 const _deleteDialogTitle = '選択中のメモを削除しますか？';
 const _deleteDialogMessage = '一度削除すると復元できません。';
 const _deleteDialogCancelLabel = 'キャンセル';
@@ -322,7 +322,9 @@ class _ListeningInsetSheetState extends ConsumerState<ListeningInsetSheet>
                         ),
                         child: Text(
                           '${_selectionCountFormat.format(widget.selectedMemos.length)}件の選択を解除',
-                          style: AppTextStyles.caption,
+                          style: AppTextStyles.caption.copyWith(
+                            color: AppColors.link,
+                          ),
                         ),
                       ),
                     ),

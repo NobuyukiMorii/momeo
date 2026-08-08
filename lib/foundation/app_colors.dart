@@ -10,6 +10,7 @@ abstract final class AppColors {
   static const error = Color(0xFFEF4444);
   static const success = Color(0xFF16A34A);
   static const tertiary = Color(0xFFF4C542);
+  static const link = Color(0xFF2563EB);
 
   static const entries = [
     ('surface', surface),
@@ -21,6 +22,7 @@ abstract final class AppColors {
     ('error', error),
     ('success', success),
     ('tertiary', tertiary),
+    ('link', link),
   ];
 
   static const colorScheme = ColorScheme(
