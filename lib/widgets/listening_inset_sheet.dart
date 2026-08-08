@@ -184,12 +184,12 @@ class _ListeningInsetSheetState extends ConsumerState<ListeningInsetSheet>
 
   // ---------------------------------
   // 録音の選択肢を開き閉じする
-  //
-  // 閉じたシートの中では選択肢を見せられないので、開くときはシートも一緒に開く
   // ---------------------------------
   void _toggleOption() {
+    // --- バックグラウンド録音の選択肢カードの表示を切り替える
     setState(() => _isOptionExpanded = !_isOptionExpanded);
-    if (_isOptionExpanded) _open();
+    // --- シートを開く
+    _open();
   }
 
   // ---------------------------------
