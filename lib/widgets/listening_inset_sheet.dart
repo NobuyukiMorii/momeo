@@ -61,6 +61,15 @@ const _optionDescriptionDisabled = 'アプリがバックグラウンドに移�
 const _optionTitleEnabled = 'ほかのアプリを使っていても録音';
 const _optionDescriptionEnabled = 'アプリがバックグラウンドにあっても録音を続けます。アプリを終了すると止まります。';
 
+// 初回に有効へ切り替えるとき出す、開示と同意のダイアログの文言
+const _backgroundDisclosureTitle = 'ほかのアプリを使っていても録音しますか？';
+const _backgroundDisclosureMessage =
+    'ほかのアプリを使っている間や画面を消している間も、マイクで音声を録り続けます。\n\n'
+    '録音した音声と文字起こしはこの端末の中だけに保存され、外部に送信されることはありません。\n\n'
+    'この設定はいつでも解除できます。';
+const _backgroundDisclosureCancelLabel = 'キャンセル';
+const _backgroundDisclosureConfirmLabel = '有効にする';
+
 // ブラックボードの上に出す一言（空のとき・空のまま触れたとき・コピーした直後）
 const _emptyNoticeLabel = '選択したテキストが表示されます';
 const _emptyTouchNoticeLabel = 'テキストを選択するとコピーできます';
@@ -606,6 +615,68 @@ class _ListeningInsetSheetState extends ConsumerState<ListeningInsetSheet>
   }
 
   // ---------------------------------
+  // バックグラウンド録音の開示と同意のダイアログ
+  // ---------------------------------
+  Future<bool> _confirmBackgroundRecordingDisclosure() async {
+
+    // ---------------------------------
+    // ダイアログの文字の大きさ
+    // ---------------------------------
+    const dialogFontSize = 15.0;
+
+    // ---------------------------------
+    // ダイアログを表示
+    // ---------------------------------
+    final isConfirmed = await showDialog<bool>(
+      context: context,
+      // 外側のタップで閉じさせず、どちらかを選んでもらう
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(
+          _backgroundDisclosureTitle,
+          style: AppTextStyles.button.copyWith(color: AppColors.onSurface),
+        ),
+        content: Text(
+          _backgroundDisclosureMessage,
+          style: AppTextStyles.caption.copyWith(
+            fontSize: dialogFontSize,
+            color: AppColors.onSurface,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: Text(
+              _backgroundDisclosureCancelLabel,
+              style: AppTextStyles.caption.copyWith(
+                fontSize: dialogFontSize,
+                color: AppColors.onSurfaceVariant,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: Text(
+              _backgroundDisclosureConfirmLabel,
+              style: AppTextStyles.caption.copyWith(
+                fontSize: dialogFontSize,
+                color: AppColors.primary,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    // ---------------------------------
+    // 同意が得られたか
+    // ---------------------------------
+    return isConfirmed == true;
+  }
+
+  // ---------------------------------
   // シート最下部の操作エリア
   // ---------------------------------
   Widget _buildBottomArea() {
@@ -648,12 +719,22 @@ class _ListeningInsetSheetState extends ConsumerState<ListeningInsetSheet>
   // ---------------------------------
   Widget _buildBackgroundRecordingSection({
     required bool isBackgroundRecordingEnabled,
+    required bool hasEverEnabledBackgroundRecording,
   }) {
     // ---------------------------------
     // 選んだほうを設定として保存する
     // ---------------------------------
-    void select(bool isEnabled) {
-      ref.read(backgroundRecordingProvider.notifier).setEnabled(isEnabled);
+    Future<void> select(bool isEnabled) async {
+      // --- 初めて有効にするときだけ開示が要る
+      final needsDisclosure = isEnabled && !hasEverEnabledBackgroundRecording;
+      // --- 同意が得られなければ何もしない
+      if (needsDisclosure && !await _confirmBackgroundRecordingDisclosure()) {
+        return;
+      }
+      // --- 設定を保存
+      await ref
+          .read(backgroundRecordingProvider.notifier)
+          .setEnabled(isEnabled);
     }
 
     // ---------------------------------
@@ -698,10 +779,19 @@ class _ListeningInsetSheetState extends ConsumerState<ListeningInsetSheet>
   Widget build(BuildContext context) {
 
     // ---------------------------------
-    // バックグラウンド録音の設定（読み込み中は無効として扱う）
+    // バックグラウンド録音の設定を取得
     // ---------------------------------
-    final isBackgroundRecordingEnabled =
-        ref.watch(backgroundRecordingProvider).value?.isEnabled ?? false;
+    final backgroundRecording = ref.watch(backgroundRecordingProvider).value;
+
+    // ---------------------------------
+    // 今バックグラウンド録音を有効にしているか
+    // ---------------------------------
+    final isBackgroundRecordingEnabled = backgroundRecording?.isEnabled ?? false;
+
+    // ---------------------------------
+    // 一度でも有効にしたか
+    // ---------------------------------
+    final hasEverEnabledBackgroundRecording = backgroundRecording?.hasEverEnabled ?? false;
 
     // ---------------------------------
     // 安全領域
@@ -838,6 +928,8 @@ class _ListeningInsetSheetState extends ConsumerState<ListeningInsetSheet>
                       _buildBackgroundRecordingSection(
                         isBackgroundRecordingEnabled:
                             isBackgroundRecordingEnabled,
+                        hasEverEnabledBackgroundRecording:
+                            hasEverEnabledBackgroundRecording,
                       ),
                     // ---------------------------------
                     // ブラックボードの上に出す一言
