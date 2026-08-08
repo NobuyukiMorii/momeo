@@ -85,6 +85,20 @@ class ListeningState {
     );
   }
 
+  // メモの削除
+  ListeningState withMemosRemoved(Set<int> removedIds) {
+    return ListeningState(
+      memos: [
+        for (final memo in memos)
+          if (!removedIds.contains(memo.id)) memo,
+      ],
+      speechActive: speechActive,
+      // 演出の対象が消えていたら、対象ごと下ろす
+      typeInMemoId: removedIds.contains(typeInMemoId) ? null : typeInMemoId,
+      emptyResultCount: emptyResultCount,
+    );
+  }
+
   // タイピング演出を使い切った
   ListeningState withTypeInConsumed() {
     return ListeningState(
@@ -195,6 +209,19 @@ class ListeningNotifier extends AsyncNotifier<ListeningState> {
     state = AsyncData(current.withMemoAdded(
       VoiceMemo(id: id, content: content, createdAt: createdAt),
     ));
+  }
+
+  // ---------------------------------
+  // 選択中のメモを DB ごと削除する（元に戻す手段は持たない）
+  // ---------------------------------
+  Future<void> deleteMemos(Set<int> memoIds) async {
+    if (memoIds.isEmpty) return;
+    await _repository.deleteByIds(memoIds.toList());
+
+    if (_disposed) return;
+    final current = state.value;
+    if (current == null) return;
+    state = AsyncData(current.withMemosRemoved(memoIds));
   }
 
   // タイピング演出を使い切ったときにページから呼ばれる（再表示時の再再生を防ぐ）

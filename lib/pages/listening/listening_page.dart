@@ -1,14 +1,12 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
-import 'package:momeo/database/app_database.dart';
 import 'package:momeo/foundation/app_colors.dart';
 import 'package:momeo/foundation/app_spacing.dart';
 import 'package:momeo/pages/listening/memo_card_view_data.dart';
 import 'package:momeo/providers/listening_providers.dart';
 import 'package:momeo/widgets/listening_backdrop.dart';
-import 'package:momeo/widgets/selection_action_button.dart';
+import 'package:momeo/widgets/listening_inset_sheet.dart';
 import 'package:momeo/widgets/voice_card.dart';
 
 // =====================================================================
@@ -30,8 +28,11 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
   // 表示用日時フォーマット（生成コストを抑えて使い回す）
   static final _dateFormat = DateFormat('y/M/d HH:mm');
 
-  // 選択中のメモの id 一覧（選択中のカードは枠線が太くなる）
+  // 選択中のメモの id（そのままコピー・削除の対象になる）
   final Set<int> _selectedMemoIds = {};
+
+  // 下端のシートが今取っている高さ（一覧の下端余白として使い、カードを押し上げる）
+  final ValueNotifier<double> _sheetHeight = ValueNotifier(0);
 
   // アクティブカード（リスニング中インジケーター）の出入りを司る
   //   forward = せり上がって登場、reverse = 沈み込んで退場、
@@ -54,6 +55,7 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
 
   @override
   void dispose() {
+    _sheetHeight.dispose();
     _activeCardAnimation.dispose();
     _activeCardController.dispose();
     super.dispose();
@@ -122,7 +124,7 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
   }
 
   // ---------------------------------
-  // カードの選択
+  // カードの選択・非選択
   // ---------------------------------
   void _toggleMemoSelection(int memoId) {
     setState(() {
@@ -137,96 +139,116 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
   }
 
   // ---------------------------------
-  // 選択中メモの連結コピー
+  // 選択をすべて解除する（メモ自体は残る）
   // ---------------------------------
-  void _copySelectedMemos(List<VoiceMemo> memos) {
-    // memos は新しい順なので、逆順に走査して時系列順に組み立てる
-    final selectedTexts = [
-      for (final memo in memos.reversed)
-        if (_selectedMemoIds.contains(memo.id)) memo.content,
-    ];
-    if (selectedTexts.isEmpty) return;
-    // クリップボードにコピー
-    Clipboard.setData(ClipboardData(text: selectedTexts.join('\n')));
-    // 選択中のメモをクリア
-    setState(() => _selectedMemoIds.clear());
+  void _clearMemoSelection() {
+    setState(_selectedMemoIds.clear);
+  }
+
+  // ---------------------------------
+  // 選択中のメモを削除する（DB からも消える。元に戻す手段は無い）
+  // ---------------------------------
+  Future<void> _deleteSelectedMemos() async {
+    final targetIds = Set<int>.from(_selectedMemoIds);
+    await ref.read(listeningProvider.notifier).deleteMemos(targetIds);
+    if (!mounted) return;
+    setState(() => _selectedMemoIds.removeAll(targetIds));
   }
 
   @override
   Widget build(BuildContext context) {
     ref.listen(listeningProvider, _onListeningChanged);
 
-    // 読み込み中・エラー時は空の一覧として扱う（この画面のエラーUIはまだ無い）
+    // ---------------------------------
+    // リスニング状態
+    // ---------------------------------
     final listening =
         ref.watch(listeningProvider).value ?? const ListeningState();
+
+    // ---------------------------------
+    // ボイスカード一覧
+    // ---------------------------------
     final cards = buildMemoCardViewData(listening.memos);
 
-    // 安全領域（ステータスバー・ホームインジケーター）は SafeArea で切り取らず、
-    // スクロールの内側余白として足す。カードがシステム表示の下へ透けて
-    // 滑り込みつつ、端までスクロールすれば全体が見えるようにする
+    // ---------------------------------
+    // 選択中のメモ（memos は新しい順なので、時系列順に並べ替える）
+    // ---------------------------------
+    final selectedMemos = [
+      for (final memo in listening.memos.reversed)
+        if (_selectedMemoIds.contains(memo.id)) memo,
+    ];
+
+    // ---------------------------------
+    // 安全領域
+    // ---------------------------------
     final safeArea = MediaQuery.paddingOf(context);
 
     return Scaffold(
       backgroundColor: AppColors.surface,
       body: Stack(
         children: [
-          // 背景レイヤー：常時マイク音量に連動する縦棒メーター（カードの隙間から覗く）
+          // ---------------------------------
+          // 背景レイヤー
+          // ---------------------------------
           Positioned.fill(
             child: ListeningBackdrop(
               levelReader: () =>
                   ref.read(listeningProvider.notifier).latestLevel,
             ),
           ),
-          // 前景：メモ一覧（透明なので背景のメーターが隙間から覗く）。
-          // 古いメモが上・新しいメモが下のチャット式。reverse で index 0 が
-          // 画面下端になり、一覧は下端に固定されて新着で上へ押し上がる
-          ListView.separated(
-            reverse: true,
-            padding: EdgeInsets.only(
-              left: AppSpacing.l,
-              right: AppSpacing.l,
-              top: AppSpacing.xl + safeArea.top,
-              bottom: AppSpacing.xl + safeArea.bottom,
-            ),
-            // 下端のアクティブカード + 確定済みメモ（新しい順 = 下から順）
-            itemCount: cards.length + 1,
-            // アクティブカードとの間隔はカード側が持つ（非表示時に余白を残さないため）
-            separatorBuilder: (_, index) =>
-                SizedBox(height: index == 0 ? 0 : AppSpacing.xl),
-            itemBuilder: (context, index) {
-              // 一番下はアクティブカード
-              if (index == 0) return _buildActiveCard();
+          // ---------------------------------
+          // ボイスカード一覧
+          // ---------------------------------
+          ValueListenableBuilder<double>(
+            valueListenable: _sheetHeight,
+            builder: (context, sheetHeight, _) => ListView.separated(
+              reverse: true,
+              padding: EdgeInsets.only(
+                left: AppSpacing.l,
+                right: AppSpacing.l,
+                top: AppSpacing.xl + safeArea.top,
+                bottom: AppSpacing.xl + safeArea.bottom + sheetHeight,
+              ),
+              // 下端のアクティブカード + 確定済みメモ（新しい順 = 下から順）
+              itemCount: cards.length + 1,
+              // アクティブカードとの間隔はカード側が持つ（非表示時に余白を残さないため）
+              separatorBuilder: (_, index) =>
+                  SizedBox(height: index == 0 ? 0 : AppSpacing.xl),
+              itemBuilder: (context, index) {
+                // 一番下はアクティブカード
+                if (index == 0) return _buildActiveCard();
 
-              // 確定済みメモカード（直前に確定した1件だけタイピング演出）
-              final card = cards[index - 1];
-              return VoiceCard(
-                key: ValueKey(card.memo.id),
-                text: card.memo.content,
-                dateTime: card.showDateTime
-                    ? _dateFormat.format(card.memo.createdAt)
-                    : null,
-                typeIn: card.memo.id == listening.typeInMemoId,
-                selected: _selectedMemoIds.contains(card.memo.id),
-                onTap: () => _toggleMemoSelection(card.memo.id),
-                // 演出を使い切ったら Notifier に返して再再生を防ぐ
-                onTypingComplete: () {
-                  if (!mounted) return;
-                  ref
-                      .read(listeningProvider.notifier)
-                      .onTypingComplete(card.memo.id);
-                },
-              );
-            },
+                // 確定済みメモカード（直前に確定した1件だけタイピング演出）
+                final card = cards[index - 1];
+                return VoiceCard(
+                  key: ValueKey(card.memo.id),
+                  text: card.memo.content,
+                  dateTime: card.showDateTime
+                      ? _dateFormat.format(card.memo.createdAt)
+                      : null,
+                  typeIn: card.memo.id == listening.typeInMemoId,
+                  selected: _selectedMemoIds.contains(card.memo.id),
+                  onTap: () => _toggleMemoSelection(card.memo.id),
+                  // 演出を使い切ったら Notifier に返して再再生を防ぐ
+                  onTypingComplete: () {
+                    if (!mounted) return;
+                    ref
+                        .read(listeningProvider.notifier)
+                        .onTypingComplete(card.memo.id);
+                  },
+                );
+              },
+            ),
           ),
-          // 右下のコピーボタン（選択中のカードがある間だけ現れる。
-          // 出入り・タップ反応の演出はボタン側が持つ）
-          Positioned(
-            right: AppSpacing.l,
-            bottom: AppSpacing.l + safeArea.bottom,
-            child: SelectionActionButton(
-              visible: _selectedMemoIds.isNotEmpty,
-              icon: Icons.copy,
-              onPressed: () => _copySelectedMemos(listening.memos),
+          // ---------------------------------
+          // 設定シート
+          // ---------------------------------
+          Positioned.fill(
+            child: ListeningInsetSheet(
+              heightNotifier: _sheetHeight,
+              selectedMemos: selectedMemos,
+              onClearSelection: _clearMemoSelection,
+              onDeleteSelection: _deleteSelectedMemos,
             ),
           ),
         ],

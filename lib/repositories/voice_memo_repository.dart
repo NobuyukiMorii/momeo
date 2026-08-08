@@ -2,10 +2,7 @@ import 'package:drift/drift.dart';
 import 'package:momeo/database/app_database.dart';
 
 // ---------------------------------
-// VoiceMemoRepository — メモの保存・取得・削除を担うデータ係
-//
-// drift の作法（取得は VoiceMemo / 挿入は VoiceMemosCompanion）を
-// このクラスの中に隠し、画面からは単純なメソッドだけ見えるようにする。
+// メモの保存・取得・削除
 // ---------------------------------
 class VoiceMemoRepository {
   VoiceMemoRepository(this._db);
@@ -38,6 +35,16 @@ class VoiceMemoRepository {
   // ---------------------------------
   Future<void> delete(int id) {
     return (_db.delete(_db.voiceMemos)..where((memo) => memo.id.equals(id))).go();
+  }
+
+  // ---------------------------------
+  // 指定した id をまとめて削除する
+  // ---------------------------------
+  Future<void> deleteByIds(List<int> ids) {
+    // --- 空なら DB に触れずに終える
+    if (ids.isEmpty) return Future.value();
+    // --- 指定された id だけを消す
+    return (_db.delete(_db.voiceMemos)..where((memo) => memo.id.isIn(ids))).go();
   }
 
   // ---------------------------------

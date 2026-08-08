@@ -8,6 +8,7 @@ abstract final class AppColors {
   static const primary = Color(0xFFEF4444);
   static const onPrimary = Color(0xFFFFFFFF);
   static const error = Color(0xFFEF4444);
+  static const success = Color(0xFF16A34A);
   static const tertiary = Color(0xFFF4C542);
 
   static const entries = [
@@ -18,6 +19,7 @@ abstract final class AppColors {
     ('primary', primary),
     ('onPrimary', onPrimary),
     ('error', error),
+    ('success', success),
     ('tertiary', tertiary),
   ];
 
