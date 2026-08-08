@@ -1,13 +1,6 @@
 #!/usr/bin/env bash
 #
-# 開発機の Android 端末に NeMo モデルを手置きするスクリプト（無ければ入れる）。
-#
-#   何をするか:
-#     1. 対象が Android 端末かを確かめる（iOS 端末や端末なしなら何もせず正常終了）
-#     2. アプリ（jp.momeo）が未インストールなら debug ビルドを入れる
-#        （手置き先がアプリの内部ストレージなので、アプリが先に必要。APK が無ければビルドもする）
-#     3. 端末内のモデルのバイト数を確かめ、正しく揃っていれば何もしない
-#     4. 足りなければ .dev_models/ から push して内部ストレージへコピーする
+# 開発機の Android 端末に NeMo モデルを手置きする（無ければ入れる）。
 #
 #   使い方:
 #     bash scripts/place_android_device_models.sh [デバイスID]
@@ -42,6 +35,13 @@ ADB_SERIAL=""
 # 解決済みのシリアルで adb を呼ぶ
 run_adb() {
   adb -s "$ADB_SERIAL" "$@"
+}
+
+# 端末にアプリが入っているか
+is_app_installed() {
+  # アプリの識別名があるかをチェック
+  run_adb shell pm list packages "$APP_ID" 2>/dev/null \
+    | tr -d '\r' | grep -q "^package:$APP_ID$"
 }
 
 # ---------------------------------
@@ -94,12 +94,19 @@ for file_name in "$MODEL_FILE" "$TOKENS_FILE"; do
 done
 
 # ---------------------------------
-# 3. アプリが未インストールなら debug ビルドを入れる
+# 3. 手置きできるアプリが入っていなければ debug ビルドを入れる
 # ---------------------------------
 
-# run-as が通る = debug ビルドのアプリが入っている
+# run-as が通る = debug 署名のアプリ（debug / profile ビルド）が入っている
 if ! run_adb shell run-as "$APP_ID" sh -c 'true' >/dev/null 2>&1; then
-  echo "→ アプリが未インストールのため、debug ビルドをインストールします …"
+  # 同じ識別名のアプリが入っているなら
+  if is_app_installed; then
+    echo "→ 手置きできないアプリ（release など）が入っているため、アンインストールします …"
+    # アンインストールする
+    run_adb uninstall "$APP_ID" >/dev/null
+  fi
+
+  echo "→ 手置きできるアプリが無いため、debug ビルドをインストールします …"
 
   # flutter install はビルドしないため、APK が無い（flutter clean 直後など）なら先にビルドする
   debug_apk="$PROJECT_ROOT/build/app/outputs/flutter-apk/app-debug.apk"
@@ -131,7 +138,7 @@ if [ "$model_ok" = true ]; then
 fi
 
 # 内部ストレージには直接 push できないので、/data/local/tmp を中継する
-echo "→ モデルを端末へ push します（625MB のため数分かかることがあります）…"
+echo "→ モデルを端末へ push します（625MB）…"
 run_adb push "$DEV_MODELS_DIR/$MODEL_FILE" /data/local/tmp/
 run_adb push "$DEV_MODELS_DIR/$TOKENS_FILE" /data/local/tmp/
 run_adb shell chmod 644 "/data/local/tmp/$MODEL_FILE" "/data/local/tmp/$TOKENS_FILE"

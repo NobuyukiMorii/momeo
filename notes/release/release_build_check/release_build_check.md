@@ -44,25 +44,43 @@ ipa としての最終確認は Phase 2 の TestFlight 内部テストで兼ね�
 アセットパック（NeMo モデル）の配信ごと端末にインストールできる。
 
 ```bash
-make build-android
-bundletool build-apks \
-  --bundle=build/app/outputs/bundle/release/app-release.aab \
-  --output=/tmp/momeo.apks --local-testing
-bundletool install-apks --apks=/tmp/momeo.apks
+make run d=<デバイスID> mode=release
 ```
 
-- 既に momeo が入っている端末では署名不一致で失敗することがある。
-その場合は先に `adb uninstall jp.momeo` する（bundletool は既定で debug 署名を使うため）
+`scripts/run_on_device.sh` が端末とモードを見て経路を選ぶ。Android の release だけは
+`flutter run` を使わず、AAB のビルド → bundletool でのインストール → `am start` での起動を行う
+（`flutter run` は自前の APK を入れ直してアセットパック配信を壊すため）。
+
+そのぶん `flutter run` のコンソールは繋がらない。ログは別窓で見る。
+
+```bash
+adb logcat -s flutter
+```
+
+下記のハマりどころは `scripts/install_android_bundle.sh` に織り込み済みなので、手で気にする必要はない。
+
+- 既に momeo が入っている端末では署名不一致で失敗する（bundletool は既定で debug 署名を使うため）
+→ インストール前に `adb uninstall jp.momeo` を挟んでいる
+- 1台の端末が USB と無線デバッグの両方で adb に見えていると「複数台」扱いになり
+`install-apks` が失敗する → `--device-id` に解決済みのシリアルを渡している
+- インストール末尾の `run-as: package not debuggable` エラーは、旧バージョンの掃除に
+失敗しただけで実害なし（release は run-as が通らない）
+→ 終了コードではなく端末側にパッケージがあるかで成否を判定している
+
+その他の注意:
+
 - `--local-testing` は Play を経由せず、アセットパック配信を端末上でシミュレートする
+- `sun.misc.Unsafe` 系の WARNING と「signed with the debug keystore」の INFO は無視してよい
 - Play 実配信での最終確認は Phase 3 の内部テストトラックで行う
 
-実行時の注意（実際に確認したときのメモ）:
+### Android で速度だけ見たいとき
 
-- 1台の端末が USB と無線デバッグの両方で adb に見えていると「複数台」扱いになり
-`install-apks` が失敗する。`--device-id=<adbシリアル>` で USB 側を指定する（転送が速い）
-- `sun.misc.Unsafe` 系の WARNING と「signed with the debug keystore」の INFO は無視してよい
-- インストール末尾の `run-as: package not debuggable` エラーは、旧バージョンの掃除に
-失敗しただけで実害なし（release は run-as が通らないため）。インストール自体は成功している
+`make run d=<ID> mode=profile` を使う。profile は Flutter の Gradle プラグインが
+debug から派生させるビルドタイプなので、**debug 署名・debuggable のまま AOT コンパイルされる**。
+
+- 署名が debug と同じ → 再インストールされず、手置きモデルが消えない
+- AOT なので実行速度は release 相当。STT のレイテンシ・体感はここで測れる
+- ただし R8 とアセットパック配信は通らないので、本番経路の確認は `mode=release` が必要
 
 ## チェックリスト（両OS共通）
 

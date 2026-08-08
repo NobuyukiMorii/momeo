@@ -6,8 +6,9 @@
 #   各準備スクリプトは冪等（揃っていれば何もしない）なので、毎回実行してよい。
 #
 #   使い方:
-#     make run d=<デバイスID>   # 端末を指定して実行（ID は flutter devices。指定は必須）
-#     make run d=<ID> mode=release  # リリースモードで実行（デバッガが繋がらない状態を確認したいとき）
+#     make run d=<デバイスID>          # ふだんの開発はこれ（ID は flutter devices。指定は必須）
+#     make run d=<ID> mode=profile     # 動きが遅くないか確かめる（本番の速さで動く）
+#     make run d=<ID> mode=release     # ストアに出す前の最終確認
 #     make build-ios           # モデルを揃えてから flutter build ipa
 #     make build-android       # モデルを揃えてから flutter build appbundle
 #     make models              # モデルのダウンロードだけ行う
@@ -16,7 +17,7 @@
 # 実行対象のデバイスID（run では必須）。例: make run d=emulator-5554
 d ?=
 
-# 実行モード。debug / release / profile を受け付ける。例: make run d=<ID> mode=release
+# 実行モード。debug / profile / release を受け付ける。例: make run d=<ID> mode=release
 mode ?= debug
 
 .DEFAULT_GOAL := help
@@ -24,10 +25,12 @@ mode ?= debug
 .PHONY: help models run build-ios build-android require-device
 
 help:
-	@echo "make run d=<デバイスID> [mode=release]  … 端末を指定してモデルを揃えてから flutter run"
-	@echo "make build-ios          … モデルを揃えてから flutter build ipa"
-	@echo "make build-android      … モデルを揃えてから flutter build appbundle"
-	@echo "make models             … モデルのダウンロードだけ行う"
+	@echo "make run d=<デバイスID>           … ふだんの開発はこれ"
+	@echo "make run d=<ID> mode=profile      … 動きが遅くないか確かめる（本番の速さで動く）"
+	@echo "make run d=<ID> mode=release      … ストアに出す前の最終確認"
+	@echo "make build-ios                    … モデルを揃えてから flutter build ipa"
+	@echo "make build-android                … モデルを揃えてから flutter build appbundle"
+	@echo "make models                       … モデルのダウンロードだけ行う"
 
 # ---------------------------------
 # モデルの取得（.dev_models/ まで。端末やビルドへの配置は各スクリプトが行う）
@@ -37,16 +40,10 @@ models:
 	bash scripts/download_nemo_model.sh
 
 # ---------------------------------
-# 開発実行（端末は必ず指定させ、端末の種類の判定は各スクリプトに任せる）
+# 開発実行（端末は必ず指定させ、端末とモードによる分岐はスクリプトに任せる）
 # ---------------------------------
-#   実機 ⇄ シミュレータ … 前の成果物が居座ると署名エラーで入らないので、切り替えたら捨てる
-#   Android 端末 → place_android_device_models.sh が内部ストレージへ手置き（iOS 配置はスキップ）
-#   iOS 端末     → place_ios_models.sh が ios/Runner/Models/ へ配置（手置きはスキップ）
 run: require-device models
-	bash scripts/clean_on_simulator_device_switch.sh $(d)
-	bash scripts/place_android_device_models.sh $(d)
-	bash scripts/place_ios_models.sh $(d)
-	flutter run --$(mode) -d $(d)
+	bash scripts/run_on_device.sh $(d) $(mode)
 
 # ---- 対象の取り違えと無駄な処理を避けるため、モデル取得より前に即エラーで止める
 require-device:
