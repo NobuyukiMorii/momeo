@@ -277,9 +277,10 @@ class _ListeningInsetSheetState extends ConsumerState<ListeningInsetSheet>
                             width: statusDotSize,
                             height: statusDotSize,
                             decoration: BoxDecoration(
+                              // 画面を離れても録音が続くので、有効側を注意の色にする
                               color: isBackgroundRecordingEnabled
-                                  ? AppColors.primary
-                                  : AppColors.success,
+                                  ? AppColors.caution
+                                  : AppColors.safe,
                               shape: BoxShape.circle,
                             ),
                           ),
@@ -370,7 +371,7 @@ class _ListeningInsetSheetState extends ConsumerState<ListeningInsetSheet>
           color: AppColors.surface,
           borderRadius: BorderRadius.circular(AppRadius.l),
           border: Border.all(
-            color: isSelected ? AppColors.onSurface : AppColors.outline,
+            color: isSelected ? AppColors.primary : AppColors.outline,
             width: borderWidth,
           ),
         ),
@@ -489,17 +490,17 @@ class _ListeningInsetSheetState extends ConsumerState<ListeningInsetSheet>
         width: double.infinity,
         padding: const EdgeInsets.all(AppSpacing.l),
         decoration: BoxDecoration(
-          color: AppColors.onSurface,
+          color: AppColors.primary,
           borderRadius: BorderRadius.circular(AppRadius.l),
           border: Border.all(
-            color: AppColors.onSurface,
+            color: AppColors.primary,
             width: borderWidth,
           ),
         ),
         child: SingleChildScrollView( // スクロール
           child: Text(
             _selectedMemoText,
-            style: AppTextStyles.caption.copyWith(color: AppColors.surface),
+            style: AppTextStyles.caption.copyWith(color: AppColors.onPrimary),
           ),
         ),
       ),

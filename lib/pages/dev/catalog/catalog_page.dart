@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:momeo/foundation/app_colors.dart';
+import 'package:momeo/foundation/app_palette.dart';
 import 'package:momeo/pages/dev/catalog/catalog_detail_page.dart';
 import 'package:momeo/pages/dev/catalog/sections/foundation/foundation_app_colors_section.dart';
 import 'package:momeo/pages/dev/catalog/sections/foundation/foundation_app_text_styles_section.dart';
@@ -39,7 +41,8 @@ class _Section {
 // アイテムを追加するときはここだけ変えればよい
 const _sections = [
   _Section(title: 'Foundation', items: [
-    _Item(title: 'Colors',      body: FoundationAppColorsSection()),
+    _Item(title: 'Palette',     body: FoundationAppColorsSection(entries: AppPalette.entries)),
+    _Item(title: 'Colors',      body: FoundationAppColorsSection(entries: AppColors.entries)),
     _Item(title: 'Text Styles', body: FoundationAppTextStylesSection()),
     _Item(title: 'Spacing',     body: FoundationAppSpacingSection()),
     _Item(title: 'Radius',      body: FoundationAppRadiusSection()),

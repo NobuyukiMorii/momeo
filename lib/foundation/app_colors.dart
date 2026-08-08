@@ -1,17 +1,42 @@
 import 'package:flutter/material.dart';
+import 'package:momeo/foundation/app_palette.dart';
 
 abstract final class AppColors {
-  static const surface = Color(0xFFFFFFFF);
-  static const onSurface = Color(0xFF111827);
-  static const onSurfaceVariant = Color(0xFF6B7280);
-  static const outline = Color(0xFFE5E7EB);
-  static const primary = Color(0xFFEF4444);
-  static const onPrimary = Color(0xFFFFFFFF);
-  static const error = Color(0xFFEF4444);
-  static const success = Color(0xFF16A34A);
-  static const tertiary = Color(0xFFF4C542);
-  static const link = Color(0xFF2563EB);
 
+  // ---------------------------------
+  // 背景と、その上に置く文字・線
+  // ---------------------------------
+  static const surface = AppPalette.white; // 画面やカードの背景
+  static const onSurface = AppPalette.gray900; // 背景の上の文字・アイコン・輪郭線
+  static const onSurfaceVariant = AppPalette.gray500; // 背景の上の、控えめな文字
+  static const outline = AppPalette.gray200; // 主張させたくない区切り線
+
+  // ---------------------------------
+  // 主役のアクション
+  // ---------------------------------
+  static const primary = AppPalette.gray900;
+  static const onPrimary = AppPalette.white;
+
+  // ---------------------------------
+  // 取り消せない操作
+  // ---------------------------------
+  static const error = AppPalette.red500;
+  static const onError = AppPalette.white;
+
+  // ---------------------------------
+  // 状態を示す色
+  // ---------------------------------
+  static const caution = AppPalette.red500; // 注意を向けてほしい状態
+  static const safe = AppPalette.green600; // そのままでよい状態
+
+  // ---------------------------------
+  // 文字の中の、押せる場所
+  // ---------------------------------
+  static const link = AppPalette.blue600;
+
+  // ---------------------------------
+  // カタログ表示用の一覧（
+  // ---------------------------------
   static const entries = [
     ('surface', surface),
     ('onSurface', onSurface),
@@ -20,23 +45,28 @@ abstract final class AppColors {
     ('primary', primary),
     ('onPrimary', onPrimary),
     ('error', error),
-    ('success', success),
-    ('tertiary', tertiary),
+    ('onError', onError),
+    ('caution', caution),
+    ('safe', safe),
     ('link', link),
   ];
 
+  // ---------------------------------
+  // Material のウィジェットが既定で使う色
+  // ---------------------------------
   static const colorScheme = ColorScheme(
     brightness: Brightness.light,
     surface: surface,
     onSurface: onSurface,
     onSurfaceVariant: onSurfaceVariant,
     outline: outline,
+    outlineVariant: outline,
+    surfaceContainerHighest: outline,
     primary: primary,
     onPrimary: onPrimary,
-    error: error,
-    onError: onPrimary,
-    tertiary: tertiary,
     secondary: primary,
     onSecondary: onPrimary,
+    error: error,
+    onError: onError,
   );
 }

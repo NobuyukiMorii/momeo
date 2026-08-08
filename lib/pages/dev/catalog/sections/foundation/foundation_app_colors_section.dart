@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:momeo/foundation/app_colors.dart';
 
 class FoundationAppColorsSection extends StatelessWidget {
-  const FoundationAppColorsSection({super.key});
+  const FoundationAppColorsSection({super.key, required this.entries});
+
+  // 表示する (トークン名, 色) の一覧。AppPalette と AppColors のどちらも渡せる
+  final List<(String, Color)> entries;
 
   // ---------------------------------
   // ヘルパー
@@ -29,13 +31,13 @@ class FoundationAppColorsSection extends StatelessWidget {
 
     return ListView.separated(
       padding: const EdgeInsets.all(16),
-      itemCount: AppColors.entries.length,
+      itemCount: entries.length,
       separatorBuilder: (_, _) => const SizedBox(height: 8),
       itemBuilder: (context, index) {
         // ---------------------------------
         // entries[index] は (name, color) のレコード型 → 分解して取り出す
         // ---------------------------------
-        final (name, color) = AppColors.entries[index];
+        final (name, color) = entries[index];
 
         return Row(
           children: [
