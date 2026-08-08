@@ -7,6 +7,7 @@ abstract final class AppPalette {
   static const gray500 = Color(0xFF6B7280);
   static const gray900 = Color(0xFF111827);
   static const red500 = Color(0xFFEF4444);
+  static const yellow500 = Color(0xFFEAB308);
   static const green600 = Color(0xFF16A34A);
   static const blue600 = Color(0xFF2563EB);
 
@@ -16,6 +17,7 @@ abstract final class AppPalette {
     ('gray500', gray500),
     ('gray900', gray900),
     ('red500', red500),
+    ('yellow500', yellow500),
     ('green600', green600),
     ('blue600', blue600),
   ];

@@ -293,10 +293,10 @@ class _ListeningInsetSheetState extends ConsumerState<ListeningInsetSheet>
                           // ドット（どちらの状態でも録音は続くので点滅させる）
                           // ---------------------------------
                           Dot(
-                            // 画面を離れても録音が続くので、有効側を注意の色にする
+                            // 画面を離れても録音が続く有効側は強い注意の色、アプリ内だけの無効側は弱い注意の色にする
                             color: isBackgroundRecordingEnabled
                                 ? AppColors.caution
-                                : AppColors.safe,
+                                : AppColors.notice,
                           ),
                           const SizedBox(width: AppSpacing.s),
                           // ---------------------------------
@@ -745,7 +745,7 @@ class _ListeningInsetSheetState extends ConsumerState<ListeningInsetSheet>
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           // ---------------------------------
-          // 無効カード
+          // バックグラウンド録音の無効
           // ---------------------------------
           Expanded(
             child: _buildBackgroundRecordingOption(
@@ -757,7 +757,7 @@ class _ListeningInsetSheetState extends ConsumerState<ListeningInsetSheet>
           ),
           const SizedBox(width: AppSpacing.m),
           // ---------------------------------
-          // 有効カード
+          // バックグラウンド録音の有効
           // ---------------------------------
           Expanded(
             child: _buildBackgroundRecordingOption(

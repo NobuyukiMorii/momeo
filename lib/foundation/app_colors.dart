@@ -27,7 +27,7 @@ abstract final class AppColors {
   // 状態を示す色
   // ---------------------------------
   static const caution = AppPalette.red500; // 注意を向けてほしい状態
-  static const safe = AppPalette.green600; // そのままでよい状態
+  static const notice = AppPalette.yellow500; // 軽く気に留めてほしい状態
 
   // ---------------------------------
   // 文字の中の、押せる場所
@@ -47,7 +47,7 @@ abstract final class AppColors {
     ('error', error),
     ('onError', onError),
     ('caution', caution),
-    ('safe', safe),
+    ('notice', notice),
     ('link', link),
   ];
 
