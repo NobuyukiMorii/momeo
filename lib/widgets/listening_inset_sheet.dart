@@ -12,6 +12,7 @@ import 'package:momeo/foundation/app_radius.dart';
 import 'package:momeo/foundation/app_spacing.dart';
 import 'package:momeo/foundation/app_text_styles.dart';
 import 'package:momeo/providers/settings_providers.dart';
+import 'package:momeo/widgets/dot.dart';
 
 // ============================================================
 // 画面下端の領域をつまみで広げ縮めするシート
@@ -49,10 +50,10 @@ const _bottomAreaHeight = 64.0;
 
 // バックグラウンド録音の状態を伝える、帯の文言
 const _statusLabelEnabled = 'ほかのアプリを使っていても録音';
-const _statusLabelDisabled = 'ほかのアプリに切り替えると録音停止';
+const _statusLabelDisabled = 'このアプリを使っている時だけ録音';
 
 // バックグラウンド録音の選択肢（無効側・有効側）
-const _optionTitleDisabled = 'ほかのアプリに切り替えると録音停止';
+const _optionTitleDisabled = 'このアプリを使っている時だけ録音';
 const _optionDescriptionDisabled = 'アプリがバックグラウンドに移ると録音を止め、フォアグラウンドに戻ると再開します。';
 const _optionTitleEnabled = 'ほかのアプリを使っていても録音';
 const _optionDescriptionEnabled = 'アプリがバックグラウンドにあっても録音を続けます。アプリを終了すると止まります。';
@@ -244,8 +245,7 @@ class _ListeningInsetSheetState extends ConsumerState<ListeningInsetSheet>
   // 帯（閉じていても見えている、シートの上端）
   // ---------------------------------
   Widget _buildBand({required bool isBackgroundRecordingEnabled}) {
-    // 録音の状態を示すドットの直径と、選択肢の開閉を示す矢印の大きさ
-    const statusDotSize = 8.0;
+    // 選択肢の開閉を示す矢印の大きさ
     const statusArrowSize = 18.0;
 
     return SizedBox(
@@ -278,18 +278,13 @@ class _ListeningInsetSheetState extends ConsumerState<ListeningInsetSheet>
                       child: Row(
                         children: [
                           // ---------------------------------
-                          // ドット
+                          // ドット（どちらの状態でも録音は続くので点滅させる）
                           // ---------------------------------
-                          Container(
-                            width: statusDotSize,
-                            height: statusDotSize,
-                            decoration: BoxDecoration(
-                              // 画面を離れても録音が続くので、有効側を注意の色にする
-                              color: isBackgroundRecordingEnabled
-                                  ? AppColors.caution
-                                  : AppColors.safe,
-                              shape: BoxShape.circle,
-                            ),
+                          Dot(
+                            // 画面を離れても録音が続くので、有効側を注意の色にする
+                            color: isBackgroundRecordingEnabled
+                                ? AppColors.caution
+                                : AppColors.safe,
                           ),
                           const SizedBox(width: AppSpacing.s),
                           // ---------------------------------
