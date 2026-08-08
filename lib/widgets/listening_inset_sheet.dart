@@ -34,6 +34,9 @@ const _headerHeight = 56.0;
 // 開き切ったとき、ヘッダーとの間に残す余白
 const _openTopMargin = AppSpacing.s;
 
+// 開き切ったときの高さが、ヘッダーの下に残る範囲のどれだけを占めるか
+const _openHeightRatio = 0.5;
+
 // ブラックボードのエリア（余白・上の一言・ブラックボード本体）が潰れずに収まる高さ
 const _blackboardAreaMinHeight = 100.0;
 
@@ -412,7 +415,7 @@ class _ListeningInsetSheetState extends ConsumerState<ListeningInsetSheet>
   // ---------------------------------
   void _showNoticeBriefly(String label) {
     // 文言を出しておく時間
-    const noticeDuration = Duration(milliseconds: 2400);
+    const noticeDuration = Duration(milliseconds: 3600);
     // --- 文言を出しておく
     setState(() => _transientNoticeLabel = label);
     // --- 続けて出したときも、最後の1回から数えて引っ込める
@@ -456,12 +459,9 @@ class _ListeningInsetSheetState extends ConsumerState<ListeningInsetSheet>
     return SizedBox(
       height: noticeHeight,
       child: Align(
-        alignment: Alignment.centerRight,
-        child: AnimatedOpacity(
-          // 文言が入れ替わるときは別の要素として扱い、前の文言が薄れながら差し替わるのを防ぐ
-          key: ValueKey(label),
+        alignment: Alignment.centerLeft,
+        child: Opacity(
           opacity: isVisible ? 1.0 : 0.0,
-          duration: const Duration(milliseconds: 200),
           child: Text(
             label,
             // 文字を大きくする設定でも2行にならないよう、1行に収めて末尾を省く
@@ -714,14 +714,22 @@ class _ListeningInsetSheetState extends ConsumerState<ListeningInsetSheet>
     final safeBottom = safeArea.bottom;
 
     // ---------------------------------
-    // 開き切ったときの高さ（ヘッダーの下端まで届く）
+    // ヘッダーの下に残る、シートが伸びる範囲
     // ---------------------------------
-    final openHeight =
+    final availableHeight =
         MediaQuery.sizeOf(context).height -
         safeArea.top -
         safeBottom -
         _headerHeight -
         _openTopMargin;
+
+    // ---------------------------------
+    // シートを開き切ったときの高さ
+    // ---------------------------------
+    final openHeight = math.max(
+      availableHeight * _openHeightRatio,
+      _peekHeight + _blackboardAreaMinHeight + _bottomAreaHeight,
+    );
 
     // ---------------------------------
     // 開き具合の範囲を計算
