@@ -59,7 +59,7 @@ const _statusLabelDisabled = 'このアプリを使っている時だけ録音';
 const _optionTitleDisabled = 'このアプリを使っている時だけ録音';
 const _optionDescriptionDisabled = 'アプリがバックグラウンドに移ると録音を止め、フォアグラウンドに戻ると再開します。';
 const _optionTitleEnabled = 'ほかのアプリを使っていても録音';
-const _optionDescriptionEnabled = 'アプリがバックグラウンドにあっても録音を続けます。アプリを終了すると止まります。';
+const _optionDescriptionEnabled = 'ほかのアプリを使っている間や画面を消している間も、マイクで音声を録り続けます。アプリを終了すると止まります。';
 
 // 初回に有効へ切り替えるとき出す、開示と同意のダイアログの文言
 const _backgroundDisclosureTitle = 'ほかのアプリを使っていても録音しますか？';
