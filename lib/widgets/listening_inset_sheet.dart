@@ -33,8 +33,8 @@ const _headerHeight = 56.0;
 // 開き切ったとき、ヘッダーとの間に残す余白
 const _openTopMargin = AppSpacing.s;
 
-// 選択中のメモのエリア（余白・コピーの文言・本文のカード）が潰れずに収まる高さ
-const _selectedMemoAreaMinHeight = 100.0;
+// ブラックボードのエリア（余白・上の一言・ブラックボード本体）が潰れずに収まる高さ
+const _blackboardAreaMinHeight = 100.0;
 
 // 録音の選択肢のエリアが潰れずに収まる高さ
 // （文字の折り返しで伸びても足りるよう、実際のカードより多めに取る）
@@ -57,7 +57,9 @@ const _optionDescriptionDisabled = 'アプリがバックグラウンドに移�
 const _optionTitleEnabled = 'ほかのアプリを使っていても録音';
 const _optionDescriptionEnabled = 'アプリがバックグラウンドにあっても録音を続けます。アプリを終了すると止まります。';
 
-// コピーしたことを伝える文言
+// ブラックボードの上に出す一言（空のとき・空のまま触れたとき・コピーした直後）
+const _emptyNoticeLabel = '選択したテキストが表示されます';
+const _emptyTouchNoticeLabel = 'テキストを選択するとコピーできます';
 const _copyNoticeLabel = 'クリップボードにコピーしました';
 
 // 削除ボタンを押したときに出す確認ダイアログの文言
@@ -124,12 +126,12 @@ class _ListeningInsetSheetState extends ConsumerState<ListeningInsetSheet>
   bool _isOptionExpanded = false;
 
   // ---------------------------------
-  // コピーしたことを伝える文言を出しているか
+  // 少しの間だけ出している一言
   // ---------------------------------
-  bool _isCopyNoticeVisible = false;
+  String? _transientNoticeLabel;
 
-  // 文言を引っ込めるためのタイマー（連続コピーでは張り替える）
-  Timer? _copyNoticeTimer;
+  // 文言を引っ込めるためのタイマー（続けて出したときは張り替える）
+  Timer? _noticeTimer;
 
   // ---------------------------------
   // コントローラを用意し、高さの変化を外へ流す
@@ -152,8 +154,8 @@ class _ListeningInsetSheetState extends ConsumerState<ListeningInsetSheet>
   // ---------------------------------
   @override
   void dispose() {
-    // --- コピーの文言を引っ込めるタイマーを止める
-    _copyNoticeTimer?.cancel();
+    // --- 一言を引っ込めるタイマーを止める
+    _noticeTimer?.cancel();
     // --- 高さの通知を止める
     _controller.removeListener(_publishHeight);
     // --- コントローラを破棄する
@@ -411,46 +413,65 @@ class _ListeningInsetSheetState extends ConsumerState<ListeningInsetSheet>
       .join(_selectedMemoSeparator);
 
   // ---------------------------------
-  // メモをクリップボードにコピー
+  // ブラックボードの上の通知メッセージ
   // ---------------------------------
-  void _copySelectedMemos() {
+  void _showNoticeBriefly(String label) {
     // 文言を出しておく時間
     const noticeDuration = Duration(milliseconds: 2400);
-
-    // --- クリップボードにコピー
-    Clipboard.setData(ClipboardData(text: _selectedMemoText));
-
     // --- 文言を出しておく
-    setState(() => _isCopyNoticeVisible = true);
-
-    // --- 連続でコピーしたときも、最後の1回から数えて引っ込める
-    _copyNoticeTimer?.cancel();
-
+    setState(() => _transientNoticeLabel = label);
+    // --- 続けて出したときも、最後の1回から数えて引っ込める
+    _noticeTimer?.cancel();
     // --- 文言を引っ込めるタイマーをセット
-    _copyNoticeTimer = Timer(noticeDuration, () {
-      if (mounted) setState(() => _isCopyNoticeVisible = false);
+    _noticeTimer = Timer(noticeDuration, () {
+      if (mounted) setState(() => _transientNoticeLabel = null);
     });
   }
 
   // ---------------------------------
-  // コピー時の通知メッセージ
+  // メモをクリップボードにコピー
   // ---------------------------------
-  Widget _buildCopyNotice() {
-    // 文言の出入りでカードの位置が動かないよう、常に空けておく高さ
+  void _copySelectedMemos() {
+    // --- クリップボードにコピー
+    Clipboard.setData(ClipboardData(text: _selectedMemoText));
+    // --- コピーしたことを知らせる
+    _showNoticeBriefly(_copyNoticeLabel);
+  }
+
+  // ---------------------------------
+  // ブラックボードの上に出す一言（何も選んでいないときの案内と、コピーしたことの知らせ）
+  // ---------------------------------
+  Widget _buildNotice() {
+    // 文言の出入りでブラックボードの位置が動かないよう、常に空けておく高さ
     const noticeHeight = 16.0;
 
     // 文字の大きさ（日時より少し大きくして読み取りやすくする）
     const noticeFontSize = 12.0;
+
+    final hasSelection = widget.selectedMemos.isNotEmpty;
+
+    // 少しの間だけ出す一言を優先し、無いときは選択中ならコピーの文言のまま消えていく
+    final transientLabel = _transientNoticeLabel;
+    final label =
+        transientLabel ?? (hasSelection ? _copyNoticeLabel : _emptyNoticeLabel);
+
+    // 何も選んでいない間はブラックボードの案内を出したままにする
+    final isVisible = transientLabel != null || !hasSelection;
 
     return SizedBox(
       height: noticeHeight,
       child: Align(
         alignment: Alignment.centerRight,
         child: AnimatedOpacity(
-          opacity: _isCopyNoticeVisible ? 1.0 : 0.0,
+          // 文言が入れ替わるときは別の要素として扱い、前の文言が薄れながら差し替わるのを防ぐ
+          key: ValueKey(label),
+          opacity: isVisible ? 1.0 : 0.0,
           duration: const Duration(milliseconds: 200),
           child: Text(
-            _copyNoticeLabel,
+            label,
+            // 文字を大きくする設定でも2行にならないよう、1行に収めて末尾を省く
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
             style: AppTextStyles.micro.copyWith(
               fontSize: noticeFontSize,
               color: AppColors.onSurface,
@@ -462,9 +483,9 @@ class _ListeningInsetSheetState extends ConsumerState<ListeningInsetSheet>
   }
 
   // ---------------------------------
-  // 選択中のメモの本文
+  // ブラックボード（選択中のメモをまとめて映す黒い面）
   // ---------------------------------
-  Widget _buildSelectedMemoCard() {
+  Widget _buildBlackboard() {
     // 押したままにしたとき、コピーと見なすまでの時間
     // （既定の長押し 500ms は待たされる感じが出るので短くする）
     const longPressDuration = Duration(milliseconds: 150);
@@ -472,25 +493,46 @@ class _ListeningInsetSheetState extends ConsumerState<ListeningInsetSheet>
     // 枠線の太さ（一覧のカードの細いほうに揃える）
     const borderWidth = 1.5;
 
+    // ブラックボードに入れる本文があるか
+    final hasSelection = widget.selectedMemos.isNotEmpty;
+
     // ---------------------------------
-    // コピーイベントを設定
+    // ジェスチャーイベントのハンドラー
+    // ---------------------------------
+    void handleTouch() {
+      // --- 選択中のメモがあれば
+      if (hasSelection) {
+        // --- コピー
+        _copySelectedMemos();
+        return;
+      }
+      // --- 選択中のメモがなければ
+      _showNoticeBriefly(_emptyTouchNoticeLabel); // ブラックボードの上に通知メッセージ
+    }
+
+    // ---------------------------------
+    // ブラックボードのジェスチャーイベント
+    // ---------------------------------
+    final touchGestures = <Type, GestureRecognizerFactory>{
+      // --- 押してすぐ離したとき
+      TapGestureRecognizer:
+          GestureRecognizerFactoryWithHandlers<TapGestureRecognizer>(
+            TapGestureRecognizer.new,
+            (recognizer) => recognizer.onTap = handleTouch,
+          ),
+      // --- 押したまま留めたとき
+      LongPressGestureRecognizer:
+          GestureRecognizerFactoryWithHandlers<LongPressGestureRecognizer>(
+            () => LongPressGestureRecognizer(duration: longPressDuration),
+            (recognizer) => recognizer.onLongPress = handleTouch,
+          ),
+    };
+
+    // ---------------------------------
+    // ブラックボードを組み立てて返す
     // ---------------------------------
     return RawGestureDetector(
-      gestures: <Type, GestureRecognizerFactory>{
-        // --- 押してすぐ離したとき
-        TapGestureRecognizer:
-            GestureRecognizerFactoryWithHandlers<TapGestureRecognizer>(
-              TapGestureRecognizer.new,
-              (recognizer) => recognizer.onTap = _copySelectedMemos,
-            ),
-        // --- 押したまま留めたとき
-        LongPressGestureRecognizer:
-            GestureRecognizerFactoryWithHandlers<LongPressGestureRecognizer>(
-              () =>
-                  LongPressGestureRecognizer(duration: longPressDuration),
-              (recognizer) => recognizer.onLongPress = _copySelectedMemos,
-            ),
-      },
+      gestures: touchGestures,
       child: Container(
         width: double.infinity,
         padding: const EdgeInsets.all(AppSpacing.l),
@@ -502,12 +544,16 @@ class _ListeningInsetSheetState extends ConsumerState<ListeningInsetSheet>
             width: borderWidth,
           ),
         ),
-        child: SingleChildScrollView( // スクロール
-          child: Text(
-            _selectedMemoText,
-            style: AppTextStyles.caption.copyWith(color: AppColors.onPrimary),
-          ),
-        ),
+        child: hasSelection
+            ? SingleChildScrollView( // スクロール
+                child: Text(
+                  _selectedMemoText,
+                  style: AppTextStyles.caption.copyWith(
+                    color: AppColors.onPrimary,
+                  ),
+                ),
+              )
+            : null,
       ),
     );
   }
@@ -710,7 +756,7 @@ class _ListeningInsetSheetState extends ConsumerState<ListeningInsetSheet>
               _peekHeight -
               _sheetBorderWidth +
               (_isOptionExpanded ? _optionAreaMinHeight : 0) +
-              (widget.selectedMemos.isEmpty ? 0 : _selectedMemoAreaMinHeight) +
+              _blackboardAreaMinHeight +
               _bottomAreaHeight;
 
           // -------------------------------------------------------------
@@ -791,20 +837,15 @@ class _ListeningInsetSheetState extends ConsumerState<ListeningInsetSheet>
                             isBackgroundRecordingEnabled,
                       ),
                     // ---------------------------------
-                    // 選択中のメモの本文
+                    // ブラックボードの上に出す一言
                     // ---------------------------------
-                    if (widget.selectedMemos.isNotEmpty) ...[
-                      // ---------------------------------
-                      // コピー時の通知メッセージ
-                      // ---------------------------------
-                      const SizedBox(height: AppSpacing.xs),
-                      _buildCopyNotice(),
-                      // ---------------------------------
-                      // 選択中のメモの本文
-                      // ---------------------------------
-                      const SizedBox(height: AppSpacing.s),
-                      Expanded(child: _buildSelectedMemoCard()),
-                    ],
+                    const SizedBox(height: AppSpacing.xs),
+                    _buildNotice(),
+                    // ---------------------------------
+                    // ブラックボード
+                    // ---------------------------------
+                    const SizedBox(height: AppSpacing.s),
+                    Expanded(child: _buildBlackboard()),
                   ],
                 ),
               ),

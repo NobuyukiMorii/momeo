@@ -241,7 +241,7 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
             ),
           ),
           // ---------------------------------
-          // 設定シート
+          // 下端のシート（ブラックボードと録音の設定）
           // ---------------------------------
           Positioned.fill(
             child: ListeningInsetSheet(
