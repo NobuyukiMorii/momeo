@@ -2,6 +2,7 @@ import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:momeo/foundation/app_scroll_behavior.dart';
 import 'package:momeo/foundation/app_theme.dart';
 import 'package:momeo/pages/dev/screenshot/screenshot_scenes.dart';
 import 'package:momeo/pages/listening/listening_page.dart';
@@ -41,6 +42,7 @@ class ScreenshotApp extends StatelessWidget {
       child: MaterialApp(
         title: 'momeo',
         theme: AppTheme.light(),
+        scrollBehavior: const AppScrollBehavior(),
         debugShowCheckedModeBanner: false,
         home: const ListeningPage(),
       ),
