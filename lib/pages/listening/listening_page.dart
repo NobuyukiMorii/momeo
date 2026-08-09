@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:momeo/foundation/app_colors.dart';
@@ -34,6 +37,9 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
   // 下端のシートが今取っている高さ（一覧の下端余白として使い、カードを押し上げる）
   final ValueNotifier<double> _sheetHeight = ValueNotifier(0);
 
+  int? _copiedMemoId; // コピーの知らせを出すカードの id
+  Timer? _copyNoticeTimer; // コピーの知らせのタイマー
+
   // アクティブカード（リスニング中インジケーター）の出入りを司る
   //   forward = せり上がって登場、reverse = 沈み込んで退場、
   //   value に 0.0 を代入 = 即時に消す（確定メモへの置き換え＝モーフ用）
@@ -55,6 +61,7 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
 
   @override
   void dispose() {
+    _copyNoticeTimer?.cancel(); // コピーの知らせのタイマーを止める
     _sheetHeight.dispose();
     _activeCardAnimation.dispose();
     _activeCardController.dispose();
@@ -135,6 +142,24 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
         // 選択中のメモを追加
         _selectedMemoIds.add(memoId);
       }
+    });
+  }
+
+  // ---------------------------------
+  // カード長押しでコピー
+  // ---------------------------------
+  void _copyMemo(int memoId, String text) {
+    // 知らせを出しておく時間
+    const noticeDuration = Duration(milliseconds: 3600);
+    // --- クリップボードにコピー
+    Clipboard.setData(ClipboardData(text: text));
+    // --- カード左上に通知を表示
+    setState(() => _copiedMemoId = memoId);
+    // --- 続けてコピーした場合、最後の通知を非表示とする
+    _copyNoticeTimer?.cancel();
+    // --- 通知を一定時間表示
+    _copyNoticeTimer = Timer(noticeDuration, () {
+      if (mounted) setState(() => _copiedMemoId = null);
     });
   }
 
@@ -229,6 +254,8 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
                   typeIn: card.memo.id == listening.typeInMemoId,
                   selected: _selectedMemoIds.contains(card.memo.id),
                   onTap: () => _toggleMemoSelection(card.memo.id),
+                  onLongPress: () => _copyMemo(card.memo.id, card.memo.content),
+                  showCopyNotice: _copiedMemoId == card.memo.id,
                   // 演出を使い切ったら Notifier に返して再再生を防ぐ
                   onTypingComplete: () {
                     if (!mounted) return;

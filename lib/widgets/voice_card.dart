@@ -7,6 +7,9 @@ import 'package:momeo/widgets/activity_dots_text.dart';
 import 'package:momeo/widgets/typewriter_text.dart';
 import 'package:momeo/widgets/voice_icon.dart';
 
+// カードの上に少しの間だけ出す一言（長押しでコピーした直後）
+const _copyNoticeLabel = 'クリップボードにコピーしました';
+
 class VoiceCard extends StatefulWidget {
   const VoiceCard({
     super.key,
@@ -17,6 +20,8 @@ class VoiceCard extends StatefulWidget {
     this.onTypingComplete,
     this.selected = false,
     this.onTap,
+    this.onLongPress,
+    this.showCopyNotice = false,
   });
 
   final String text;
@@ -29,6 +34,13 @@ class VoiceCard extends StatefulWidget {
   // カード本体をタップしたときの通知（選択の切り替えに使う）。
   // null ならタップを受け付けない
   final VoidCallback? onTap;
+
+  // カード本体を長押ししたときの通知（このカード1枚のコピーに使う）。
+  // 選択の切り替えとは別の結果になるので、長押しは既定の 500ms のまま扱う
+  final VoidCallback? onLongPress;
+
+  // コピー直後に、カードの上へ一言だけ出す
+  final bool showCopyNotice;
 
   // 確定演出: テキストを1文字ずつ素早くタイピング表示する
   final bool typeIn;
@@ -44,6 +56,9 @@ class _VoiceCardState extends State<VoiceCard> {
   // 枠線の太さ（通常時・選択中）
   static const _borderWidth = 1.5;
   static const _selectedBorderWidth = 3.0;
+
+  // コピーの知らせの文字の大きさ（日時よりわずかに大きい程度に留める）
+  static const _copyNoticeFontSize = 10.0;
 
   // 日時のフェードインをタイピングの打ち終わりまで待たせるためのフラグ
   bool _typingFinished = false;
@@ -76,8 +91,34 @@ class _VoiceCardState extends State<VoiceCard> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        // ---------------------------------
+        // コピーの通知
+        // ---------------------------------
+        SizedOverflowBox(
+          size: const Size(double.infinity, 0),
+          alignment: Alignment.bottomLeft,
+          child: Padding(
+            padding: const EdgeInsets.only(bottom: AppSpacing.xs),
+            child: Opacity(
+              opacity: widget.showCopyNotice ? 1.0 : 0.0,
+              child: Text(
+                _copyNoticeLabel,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: AppTextStyles.micro.copyWith(
+                  fontSize: _copyNoticeFontSize,
+                  color: AppColors.onSurface,
+                ),
+              ),
+            ),
+          ),
+        ),
+        // ---------------------------------
+        // カード本体
+        // ---------------------------------
         GestureDetector(
           onTap: widget.onTap,
+          onLongPress: widget.onLongPress,
           child: Container(
             width: double.infinity,
             padding: EdgeInsets.all(contentPadding),
