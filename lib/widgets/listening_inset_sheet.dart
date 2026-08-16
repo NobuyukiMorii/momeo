@@ -13,6 +13,7 @@ import 'package:momeo/foundation/app_spacing.dart';
 import 'package:momeo/foundation/app_text_styles.dart';
 import 'package:momeo/providers/settings_providers.dart';
 import 'package:momeo/widgets/dot.dart';
+import 'package:momeo/widgets/listening_header.dart';
 
 // ============================================================
 // 画面下端の領域をつまみで広げ縮めするシート
@@ -27,9 +28,6 @@ const _peekHeight = 64.0;
 
 // シート上辺の枠線の太さ（帯の高さはこのぶん削られる）
 const _sheetBorderWidth = 1.0;
-
-// 画面上部のヘッダー（検索の入力欄）の高さ
-const _headerHeight = 56.0;
 
 // 開き切ったとき、ヘッダーとの間に残す余白
 const _openTopMargin = AppSpacing.s;
@@ -99,6 +97,7 @@ class ListeningInsetSheet extends ConsumerStatefulWidget {
   const ListeningInsetSheet({
     super.key,
     required this.heightNotifier,
+    required this.isCollapsed,
     required this.selectedMemos,
     required this.onClearSelection,
     required this.onDeleteSelection,
@@ -106,6 +105,9 @@ class ListeningInsetSheet extends ConsumerStatefulWidget {
 
   // 今のシートの高さ（安全領域を除いた、一覧を押し上げるぶん）
   final ValueNotifier<double> heightNotifier;
+
+  // シートが畳んであるかどうか
+  final bool isCollapsed;
 
   // 選択中のメモ（時系列順。古いものが先頭）
   final List<VoiceMemo> selectedMemos;
@@ -126,7 +128,7 @@ class ListeningInsetSheet extends ConsumerStatefulWidget {
 // ---------------------------------
 class _ListeningInsetSheetState extends ConsumerState<ListeningInsetSheet>
     with SingleTickerProviderStateMixin {
-  late final AnimationController _controller;
+  late final AnimationController _openController;
 
   // ---------------------------------
   // ドラッグの移動量を開き具合の割合へ換算する分母
@@ -154,12 +156,37 @@ class _ListeningInsetSheetState extends ConsumerState<ListeningInsetSheet>
     // --- 親の初期化を先に済ませる
     super.initState();
     // --- 開き具合を動かすコントローラを用意する（開閉アニメーションの時間）
-    _controller = AnimationController(
+    _openController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 250),
     );
     // --- 値が動くたびに、今の高さを外へ伝える
-    _controller.addListener(_publishHeight);
+    _openController.addListener(_publishHeight);
+  }
+
+  // ---------------------------------
+  // 畳んでおく指示を受け取る
+  // ---------------------------------
+  @override
+  void didUpdateWidget(ListeningInsetSheet oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // --- 検索フィールドの入力が始まったら
+    if (widget.isCollapsed && !oldWidget.isCollapsed) {
+      _collapseImmediately(); // 開いていたシートを閉じる
+    }
+  }
+
+  // ---------------------------------
+  // その場でシートを畳む
+  // ---------------------------------
+  void _collapseImmediately() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      // --- バックグラウンド録音の選択肢カードを非表示にする
+      setState(() => _isOptionExpanded = false);
+      // --- アニメーションを挟まず、その場で閉じる
+      _openController.value = 0;
+    });
   }
 
   // ---------------------------------
@@ -170,9 +197,9 @@ class _ListeningInsetSheetState extends ConsumerState<ListeningInsetSheet>
     // --- 一言を引っ込めるタイマーを止める
     _noticeTimer?.cancel();
     // --- 高さの通知を止める
-    _controller.removeListener(_publishHeight);
+    _openController.removeListener(_publishHeight);
     // --- コントローラを破棄する
-    _controller.dispose();
+    _openController.dispose();
     // --- 親の後片付けを最後に行う
     super.dispose();
   }
@@ -180,7 +207,7 @@ class _ListeningInsetSheetState extends ConsumerState<ListeningInsetSheet>
   // ---------------------------------
   // 高さ
   // ---------------------------------
-  double get _currentHeight => _peekHeight + _dragRange * _controller.value;
+  double get _currentHeight => _peekHeight + _dragRange * _openController.value;
 
   // ---------------------------------
   // 今の高さを画面側へ伝える
@@ -193,13 +220,13 @@ class _ListeningInsetSheetState extends ConsumerState<ListeningInsetSheet>
   // ---------------------------------
   // 開閉
   // ---------------------------------
-  void _open() => _controller.forward();
+  void _open() => _openController.forward();
 
   void _close() {
     // --- バックグラウンド録音の選択肢カードを非表示にする
     setState(() => _isOptionExpanded = false);
     // --- シートを閉じる
-    _controller.reverse();
+    _openController.reverse();
   }
 
   // ---------------------------------
@@ -217,7 +244,7 @@ class _ListeningInsetSheetState extends ConsumerState<ListeningInsetSheet>
   // ---------------------------------
   void _onDragUpdate(DragUpdateDetails details) {
     // --- 上へ動かすと開く向きなので、移動量を引く
-    _controller.value -= details.primaryDelta! / _dragRange;
+    _openController.value -= details.primaryDelta! / _dragRange;
   }
 
   // ---------------------------------
@@ -236,7 +263,7 @@ class _ListeningInsetSheetState extends ConsumerState<ListeningInsetSheet>
       return;
     }
     // --- 勢いが無ければ近いほうへ寄せる
-    _controller.value > openThreshold ? _open() : _close();
+    _openController.value > openThreshold ? _open() : _close();
   }
 
   // ---------------------------------
@@ -810,7 +837,7 @@ class _ListeningInsetSheetState extends ConsumerState<ListeningInsetSheet>
         MediaQuery.sizeOf(context).height -
         safeArea.top -
         safeBottom -
-        _headerHeight -
+        listeningHeaderHeight -
         _openTopMargin;
 
     // ---------------------------------
@@ -841,7 +868,7 @@ class _ListeningInsetSheetState extends ConsumerState<ListeningInsetSheet>
       alignment: Alignment.bottomCenter,
       child: AnimatedBuilder(
         // --- 開き具合が動くたびに作り直す ---
-        animation: _controller,
+        animation: _openController,
         // --- 開き具合を高さに変えて、シートの背丈を決める ---
         builder: (context, content) {
 

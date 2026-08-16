@@ -19,6 +19,11 @@ void main() {
   WidgetsFlutterBinding.ensureInitialized();
 
   // ---------------------------------
+  // 起動直後にキーボードを自動的に閉じる
+  // ---------------------------------
+  SystemChannels.textInput.invokeMethod<void>('TextInput.hide');
+
+  // ---------------------------------
   // Android でもシステムバーの裏までコンテンツを描画する（エッジトゥエッジ）。
   // 安全領域の避け方は各画面が SafeArea や MediaQuery の padding で行う
   // ---------------------------------

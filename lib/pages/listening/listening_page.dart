@@ -7,8 +7,10 @@ import 'package:intl/intl.dart';
 import 'package:momeo/foundation/app_colors.dart';
 import 'package:momeo/foundation/app_spacing.dart';
 import 'package:momeo/pages/listening/memo_card_view_data.dart';
+import 'package:momeo/pages/listening/memo_keyword_filter.dart';
 import 'package:momeo/providers/listening_providers.dart';
 import 'package:momeo/widgets/listening_backdrop.dart';
+import 'package:momeo/widgets/listening_header.dart';
 import 'package:momeo/widgets/listening_inset_sheet.dart';
 import 'package:momeo/widgets/voice_card.dart';
 
@@ -27,28 +29,59 @@ class ListeningPage extends ConsumerStatefulWidget {
 }
 
 class _ListeningPageState extends ConsumerState<ListeningPage>
-    with SingleTickerProviderStateMixin {
-  // 表示用日時フォーマット（生成コストを抑えて使い回す）
-  static final _dateFormat = DateFormat('y/M/d HH:mm');
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
 
-  // 選択中のメモの id（そのままコピー・削除の対象になる）
+  // ---------------------------------
+  // 選択中のメモに関する状態
+  // ---------------------------------
+  // 日時フォーマット
+  static final _dateFormat = DateFormat('y/M/d HH:mm');
+  // 選択中のメモの id
   final Set<int> _selectedMemoIds = {};
 
-  // 下端のシートが今取っている高さ（一覧の下端余白として使い、カードを押し上げる）
+  // ---------------------------------
+  // 検索フィールドに関する状態
+  // ---------------------------------
+  // 検索フィールドに打たれている文字列
+  final TextEditingController _keywordController = TextEditingController();
+  // 検索フィールドにカーソルが当たっているか
+  final FocusNode _keywordFocusNode = FocusNode();
+  // 検索フィールドに入力されたキーワード
+  List<String> _keywords = const [];
+  // 検索フィールドに入力中か（入力に入った時点で下端のシートを畳む）
+  bool _isKeywordInputActive = false;
+  // 前回このイベントが届いた時、キーボードが出ていたか
+  bool _wasKeyboardOpen = false;
+
+  // ---------------------------------
+  // 下端のシートに関する状態
+  // ---------------------------------
+  // 下端のシートの高さ
   final ValueNotifier<double> _sheetHeight = ValueNotifier(0);
 
-  int? _copiedMemoId; // コピーの知らせを出すカードの id
-  Timer? _copyNoticeTimer; // コピーの知らせのタイマー
+  // ---------------------------------
+  // コピーの知らせに関する状態
+  // ---------------------------------
+  // コピーの知らせを出すカードの id
+  int? _copiedMemoId;
+  // コピーの知らせのタイマー
+  Timer? _copyNoticeTimer;
 
-  // アクティブカード（リスニング中インジケーター）の出入りを司る
-  //   forward = せり上がって登場、reverse = 沈み込んで退場、
-  //   value に 0.0 を代入 = 即時に消す（確定メモへの置き換え＝モーフ用）
+  // ---------------------------------
+  // アクティブカードに関する状態
+  // ---------------------------------
+  // 出入りの進み具合（0 = 隠れきっている、1 = 出きっている）
   late final AnimationController _activeCardController;
+  // 進み具合に緩急を付けた値（カードの高さに使う）
   late final CurvedAnimation _activeCardAnimation;
 
   @override
   void initState() {
     super.initState();
+    // キーボードが閉じた瞬間を検知
+    WidgetsBinding.instance.addObserver(this);
+    // 検索フィールドのフォーカスの通知を受け取る
+    _keywordFocusNode.addListener(_onKeywordFocusChanged);
     _activeCardController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 250),
@@ -61,11 +94,70 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _copyNoticeTimer?.cancel(); // コピーの知らせのタイマーを止める
+    _keywordController.dispose(); // 検索フィールドのコントローラーを破棄
+    _keywordFocusNode.removeListener(_onKeywordFocusChanged); // 検索フィールドのフォーカスの通知を受け取らないようにする
+    _keywordFocusNode.dispose(); // 検索フィールドのフォーカスノードを破棄
     _sheetHeight.dispose();
     _activeCardAnimation.dispose();
     _activeCardController.dispose();
     super.dispose();
+  }
+
+  // ---------------------------------
+  // Flutterのウィジェットツリーの寸法が変わったときに呼ばれる
+  // ---------------------------------
+  @override
+  void didChangeMetrics() {
+
+    // ---------------------------------
+    // キーボードが閉じた瞬間を検知
+    // ---------------------------------
+
+    // --- マウントされていない場合は何もしない
+    if (!mounted) return;
+    // --- 今キーボードが開いているか
+    final isOpen = View.of(context).viewInsets.bottom > 0;
+    // --- 前回と同じなら、キーボード開閉は起きていない
+    if (isOpen == _wasKeyboardOpen) return;
+    // --- 次のキーボード開閉で比較するために値を記録
+    _wasKeyboardOpen = isOpen;
+    if (!isOpen) { // --- キーボードを閉じた
+      _exitKeywordInput(); // 検索フィールドからカーソルを外す
+    }
+  }
+
+  // ---------------------------------
+  // 検索フィールドのキーワードを反映
+  // ---------------------------------
+  void _applyKeywords() {
+    // --- 入力文字列を、照合に使う語の一覧へ分解
+    setState(() => _keywords = parseMemoKeywords(_keywordController.text));
+  }
+
+  // ---------------------------------
+  // 検索フィールドにカーソルが当たった・外れたとき
+  // ---------------------------------
+  void _onKeywordFocusChanged() {
+    // --- 今カーソルが当たっているか
+    final isActive = _keywordFocusNode.hasFocus;
+    // --- カーソルが当たっているまま、またカーソルが当たっている
+    if (isActive == _isKeywordInputActive) return; // 何もしない
+    // --- カーソルが当たっている間は下端のシートを畳んでおく
+    setState(() => _isKeywordInputActive = isActive);
+    // --- カーソルが外れたら文字列を絞り込みへ取り込む
+    if (!isActive) _applyKeywords();
+  }
+
+  // ---------------------------------
+  // 検索フィールドからカーソルを外す
+  // ---------------------------------
+  void _exitKeywordInput() {
+    // --- すでにカーソルが外れていれば何もしない
+    if (!_keywordFocusNode.hasFocus) return;
+    // --- カーソルを外す
+    _keywordFocusNode.unfocus();
   }
 
   // ---------------------------------
@@ -180,6 +272,85 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
     setState(() => _selectedMemoIds.removeAll(targetIds));
   }
 
+  // ---------------------------------
+  // 絞り込みで隠れたカードのタイピング演出を取り消す
+  // ---------------------------------
+  void _cancelHiddenTypeIn(int? typeInMemoId, List<MemoCardViewData> cards) {
+    // --- 演出の対象がいない
+    if (typeInMemoId == null) return;
+    // --- 対象が一覧に出ている。演出が終わったらカード自身が知らせる
+    if (cards.any((card) => card.memo.id == typeInMemoId)) return;
+
+    // --- カードの代わりに終わったと知らせる
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      // --- 待つ間に画面を離れていたら何もしない
+      if (!mounted) return;
+      // --- Notifier に終わったと知らせる
+      ref.read(listeningProvider.notifier).onTypingComplete(typeInMemoId);
+    });
+  }
+
+  // ---------------------------------
+  // 確定済みメモカード1枚
+  // ---------------------------------
+  Widget _buildMemoCard(MemoCardViewData card, int? typeInMemoId) {
+    return VoiceCard(
+      key: ValueKey(card.memo.id),
+      text: card.memo.content,
+      dateTime:
+          card.showDateTime ? _dateFormat.format(card.memo.createdAt) : null,
+      typeIn: card.memo.id == typeInMemoId,
+      selected: _selectedMemoIds.contains(card.memo.id),
+      onTap: () => _toggleMemoSelection(card.memo.id),
+      onLongPress: () => _copyMemo(card.memo.id, card.memo.content),
+      showCopyNotice: _copiedMemoId == card.memo.id,
+      // 演出が終わったと Notifier に返す（スクロールで戻っても再生し直さない）
+      onTypingComplete: () {
+        if (!mounted) return;
+        ref.read(listeningProvider.notifier).onTypingComplete(card.memo.id);
+      },
+    );
+  }
+
+  // ---------------------------------
+  // ボイスカード一覧
+  // ---------------------------------
+  Widget _buildMemoList({
+    required List<MemoCardViewData> cards,
+    required int? typeInMemoId,
+    required bool isFiltering,
+    required double safeAreaTop,
+    required double safeAreaBottom,
+  }) {
+    // --- シートの高さが動くたびに、下端余白を追従させる
+    return ValueListenableBuilder<double>(
+      valueListenable: _sheetHeight,
+      builder: (context, sheetHeight, _) => ListView.separated(
+        // --- 新しいカードが下に来るよう、下から積む
+        reverse: true,
+        padding: EdgeInsets.only(
+          left: AppSpacing.l,
+          right: AppSpacing.l,
+          top: AppSpacing.xl + safeAreaTop + listeningHeaderHeight,
+          // キーボードの有無で余白を変えない（一覧を動かさない）
+          bottom: AppSpacing.xl + safeAreaBottom + sheetHeight,
+        ),
+        // --- 確定済みメモ + 一番下のアクティブカードで1つ多い
+        itemCount: cards.length + 1,
+        // --- アクティブカードとの間隔はカード側が持つ（消えた時に余白を残さない）
+        separatorBuilder: (_, index) =>
+            SizedBox(height: index == 0 ? 0 : AppSpacing.xl),
+        itemBuilder: (context, index) {
+          if (index == 0) { // --- 一番下はアクティブカード
+            // --- 検索中ならアクティブカードを出さず、一覧を検索結果に徹させる
+            return isFiltering ? const SizedBox.shrink() : _buildActiveCard();
+          }
+          return _buildMemoCard(cards[index - 1], typeInMemoId);
+        },
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     ref.listen(listeningProvider, _onListeningChanged);
@@ -191,12 +362,20 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
         ref.watch(listeningProvider).value ?? const ListeningState();
 
     // ---------------------------------
-    // ボイスカード一覧
+    // キーワードによる絞り込み（いずれかの語を含むメモだけ残る）
     // ---------------------------------
-    final cards = buildMemoCardViewData(listening.memos);
+    final isFiltering = _keywords.isNotEmpty;
+    final visibleMemos = filterMemosByKeywords(listening.memos, _keywords);
+
+    // ---------------------------------
+    // ボイスカード一覧（日時の出し分けは絞り込んだ後の並びで決める）
+    // ---------------------------------
+    final cards = buildMemoCardViewData(visibleMemos);
+    _cancelHiddenTypeIn(listening.typeInMemoId, cards);
 
     // ---------------------------------
     // 選択中のメモ（memos は新しい順なので、時系列順に並べ替える）
+    //   絞り込みで隠れているメモも選択は保つので、絞り込む前の一覧から拾う
     // ---------------------------------
     final selectedMemos = [
       for (final memo in listening.memos.reversed)
@@ -206,76 +385,66 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
     // ---------------------------------
     // 安全領域
     // ---------------------------------
-    final safeArea = MediaQuery.paddingOf(context);
+    final safeAreaTop = MediaQuery.paddingOf(context).top;
+    final safeAreaBottom = MediaQuery.viewPaddingOf(context).bottom;
 
     return Scaffold(
       backgroundColor: AppColors.surface,
+      resizeToAvoidBottomInset: false,
       body: Stack(
         children: [
-          // ---------------------------------
-          // 背景レイヤー
-          // ---------------------------------
           Positioned.fill(
-            child: ListeningBackdrop(
-              levelReader: () =>
-                  ref.read(listeningProvider.notifier).latestLevel,
-            ),
-          ),
-          // ---------------------------------
-          // ボイスカード一覧
-          // ---------------------------------
-          ValueListenableBuilder<double>(
-            valueListenable: _sheetHeight,
-            builder: (context, sheetHeight, _) => ListView.separated(
-              reverse: true,
-              padding: EdgeInsets.only(
-                left: AppSpacing.l,
-                right: AppSpacing.l,
-                top: AppSpacing.xl + safeArea.top,
-                bottom: AppSpacing.xl + safeArea.bottom + sheetHeight,
+            child: Listener(
+              behavior: HitTestBehavior.translucent,
+              onPointerDown: (_) => _exitKeywordInput(),
+              child: Stack(
+                children: [
+                  // ---------------------------------
+                  // 背景レイヤー
+                  // ---------------------------------
+                  Positioned.fill(
+                    child: ListeningBackdrop(
+                      levelReader: () =>
+                          ref.read(listeningProvider.notifier).latestLevel,
+                    ),
+                  ),
+                  // ---------------------------------
+                  // ボイスカード一覧
+                  // ---------------------------------
+                  _buildMemoList(
+                    cards: cards,
+                    typeInMemoId: listening.typeInMemoId,
+                    isFiltering: isFiltering,
+                    safeAreaTop: safeAreaTop,
+                    safeAreaBottom: safeAreaBottom,
+                  ),
+                  // ---------------------------------
+                  // 下端のシート（ブラックボードと録音の設定）
+                  // ---------------------------------
+                  Positioned.fill(
+                    child: ListeningInsetSheet(
+                      heightNotifier: _sheetHeight,
+                      isCollapsed: _isKeywordInputActive,
+                      selectedMemos: selectedMemos,
+                      onClearSelection: _clearMemoSelection,
+                      onDeleteSelection: _deleteSelectedMemos,
+                    ),
+                  ),
+                ],
               ),
-              // 下端のアクティブカード + 確定済みメモ（新しい順 = 下から順）
-              itemCount: cards.length + 1,
-              // アクティブカードとの間隔はカード側が持つ（非表示時に余白を残さないため）
-              separatorBuilder: (_, index) =>
-                  SizedBox(height: index == 0 ? 0 : AppSpacing.xl),
-              itemBuilder: (context, index) {
-                // 一番下はアクティブカード
-                if (index == 0) return _buildActiveCard();
-
-                // 確定済みメモカード（直前に確定した1件だけタイピング演出）
-                final card = cards[index - 1];
-                return VoiceCard(
-                  key: ValueKey(card.memo.id),
-                  text: card.memo.content,
-                  dateTime: card.showDateTime
-                      ? _dateFormat.format(card.memo.createdAt)
-                      : null,
-                  typeIn: card.memo.id == listening.typeInMemoId,
-                  selected: _selectedMemoIds.contains(card.memo.id),
-                  onTap: () => _toggleMemoSelection(card.memo.id),
-                  onLongPress: () => _copyMemo(card.memo.id, card.memo.content),
-                  showCopyNotice: _copiedMemoId == card.memo.id,
-                  // 演出を使い切ったら Notifier に返して再再生を防ぐ
-                  onTypingComplete: () {
-                    if (!mounted) return;
-                    ref
-                        .read(listeningProvider.notifier)
-                        .onTypingComplete(card.memo.id);
-                  },
-                );
-              },
             ),
           ),
           // ---------------------------------
-          // 下端のシート（ブラックボードと録音の設定）
+          // ヘッダー
           // ---------------------------------
-          Positioned.fill(
-            child: ListeningInsetSheet(
-              heightNotifier: _sheetHeight,
-              selectedMemos: selectedMemos,
-              onClearSelection: _clearMemoSelection,
-              onDeleteSelection: _deleteSelectedMemos,
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: ListeningHeader(
+              controller: _keywordController,
+              focusNode: _keywordFocusNode,
+              onCleared: _applyKeywords,
             ),
           ),
         ],
