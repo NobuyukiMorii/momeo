@@ -9,8 +9,10 @@
 | `android.md` | Android の必要な設定と実機検証の結果 |
 | `store_policy.md` | Apple / Google Play の規約、提出物、実装要件 |
 | `verified_implementation.md` | 検証に使った実装の全文（破棄済み。着手時の出発点） |
+| `impl/outline.md` | 実装計画（フェーズ・ステップの分割、実装順序、依存関係） |
 
 - **調査日**: 2026-07-27（規約・技術調査）、2026-08-01（実機検証）
+- **実装の現状の更新**: 2026-08-17
 - **対象**: `record` 6.2.1（`pubspec.yaml` の指定は `^6.1.2`）、`flutter_foreground_task` 10.0.0
 - **きっかけ**: 現状 momeo は背面に入ると録音が止まる。継続できるようにしたいが、OS とストアが許すのかを先に確認したい
 
@@ -31,16 +33,31 @@
 
 ---
 
-## 調査時点の実装
+## 実装の現状
 
-背面で録音が止まる原因は、OS の制限を解除する設定を一切入れていないことにある。
+背面で録音が止まる原因は、OS の制限を解除する設定を一切入れていないことにある。`store_policy.md` の実装要件のうち、アプリ内で完結する設定・UI まわりは実装済みで、OS 側の対応と、設定を録音挙動へつなぐ結線が残っている。
 
-| ファイル | 状態 |
+### 実装済み
+
+| 対象 | 内容 |
+|---|---|
+| 設定の ON / OFF（初期値 OFF） | ボトムシート内の2択カード。`SharedPreferences` へ永続化（`lib/providers/settings_providers.dart`） |
+| 開示＋同意のダイアログ | 初めて ON にするときに表示。外側タップでは閉じず、ボタン操作で同意を取る（`lib/widgets/listening_inset_sheet.dart`） |
+| 録音状態の帯表示 | ON は赤・OFF は黄の点滅ドットと文言。UI 仕様は `notes/specs/listening_bottom_sheet.md` |
+| 中断からの復帰設定 | `RecordConfig` の `pauseResume` ほか（→ `ios.md`）。独立した不具合修正として取り込み済み |
+
+### 未実装
+
+| 対象 | 状態 |
 |---|---|
 | `ios/Runner/Info.plist` | `NSMicrophoneUsageDescription` のみ。`UIBackgroundModes` の宣言なし |
 | `android/app/src/main/AndroidManifest.xml` | `RECORD_AUDIO` のみ。フォアグラウンドサービス関連の宣言なし |
+| `flutter_foreground_task` | 未導入（`pubspec.yaml` に依存なし） |
+| 設定と録音挙動の結線 | 設定を読んでいるのはシートの UI だけ。パイプラインとライフサイクル処理は設定を見ていない |
+| iOS の背面中「録音中」表示 | 未実装。通知系パッケージ自体が未導入 |
+| 通知許可（`POST_NOTIFICATIONS`）の要求経路 | 未実装。権限フローはマイクのみ（`notes/specs/permission_flow.md`） |
 
-つまり、OS が背面遷移の時点でマイクを切っている状態である。
+つまり、設定を切り替えても録音の挙動はまだ変わらず、OS が背面遷移の時点でマイクを切っている状態である。
 
 ---
 
@@ -117,6 +134,7 @@ iOS の `UIBackgroundModes` はアプリバイナリの性質で、**実行時�
 
 ## 関連ドキュメント
 
+- `notes/specs/listening_bottom_sheet.md` — 設定 UI（ボトムシート）の仕様
 - `notes/research/on_device_stt/continuous_listening_limitation.md` — 常時リスニングの限界（フォアグラウンド前提の調査）
 - `notes/research/microphone_permission_revocation.md` — マイク権限の取り消し
 - `notes/specs/listening_flow.md` — リスニングフローの仕様

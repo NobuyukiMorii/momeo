@@ -12,7 +12,7 @@
 
 1. `Info.plist` に `UIBackgroundModes` を追加する（Xcode の Capabilities で Background Modes → Audio を ON にすると同じ内容が書き込まれるので、実質1手順）
 2. `AVAudioSession` のカテゴリを `record` または `playAndRecord` にして、セッションをアクティブに保つ
-3. `RecordConfig` で中断時の挙動を指定する（既定のままだと中断後に復帰しない。後述）
+3. `RecordConfig` で中断時の挙動を指定する（既定のままだと中断後に復帰しない。後述。**本体に取り込み済み**）
 
 ### ストアに出すために必要なもの
 
@@ -58,7 +58,7 @@ Android には常駐サービスという明示的な停止対象があるので
 
 `record` の `audioInterruption` の既定値は `AudioInterruptionMode.pause`（自動停止・**手動再開**）である。再開処理を書かない限り、着信や他アプリのマイク奪取で一度止まったらそのまま戻らない。
 
-これは背面に限らず**前面でも同じ**で、対処しなければ通話後にリスニングが死んだままになる。**現行アプリに存在する不具合**であり、バックグラウンド録音を入れるかどうかとは独立に修正の価値がある。
+これは背面に限らず**前面でも同じ**で、対処しなければ通話後にリスニングが死んだままになる。バックグラウンド録音とは独立の不具合修正として、下記の設定を**本体に取り込み済み**（`stt_listening_pipeline.dart`）。
 
 `pauseResume` に変え、`mixWithOthers` を併用すると、**背面のままでも自動的に録音が再開する**（実機検証済み）。バックグラウンドのセッション再アクティブ化が `AVAudioSessionErrorCodeCannotStartRecording`（561015905）で失敗する事例は Apple Developer Forums に多数あるが、その回答でも「背面で鳴らす・録るならセッションを mixable にせよ」と指摘されており、`mixWithOthers` がその条件にあたる。
 

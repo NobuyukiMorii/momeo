@@ -56,7 +56,7 @@ iOS には常駐通知という要件がないので、この問題は Android �
 
 `flutter_foreground_task` は別アイソレートで動く `TaskHandler` を持てるが、**使っていない**（`startService` の `callback` は省略可）。実機検証で「メインアイソレートのまま背面で動く」ことが確認できたため、パイプラインを別アイソレートへ移植する必要がない。
 
-実装は `lib/stt/listening_foreground_service.dart` に閉じており、`SttListeningPipeline.start()` / `stop()` から呼ぶ。iOS では何もしない。
+検証実装は `lib/stt/listening_foreground_service.dart` に閉じ、`SttListeningPipeline.start()` / `stop()` から呼ぶ形にした（全文は `verified_implementation.md`。作業ツリーからは破棄済み）。iOS では何もしない。
 
 ---
 
