@@ -24,4 +24,4 @@ ON に切り替える流れ（`lib/widgets/listening_inset_sheet.dart` の開示
 
 Android 12 以前には `POST_NOTIFICATIONS` が無いので、要求は常に成功扱いになり、同じ流れを素通りする。
 
-この「ON の操作の中で OS 許可を取り、成立したら保存する」という型は、Step 6（iOS の通知許可）でもそのまま使う。
+「ON の操作の中で OS 許可を求める」ところまでは Step 6（iOS の通知許可）も同じ型に乗る。ただし取れなかったときの扱いは OS で違い、ON にしないのは規約上の要件がある Android だけ。iOS は拒否されても ON にする（→ Step 6）。

@@ -12,5 +12,7 @@
 ## どんな実装をするか
 
 - 通知チャンネルの重要度を上げ、通常欄に出す（`AndroidNotificationOptions` のチャンネル設定）
-- 通知に停止ボタンを付ける（`FlutterForegroundTask.startService` の `notificationButtons`）
-- ボタンが何を止めるか — 録音だけか、設定ごと OFF にするか — は着手時に決める（通知から同意の撤回までさせるか、という判断のため）
+- 通知に停止ボタンを付ける（`FlutterForegroundTask.startService` の `notificationButtons`）。文言は「バックグラウンド録音を停止」
+- ボタンは設定ごと OFF に切り替える（通知からの停止 = 同意の撤回。再開の操作は無く、アプリを開けば前面録音として自動で始まる）
+- 前面表示中に押されたときは、OFF に切り替えつつ録音は続ける（「このアプリを使っている時だけ録音」の表示と矛盾させない）
+- ボタンの押下はそのままではアプリに届かず、転送用の最小 TaskHandler が要る（→ `../../spike_findings.md`）
