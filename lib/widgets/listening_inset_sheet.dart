@@ -6,6 +6,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:permission_handler/permission_handler.dart';
+
 import 'package:momeo/database/app_database.dart';
 import 'package:momeo/foundation/app_colors.dart';
 import 'package:momeo/foundation/app_radius.dart';
@@ -757,6 +759,12 @@ class _ListeningInsetSheetState extends ConsumerState<ListeningInsetSheet>
       // --- 同意が得られなければ何もしない
       if (needsDisclosure && !await _confirmBackgroundRecordingDisclosure()) {
         return;
+      }
+      // --- 有効側は、通知許可が取れたときだけ保存する
+      //     （通知の出ない背面録音を作らない。拒否されたら無効のまま）
+      if (isEnabled) {
+        final status = await Permission.notification.request();
+        if (!status.isGranted) return;
       }
       // --- 設定を保存
       await ref

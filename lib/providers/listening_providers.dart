@@ -1,12 +1,20 @@
 import 'dart:async';
+import 'dart:io' show Platform;
 
 import 'package:flutter/foundation.dart' show debugPrint;
+import 'package:flutter/widgets.dart'
+    show AppLifecycleListener, AppLifecycleState, WidgetsBinding;
+import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import 'package:momeo/database/app_database.dart';
 import 'package:momeo/providers/database_providers.dart';
+import 'package:momeo/providers/settings_providers.dart';
 import 'package:momeo/providers/stt_providers.dart';
 import 'package:momeo/repositories/voice_memo_repository.dart';
+import 'package:momeo/stt/listening_background_notice.dart';
+import 'package:momeo/stt/listening_foreground_service.dart';
 import 'package:momeo/stt/stt_listening_pipeline.dart';
 import 'package:momeo/stt/stt_model_provisioner.dart';
 
@@ -125,14 +133,35 @@ class ListeningNotifier extends AsyncNotifier<ListeningState> {
   // 破棄後は state に触れないためのフラグ（DB への保存だけは続ける）
   bool _disposed = false;
 
+  // 背面でも録音を続ける態勢が成立しているか
+  // （設定 ON かつ通知許可あり。Android はさらに常駐サービスの起動まで）
+  bool _keepsRecordingInBackground = false;
+
   @override
   Future<ListeningState> build() async {
     _repository = ref.watch(voiceMemoRepositoryProvider);
     _disposed = false;
+
+    // 背面遷移で録音を止め、前面復帰で再開する（inactive では何もしない）
+    final lifecycleListener = AppLifecycleListener(
+      onPause: _onAppPaused,
+      onResume: _onAppResumed,
+    );
+
+    // 録音中に設定を切り替えられたら、その場で背面録音の態勢へ反映する
+    ref.listen(backgroundRecordingProvider, _onBackgroundRecordingSettingChanged);
+
+    // 常駐通知の停止ボタンからの停止要求を受け取る（Android）
+    FlutterForegroundTask.addTaskDataCallback(_onServiceDataReceived);
+
     ref.onDispose(() {
       _disposed = true;
+      lifecycleListener.dispose();
+      FlutterForegroundTask.removeTaskDataCallback(_onServiceDataReceived);
       _pipeline?.dispose();
       _pipeline = null;
+      // 画面を離れたら常駐サービスも畳む（通知を出しっぱなしにしない）
+      unawaited(ListeningForegroundService.stop());
     });
 
     final memos = await _repository.findAll();
@@ -162,6 +191,11 @@ class ListeningNotifier extends AsyncNotifier<ListeningState> {
         onSpeechActiveChanged: _onSpeechActiveChanged,
         onLevelChanged: (level) => _latestLevel = level,
       );
+
+      // 設定 ON なら、録音を始める前に背面でも続ける態勢を作る
+      // （Android はサービスが先でないと、背面遷移でマイクを切られる）
+      _keepsRecordingInBackground = await _prepareBackgroundRecording();
+
       await pipeline.start();
 
       if (_disposed) {
@@ -169,9 +203,97 @@ class ListeningNotifier extends AsyncNotifier<ListeningState> {
         return;
       }
       _pipeline = pipeline;
+
+      // 起動処理の間に背面へ回られていたら、起動直後に止めて整合させる
+      if (WidgetsBinding.instance.lifecycleState == AppLifecycleState.paused) {
+        await pipeline.stop();
+      }
     } catch (error) {
       // 準備待ち画面やエラー表示はまだ無い。ここではログに記録するだけ
       debugPrint('[listening] リスニングを開始できませんでした: $error');
+    }
+  }
+
+  // ---------------------------------
+  // 背面でも録音を続ける態勢を作る（成立したかを返す）
+  //   設定 OFF なら何もしない。ON でも通知許可が無ければ成立させない
+  //   （通知の出ない背面録音を作らない → notes/background_recording/android.md）
+  // ---------------------------------
+  Future<bool> _prepareBackgroundRecording() async {
+    // 設定を読む（読み込みが済んでいなければ無効扱い）
+    final isEnabled =
+        ref.read(backgroundRecordingProvider).value?.isEnabled ?? false;
+    if (!isEnabled) return false;
+
+    // 通知許可は OS 設定から後で取り消せるため、開始のたびに確認する
+    if (!await Permission.notification.isGranted) return false;
+
+    // Android は microphone 型の常駐サービスが起動できて初めて成立する。
+    // iOS は UIBackgroundModes の宣言が効くため、ここでは何も起動しない
+    if (Platform.isAndroid) {
+      return ListeningForegroundService.start();
+    }
+    return true;
+  }
+
+  // ---------------------------------
+  // 録音中に設定を切り替えられたときの反映
+  // ---------------------------------
+  Future<void> _onBackgroundRecordingSettingChanged(
+    AsyncValue<BackgroundRecordingState>? previous,
+    AsyncValue<BackgroundRecordingState> next,
+  ) async {
+    final wasEnabled = previous?.value?.isEnabled ?? false;
+    final isEnabled = next.value?.isEnabled ?? false;
+    if (isEnabled == wasEnabled) return;
+    if (_pipeline == null) return;
+
+    if (isEnabled) {
+      _keepsRecordingInBackground = await _prepareBackgroundRecording();
+    } else {
+      _keepsRecordingInBackground = false;
+      await ListeningForegroundService.stop();
+    }
+  }
+
+  // ---------------------------------
+  // 常駐通知の停止ボタンが押されたとき（Android）
+  //   録音を止め、設定も OFF に戻す（通知からの停止 = 同意の撤回として扱う）
+  // ---------------------------------
+  void _onServiceDataReceived(Object data) {
+    if (data != listeningServiceStopRequested) return;
+    _keepsRecordingInBackground = false;
+    unawaited(_pipeline?.stop());
+    unawaited(ListeningForegroundService.stop());
+    unawaited(ref.read(backgroundRecordingProvider.notifier).setEnabled(false));
+  }
+
+  // ---------------------------------
+  // アプリのライフサイクルに合わせた停止・再開
+  //   判定は paused / resumed だけ。inactive はコントロールセンターを
+  //   引き出しただけでも起きるため、反応しない
+  // ---------------------------------
+  void _onAppPaused() {
+    // 背面でも録音を続ける態勢なら止めない。iOS はローカル通知で録音中を示す
+    if (_keepsRecordingInBackground) {
+      debugPrint('[listening] 背面遷移: 背面でも録音を続けます');
+      unawaited(ListeningBackgroundNotice.show());
+      return;
+    }
+    // stop() 内の flush が、背面に入る直前の発話を確定・保存する
+    debugPrint('[listening] 背面遷移: 録音を停止します');
+    unawaited(_pipeline?.stop());
+  }
+
+  Future<void> _onAppResumed() async {
+    debugPrint('[listening] 前面復帰: 録音を再開します');
+    // 背面中に出した「録音中」のローカル通知を消す（iOS）
+    unawaited(ListeningBackgroundNotice.dismiss());
+    try {
+      await _pipeline?.start();
+    } catch (error) {
+      // 背面中の権限取り消しなどはログのみ。権限の取り直しは RootView が担う
+      debugPrint('[listening] リスニングを再開できませんでした: $error');
     }
   }
 

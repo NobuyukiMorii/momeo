@@ -48,6 +48,8 @@ dependencies:
 
   # 音声 AI モデル（音声認識・VAD）をオンデバイスで動かす実行エンジン
   sherpa_onnx: ^1.13.2
+  flutter_foreground_task: ^10.0.0
+  flutter_local_notifications: ^22.3.0
 
 dev_dependencies:
   flutter_test:

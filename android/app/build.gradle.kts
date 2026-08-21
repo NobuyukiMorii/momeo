@@ -27,6 +27,8 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+        // flutter_local_notifications（iOS の録音中通知に使用）が要求する
+        isCoreLibraryDesugaringEnabled = true
     }
 
     kotlinOptions {
@@ -68,6 +70,9 @@ dependencies {
     // Play Asset Delivery のランタイム（AssetPackManager を含む）。
     // アセットパックの「DL状態の取得・進捗監視・完了後の実パス取得・再試行」に使う。
     implementation("com.google.android.play:asset-delivery:2.2.2")
+
+    // isCoreLibraryDesugaringEnabled とペアで要る実体
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
 }
 
 flutter {
