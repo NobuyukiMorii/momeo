@@ -48,7 +48,7 @@ iOS 側の変更はこれだけ。`record` のサンプルにある `fetch` は�
 `android/app/src/main/AndroidManifest.xml` の `<manifest>` 直下に追加する。
 
 ```xml
-<!-- 背面で録音を続けるためのフォアグラウンドサービス（常駐通知が出る） -->
+<!-- バックグラウンドで録音を続けるためのフォアグラウンドサービス（常駐通知が出る） -->
 <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
 <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE"/>
 ```
@@ -76,9 +76,9 @@ import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 
 // ============================================================
-// ListeningForegroundService — 背面で録音を続けるための常駐サービス（Android 専用）
+// ListeningForegroundService — バックグラウンドで録音を続けるための常駐サービス（Android 専用）
 //
-//   Android は 9 以降、背面のアプリからマイクを触れない。継続するには
+//   Android は 9 以降、バックグラウンドのアプリからマイクを触れない。継続するには
 //   microphone タイプのフォアグラウンドサービスを動かし、常駐通知を出す
 //   必要がある（通知は OS が描く。アプリの画面とは別物）。
 //
@@ -86,7 +86,7 @@ import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 //   録音・VAD・文字化は今まで通りメインアイソレートの
 //   SttListeningPipeline が行う（TaskHandler は使わない）。
 //
-//   iOS は UIBackgroundModes の audio だけで背面録音が成立するため、
+//   iOS は UIBackgroundModes の audio だけでバックグラウンド録音が成立するため、
 //   このサービスは動かさない。
 // ============================================================
 
@@ -142,7 +142,7 @@ class ListeningForegroundService {
       androidNotificationOptions: AndroidNotificationOptions(
         channelId: _channelId,
         channelName: '録音中の通知',
-        channelDescription: '背面で声を聞いている間、表示され続けます',
+        channelDescription: 'バックグラウンドで声を聞いている間、表示され続けます',
         onlyAlertOnce: true,
       ),
       iosNotificationOptions: const IOSNotificationOptions(
@@ -172,10 +172,10 @@ import を追加する。
 import 'package:momeo/stt/listening_foreground_service.dart';
 ```
 
-`start()` の中、マイク権限の確認の直後、`_vad.clear()` の前に置く。**録音を始める前にサービスを立てる**ことが重要で、順序を逆にすると背面遷移時にマイクを切られる。
+`start()` の中、マイク権限の確認の直後、`_vad.clear()` の前に置く。**録音を始める前にサービスを立てる**ことが重要で、順序を逆にするとバックグラウンド遷移時にマイクを切られる。
 
 ```dart
-    // Android は常駐サービスを立ててからでないと、背面に回った時点でマイクを切られる
+    // Android は常駐サービスを立ててからでないと、バックグラウンドに回った時点でマイクを切られる
     await ListeningForegroundService.start();
 ```
 
