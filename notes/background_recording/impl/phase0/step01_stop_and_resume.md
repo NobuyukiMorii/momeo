@@ -65,7 +65,7 @@ flowchart LR
 触るのは `ListeningNotifier` だけ。
 
 - パイプライン（`SttListeningPipeline`。録音 → 文字化 → 保存の本体）は**変更しない**。止めて再開しても壊れない作りが既に済んでいる
-- 監視の後片付けコードも**書かない**。`ListeningNotifier` が消えるとき（autoDispose）に一緒に消える
+- 監視の後片付けは、`ListeningNotifier` が消えるとき（autoDispose）の片付け処理に1行足すだけ
 
 罠が1つだけある。
 

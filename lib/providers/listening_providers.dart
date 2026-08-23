@@ -1,6 +1,9 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart' show debugPrint;
+// アプリがバックグラウンドかフォアグラウンドかを把握するための3つのクラスを取り込む
+import 'package:flutter/widgets.dart'
+    show AppLifecycleListener, AppLifecycleState, WidgetsBinding;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:momeo/database/app_database.dart';
@@ -129,8 +132,16 @@ class ListeningNotifier extends AsyncNotifier<ListeningState> {
   Future<ListeningState> build() async {
     _repository = ref.watch(voiceMemoRepositoryProvider);
     _disposed = false;
+
+    // アプリのライフサイクルに合わせた録音の停止・再開を管理するリスナーを作成
+    final lifecycleListener = AppLifecycleListener(
+      onPause: _onAppPaused, // バックグラウンド遷移で録音を止める
+      onResume: _onAppResumed, // フォアグラウンド復帰で再開する
+    );
+
     ref.onDispose(() {
       _disposed = true;
+      lifecycleListener.dispose();
       _pipeline?.dispose();
       _pipeline = null;
     });
@@ -169,9 +180,36 @@ class ListeningNotifier extends AsyncNotifier<ListeningState> {
         return;
       }
       _pipeline = pipeline;
+
+      // _startPipeline() の最中にアプリがバックグラウンドへ移ると、_onAppPaused の時点で録音がまだ無い。
+      // その場合の保険として、今バックグラウンドにいるなら始まったばかりの録音をここで止める
+      if (WidgetsBinding.instance.lifecycleState == AppLifecycleState.paused) {
+        await pipeline.stop();
+      }
     } catch (error) {
       // 準備待ち画面やエラー表示はまだ無い。ここではログに記録するだけ
       debugPrint('[listening] リスニングを開始できませんでした: $error');
+    }
+  }
+
+  // ---------------------------------
+  // アプリがバックグラウンドに移ったときの録音の停止
+  // ---------------------------------
+  void _onAppPaused() {
+    debugPrint('[listening] バックグラウンド遷移: 録音を停止します');
+    unawaited(_pipeline?.stop());
+  }
+
+  // ---------------------------------
+  // アプリがフォアグラウンドに復帰したときの録音の再開
+  // ---------------------------------
+  Future<void> _onAppResumed() async {
+    debugPrint('[listening] フォアグラウンド復帰: 録音を再開します');
+    try {
+      await _pipeline?.start();
+    } catch (error) {
+      // バックグラウンド中の権限取り消しなどはログのみ。権限の取り直しは RootView が担う
+      debugPrint('[listening] リスニングを再開できませんでした: $error');
     }
   }
 
