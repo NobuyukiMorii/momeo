@@ -32,13 +32,13 @@ class ListeningForegroundService {
     // Android でなければ何もしない
     if (!Platform.isAndroid) return false;
 
-    // 通知許可を取得
+    // 通知の許可を確認（許可の要求は設定を ON にする操作の中で済ませている）
     final permission =
         await FlutterForegroundTask.checkNotificationPermission();
-    // 通知が許可されていなければ
+    // 許可が無ければ起動しない（後から OS 設定で取り消されたケース。フォアグラウンドだけの録音に落ちる）
     if (permission != NotificationPermission.granted) {
-      // 許可を要求
-      await FlutterForegroundTask.requestNotificationPermission();
+      debugPrint('[fgService] 通知が許可されていないため、フォアグラウンドサービスを起動しません');
+      return false;
     }
 
     // フォアグラウンドサービスを初期化
