@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io' show Platform;
 
 import 'package:flutter/foundation.dart' show debugPrint;
 // アプリがバックグラウンドかフォアグラウンドかを把握するための3つのクラスを取り込む
@@ -8,8 +9,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:momeo/database/app_database.dart';
 import 'package:momeo/providers/database_providers.dart';
+import 'package:momeo/providers/settings_providers.dart';
 import 'package:momeo/providers/stt_providers.dart';
 import 'package:momeo/repositories/voice_memo_repository.dart';
+import 'package:momeo/stt/listening_foreground_service.dart';
 import 'package:momeo/stt/stt_listening_pipeline.dart';
 import 'package:momeo/stt/stt_model_provisioner.dart';
 
@@ -128,6 +131,11 @@ class ListeningNotifier extends AsyncNotifier<ListeningState> {
   // 破棄後は state に触れないためのフラグ（DB への保存だけは続ける）
   bool _disposed = false;
 
+  // バックグラウンドでも録音を続ける状態が成立しているか ↓
+  // ・ バックグラウンド録音設定が ON
+  // ・ Android のフォアグラウンドサービスまで起動できている
+  bool _keepsRecordingInBackground = false;
+
   @override
   Future<ListeningState> build() async {
     _repository = ref.watch(voiceMemoRepositoryProvider);
@@ -139,11 +147,15 @@ class ListeningNotifier extends AsyncNotifier<ListeningState> {
       onResume: _onAppResumed, // フォアグラウンド復帰で再開する
     );
 
+    // 録音中に「バックグラウンド録音」設定を切り替えられたら、その場で反映する
+    ref.listen(backgroundRecordingProvider, _onBackgroundRecordingSettingChanged);
+
     ref.onDispose(() {
       _disposed = true;
       lifecycleListener.dispose();
       _pipeline?.dispose();
       _pipeline = null;
+      unawaited(ListeningForegroundService.stop()); // フォアグラウンドサービスを終了
     });
 
     final memos = await _repository.findAll();
@@ -173,17 +185,23 @@ class ListeningNotifier extends AsyncNotifier<ListeningState> {
         onSpeechActiveChanged: _onSpeechActiveChanged,
         onLevelChanged: (level) => _latestLevel = level,
       );
+
+      // 録音を始める前にバックグラウンドでも続ける状態を作る
+      _keepsRecordingInBackground = await _prepareBackgroundRecording();
+
       await pipeline.start();
 
       if (_disposed) {
         await pipeline.dispose();
+        await ListeningForegroundService.stop();
         return;
       }
       _pipeline = pipeline;
 
       // _startPipeline() の最中にアプリがバックグラウンドへ移ると、_onAppPaused の時点で録音がまだ無い。
       // その場合の保険として、今バックグラウンドにいるなら始まったばかりの録音をここで止める
-      if (WidgetsBinding.instance.lifecycleState == AppLifecycleState.paused) {
+      if (!_keepsRecordingInBackground && // バックグラウンドで録音を続ける状態が成立していない
+          WidgetsBinding.instance.lifecycleState == AppLifecycleState.paused) { // アプリがバックグラウンドに移った
         await pipeline.stop();
       }
     } catch (error) {
@@ -193,9 +211,56 @@ class ListeningNotifier extends AsyncNotifier<ListeningState> {
   }
 
   // ---------------------------------
-  // アプリがバックグラウンドに移ったときの録音の停止
+  // バックグラウンドでも録音を続けられるよう準備
+  // ---------------------------------
+  Future<bool> _prepareBackgroundRecording() async {
+    // 「バックグラウンド録音」設定を取得
+    final isEnabled =
+        ref.read(backgroundRecordingProvider).value?.isEnabled ?? false;
+    // 「バックグラウンド録音」設定が OFF なら何もしない
+    if (!isEnabled) return false;
+    // Android でなければ何もしない
+    if (!Platform.isAndroid) return false;
+    // フォアグラウンドサービスを起動
+    return ListeningForegroundService.start();
+  }
+
+  // ---------------------------------
+  // 「バックグラウンド録音」設定を切り替えた時
+  // ---------------------------------
+  Future<void> _onBackgroundRecordingSettingChanged(
+    AsyncValue<BackgroundRecordingState>? previous,
+    AsyncValue<BackgroundRecordingState> next,
+  ) async {
+    // 「バックグラウンド録音」の前の設定
+    final wasEnabled = previous?.value?.isEnabled ?? false;
+    // 「バックグラウンド録音」の新しい設定
+    final isEnabled = next.value?.isEnabled ?? false;
+    // 前の設定と新しい設定が同じなら何もしない
+    if (isEnabled == wasEnabled) return;
+    // 録音中でなければ何もしない
+    if (_pipeline == null) return;
+
+    // 「バックグラウンド録音」設定が ON なら
+    if (isEnabled) {
+      // フォアグラウンドサービスを起動
+      _keepsRecordingInBackground = await _prepareBackgroundRecording();
+    } else { // 「バックグラウンド録音」設定が OFF なら
+      // フォアグラウンドサービスを終了
+      _keepsRecordingInBackground = false;
+      await ListeningForegroundService.stop();
+    }
+  }
+
+  // ---------------------------------
+  // アプリがバックグラウンドに移ったときの録音の停止・継続
   // ---------------------------------
   void _onAppPaused() {
+    if (_keepsRecordingInBackground) { // バックグラウンドでも録音を続けられる状態なら
+      // 録音を止めずにそのまま続ける
+      debugPrint('[listening] バックグラウンド遷移: 録音を続けます');
+      return;
+    }
     debugPrint('[listening] バックグラウンド遷移: 録音を停止します');
     unawaited(_pipeline?.stop());
   }
