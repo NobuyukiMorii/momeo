@@ -5,6 +5,8 @@ import 'package:flutter/foundation.dart' show debugPrint;
 // アプリがバックグラウンドかフォアグラウンドかを把握するための3つのクラスを取り込む
 import 'package:flutter/widgets.dart'
     show AppLifecycleListener, AppLifecycleState, WidgetsBinding;
+import 'package:flutter_foreground_task/flutter_foreground_task.dart'
+    show FlutterForegroundTask;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:momeo/database/app_database.dart';
@@ -150,9 +152,13 @@ class ListeningNotifier extends AsyncNotifier<ListeningState> {
     // 録音中に「バックグラウンド録音」設定を切り替えられたら、その場で反映する
     ref.listen(backgroundRecordingProvider, _onBackgroundRecordingSettingChanged);
 
+    // 常駐通知の停止ボタンからの停止要求を受け取る（Android）
+    FlutterForegroundTask.addTaskDataCallback(_onServiceDataReceived);
+
     ref.onDispose(() {
       _disposed = true;
       lifecycleListener.dispose();
+      FlutterForegroundTask.removeTaskDataCallback(_onServiceDataReceived);
       _pipeline?.dispose();
       _pipeline = null;
       unawaited(ListeningForegroundService.stop()); // フォアグラウンドサービスを終了
@@ -249,6 +255,26 @@ class ListeningNotifier extends AsyncNotifier<ListeningState> {
       // フォアグラウンドサービスを終了
       _keepsRecordingInBackground = false;
       await ListeningForegroundService.stop();
+    }
+  }
+
+  // ---------------------------------
+  // 常駐通知の停止ボタンが押されたとき（Android）
+  // ---------------------------------
+  void _onServiceDataReceived(Object data) {
+    // 停止要求以外のメッセージは無視
+    if (data != listeningServiceStopRequested) return;
+    // バックグラウンドでも録音を続ける状態を解除
+    _keepsRecordingInBackground = false;
+    // フォアグラウンドサービスを終了
+    unawaited(ListeningForegroundService.stop());
+    // 「バックグラウンド録音」設定を OFF に戻す
+    unawaited(ref.read(backgroundRecordingProvider.notifier).setEnabled(false));
+    // バックグラウンドにいるとき
+    if (WidgetsBinding.instance.lifecycleState == AppLifecycleState.paused) {
+      // 録音を停止
+      debugPrint('[listening] 通知の停止ボタン: 録音を停止します');
+      unawaited(_pipeline?.stop());
     }
   }
 

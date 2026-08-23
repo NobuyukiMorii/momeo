@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:momeo/foundation/app_scroll_behavior.dart';
 import 'package:momeo/foundation/app_theme.dart';
@@ -17,6 +18,11 @@ import 'package:momeo/providers/stt_providers.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // ---------------------------------
+  // 常駐通知の停止ボタンを効かせるための準備（Android）
+  // ---------------------------------
+  FlutterForegroundTask.initCommunicationPort();
 
   // ---------------------------------
   // 起動直後にキーボードを自動的に閉じる

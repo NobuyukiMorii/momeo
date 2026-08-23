@@ -4,19 +4,14 @@ import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 
 // ============================================================
-// ListeningForegroundService — バックグラウンドで録音を続けるためのフォアグラウンドサービス（Android 専用）
-//
-//   Android は 9 以降、バックグラウンドのアプリからマイクを触れない。継続するには
-//   microphone タイプのフォアグラウンドサービスを動かし、常駐通知を出す
-//   必要がある（通知は OS が描く。アプリの画面とは別物）。
-//
-//   ここではフォアグラウンドサービスを「録音し続ける権利と常駐通知」としてだけ使い、
-//   録音・VAD・文字化は今まで通りメインアイソレートの
-//   SttListeningPipeline が行う（TaskHandler は使わない）。
-//
-//   iOS は UIBackgroundModes の audio だけでバックグラウンド録音が成立するため、
-//   このフォアグラウンドサービスは動かさない。
+// バックグラウンドで録音を続けるためのフォアグラウンドサービス（Android 専用）
 // ============================================================
+
+// 停止ボタンの押下をアプリ本体へ伝えるメッセージ
+const listeningServiceStopRequested = 'listeningServiceStopRequested';
+
+// 常駐通知に置く停止ボタンの識別子
+const _stopButtonId = 'stop_listening';
 
 class ListeningForegroundService {
   // 通知チャンネルとフォアグラウンドサービスの識別子
@@ -53,6 +48,11 @@ class ListeningForegroundService {
       serviceTypes: [ForegroundServiceTypes.microphone],
       notificationTitle: 'momeo',
       notificationText: '声を聞いています',
+      // 常駐通知に停止ボタンを置く（押下は下の _ListeningServiceHandler 経由でアプリ本体に届く）
+      notificationButtons: [
+        const NotificationButton(id: _stopButtonId, text: 'バックグラウンド録音を停止'),
+      ],
+      callback: startListeningServiceCallback,
     );
     // フォアグラウンドサービスの起動に失敗
     if (result is ServiceRequestFailure) {
@@ -86,6 +86,8 @@ class ListeningForegroundService {
         channelId: _channelId,
         channelName: '録音中の通知',
         channelDescription: 'バックグラウンドで声を聞いている間、表示され続けます',
+        // 既定の LOW だと通知欄の「サイレント」欄に入るため、通常欄に出す
+        channelImportance: NotificationChannelImportance.DEFAULT,
         onlyAlertOnce: true,
       ),
       iosNotificationOptions: const IOSNotificationOptions(
@@ -93,7 +95,7 @@ class ListeningForegroundService {
         playSound: false,
       ),
       foregroundTaskOptions: ForegroundTaskOptions(
-        // 録音はメインアイソレート側で行うため、フォアグラウンドサービス側の定期実行は使わない
+        // 録音はアプリ本体側で行うため、フォアグラウンドサービス側の定期実行は使わない
         eventAction: ForegroundTaskEventAction.nothing(),
         allowWakeLock: true,
       ),
@@ -101,5 +103,42 @@ class ListeningForegroundService {
     
     // 初期化完了
     _initialized = true;
+  }
+}
+
+// ---------------------------------
+// 常駐通知の停止ボタンの押下をアプリ本体へ知らせる
+// （押下は Android の仕様でここにしか届かない。録音を止める処理は受け取った本体側がやる）
+// ---------------------------------
+@pragma('vm:entry-point')
+void startListeningServiceCallback() {
+  // フォアグラウンドサービスのハンドラーを設定
+  FlutterForegroundTask.setTaskHandler(_ListeningServiceHandler());
+}
+
+// ---------------------------------
+// フォアグラウンドサービスのハンドラー
+// ---------------------------------
+class _ListeningServiceHandler extends TaskHandler {
+
+  // フォアグラウンドサービスが起動した時
+  @override
+  Future<void> onStart(DateTime timestamp, TaskStarter starter) async {}
+
+  // フォアグラウンドサービスが繰り返し実行された時
+  @override
+  void onRepeatEvent(DateTime timestamp) {}
+
+  // フォアグラウンドサービスが終了した時
+  @override
+  Future<void> onDestroy(DateTime timestamp, bool isTimeout) async {}
+
+  // 停止ボタンが押されたらアプリ本体へ知らせる
+  @override
+  void onNotificationButtonPressed(String id) {
+    if (id == _stopButtonId) { // 停止ボタンが押されたら
+      // アプリ本体へ知らせる
+      FlutterForegroundTask.sendDataToMain(listeningServiceStopRequested);
+    }
   }
 }
