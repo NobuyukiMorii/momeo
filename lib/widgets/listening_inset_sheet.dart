@@ -14,6 +14,7 @@ import 'package:momeo/foundation/app_radius.dart';
 import 'package:momeo/foundation/app_spacing.dart';
 import 'package:momeo/foundation/app_text_styles.dart';
 import 'package:momeo/providers/settings_providers.dart';
+import 'package:momeo/widgets/background_recording_disclosure_dialog.dart';
 import 'package:momeo/widgets/dot.dart';
 import 'package:momeo/widgets/listening_header.dart';
 
@@ -60,27 +61,6 @@ const _optionTitleDisabled = 'このアプリを使っている時だけ録音';
 const _optionDescriptionDisabled = 'アプリがバックグラウンドに移ると録音を止め、フォアグラウンドに戻ると再開します。';
 const _optionTitleEnabled = 'ほかのアプリを使っていても録音';
 const _optionDescriptionEnabled = 'ほかのアプリを使っている間や画面を消している間も、マイクで音声を録り続けます。アプリを終了すると止まります。';
-
-// 初回に有効へ切り替えるとき出す、開示と同意のダイアログの文言
-const _backgroundDisclosureTitle = 'ほかのアプリを使っていても録音しますか？';
-const _backgroundDisclosureMessage =
-    'ほかのアプリを使っている間や画面を消している間も、マイクで音声を録り続けます。\n\n'
-    '録音した音声と文字起こしはこの端末の中だけに保存され、外部に送信されることはありません。';
-// Android だけ開示に挟む一文（許可済みのとき: 録音中は常駐通知が出続けること）
-const _backgroundDisclosureNotificationNote = '録音中は、録音していることを通知でお知らせし続けます。';
-// Android だけ開示に挟む一文（許可がまだのとき: 通知の許可が条件であること）
-const _backgroundDisclosureNotificationRequiredNote =
-    'ほかのアプリを使っている時にも録音していることをお知らせし続けるため、通知の許可が必要です。';
-const _backgroundDisclosureClosingNote = 'この設定はいつでも解除できます。';
-const _backgroundDisclosureCancelLabel = 'キャンセル';
-const _backgroundDisclosureConfirmLabel = '有効にする';
-
-// Android で通知を許可してもらえなかったとき出す、有効にできない旨のダイアログの文言
-const _notificationDeniedTitle = 'バックグラウンド録音を有効にできません';
-const _notificationDeniedMessage =
-    '録音中であることをお知らせし続けるために、通知の表示が必要です。\n\n'
-    '端末の設定で momeo の通知を許可すると、有効にできるようになります。';
-const _notificationDeniedCloseLabel = 'OK';
 
 // ブラックボードの上に出す一言（空のとき・空のまま触れたとき・コピーした直後）
 const _emptyNoticeLabel = '選択したテキストが表示されます';
@@ -656,136 +636,6 @@ class _ListeningInsetSheetState extends ConsumerState<ListeningInsetSheet>
   }
 
   // ---------------------------------
-  // バックグラウンド録音の開示と同意のダイアログ
-  // ---------------------------------
-  Future<bool> _confirmBackgroundRecordingDisclosure() async {
-
-    // ---------------------------------
-    // ダイアログの文字の大きさ
-    // ---------------------------------
-    const dialogFontSize = 15.0;
-
-    // ---------------------------------
-    // Android だけ挟む、通知についての段落を組み立てる
-    // ---------------------------------
-    String? notificationNote;
-    if (Platform.isAndroid) {
-      // --- 通知の許可が既に取れているか
-      final isNotificationGranted = await Permission.notification.status.isGranted;
-      // --- 許可済みなら常駐通知が出ることだけ、まだなら許可が条件であることを伝える
-      notificationNote = isNotificationGranted
-          ? _backgroundDisclosureNotificationNote
-          : _backgroundDisclosureNotificationRequiredNote;
-    }
-    // --- 許可の確認を待つ間に画面が破棄されていたら何もしない
-    if (!mounted) return false;
-
-    // ---------------------------------
-    // 本文を組み立てる
-    // ---------------------------------
-    final message = [
-      _backgroundDisclosureMessage,
-      ?notificationNote,
-      _backgroundDisclosureClosingNote,
-    ].join('\n\n');
-
-    // ---------------------------------
-    // ダイアログを表示
-    // ---------------------------------
-    final isConfirmed = await showDialog<bool>(
-      context: context,
-      // 外側のタップで閉じさせず、どちらかを選んでもらう
-      barrierDismissible: false,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(
-          _backgroundDisclosureTitle,
-          style: AppTextStyles.button.copyWith(color: AppColors.onSurface),
-        ),
-        content: Text(
-          message,
-          style: AppTextStyles.caption.copyWith(
-            fontSize: dialogFontSize,
-            color: AppColors.onSurface,
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: Text(
-              _backgroundDisclosureCancelLabel,
-              style: AppTextStyles.caption.copyWith(
-                fontSize: dialogFontSize,
-                color: AppColors.onSurfaceVariant,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: Text(
-              _backgroundDisclosureConfirmLabel,
-              style: AppTextStyles.caption.copyWith(
-                fontSize: dialogFontSize,
-                color: AppColors.primary,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-
-    // ---------------------------------
-    // 同意が得られたか
-    // ---------------------------------
-    return isConfirmed == true;
-  }
-
-  // ---------------------------------
-  // 通知を許可してもらえなかったとき、有効にできない旨を伝えるダイアログ
-  // ---------------------------------
-  Future<void> _showNotificationDeniedDialog() async {
-
-    // ---------------------------------
-    // ダイアログの文字の大きさ
-    // ---------------------------------
-    const dialogFontSize = 15.0;
-
-    // ---------------------------------
-    // ダイアログを表示
-    // ---------------------------------
-    await showDialog<void>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(
-          _notificationDeniedTitle,
-          style: AppTextStyles.button.copyWith(color: AppColors.onSurface),
-        ),
-        content: Text(
-          _notificationDeniedMessage,
-          style: AppTextStyles.caption.copyWith(
-            fontSize: dialogFontSize,
-            color: AppColors.onSurface,
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: Text(
-              _notificationDeniedCloseLabel,
-              style: AppTextStyles.caption.copyWith(
-                fontSize: dialogFontSize,
-                color: AppColors.primary,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ---------------------------------
   // シート最下部の操作エリア
   // ---------------------------------
   Widget _buildBottomArea() {
@@ -834,22 +684,21 @@ class _ListeningInsetSheetState extends ConsumerState<ListeningInsetSheet>
     // 選んだほうを設定として保存する
     // ---------------------------------
     Future<void> select(bool isEnabled) async {
-      // --- 初めて有効にするときだけ開示が要る
-      final needsDisclosure = isEnabled && !hasEverEnabledBackgroundRecording;
-      // --- 同意が得られなければ何もしない
-      if (needsDisclosure && !await _confirmBackgroundRecordingDisclosure()) {
-        return;
+      // --- 初めて有効にするときは、開示ダイアログを出す
+      var shouldShowDisclosureDialog = isEnabled && !hasEverEnabledBackgroundRecording;
+      // --- 2回目以降の Android では
+      if (isEnabled && !shouldShowDisclosureDialog && Platform.isAndroid) {
+        // --- 通知の許可が無いときも出す
+        shouldShowDisclosureDialog = !await Permission.notification.status.isGranted;
       }
-      // --- Android は通知の許可が取れたときだけ有効にできる（録音中の常駐通知が必須のため）
-      if (isEnabled && Platform.isAndroid) {
-        // --- OS に通知の許可を求める（許可済み・拒否済みなら OS ダイアログは出ず結果だけ返る）
-        final status = await Permission.notification.request();
-        // --- 許可してもらえなければ
-        if (!status.isGranted) {
-          // --- 通知が許可されていない旨を伝えて OFF のまま
-          if (mounted) await _showNotificationDeniedDialog();
-          return;
-        }
+      // --- マウントされていない場合は何もしない
+      if (!mounted) return;
+      // --- 開示ダイアログを出すなら
+      if (shouldShowDisclosureDialog) {
+        // --- 開示ダイアログを出して、同意されたかを受け取る
+        final isConfirmed = await BackgroundRecordingDisclosureDialog.show(context);
+        // --- 同意が得られなければ何もしない
+        if (!isConfirmed) return;
       }
       // --- 設定を保存
       await ref
