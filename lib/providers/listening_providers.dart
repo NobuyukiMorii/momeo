@@ -134,8 +134,9 @@ class ListeningNotifier extends AsyncNotifier<ListeningState> {
   bool _disposed = false;
 
   // バックグラウンドでも録音を続ける状態が成立しているか ↓
-  // ・ バックグラウンド録音設定が ON
-  // ・ Android のフォアグラウンドサービスまで起動できている
+  // ・ 「バックグラウンド録音」設定が ON
+  // ・ （Androidの場合） フォアグラウンドサービスが起動できている
+  // ・ （iOSの場合） 「バックグラウンド録音」設定が ON なだけで成立
   bool _keepsRecordingInBackground = false;
 
   @override
@@ -225,10 +226,12 @@ class ListeningNotifier extends AsyncNotifier<ListeningState> {
         ref.read(backgroundRecordingProvider).value?.isEnabled ?? false;
     // 「バックグラウンド録音」設定が OFF なら何もしない
     if (!isEnabled) return false;
-    // Android でなければ何もしない
-    if (!Platform.isAndroid) return false;
-    // フォアグラウンドサービスを起動
-    return ListeningForegroundService.start();
+    // Android はフォアグラウンドサービスまで起動できて初めて成立する
+    if (Platform.isAndroid) {
+      return ListeningForegroundService.start();
+    }
+    // iOS は Info.plist の宣言（UIBackgroundModes の audio）が効くため、ここで起動するものは無い
+    return true;
   }
 
   // ---------------------------------
