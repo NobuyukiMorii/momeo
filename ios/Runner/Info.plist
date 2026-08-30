@@ -29,7 +29,7 @@
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>声をメモにするため、マイクを使用します。</string>
+	<string>声をメモにするため、マイクを使用します。設定で「ほかのアプリを使っていても録音」を有効にした場合は、ほかのアプリを使っている間や画面を消している間も録音を続けます。</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

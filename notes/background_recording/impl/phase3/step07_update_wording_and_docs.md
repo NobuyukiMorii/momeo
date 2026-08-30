@@ -19,3 +19,4 @@
 | `NSMicrophoneUsageDescription` | バックグラウンドでも録音する旨を追記 |
 | プライバシーポリシー | 骨子は「バックグラウンドでも録音する・端末内保存のみ・外部送信なし」 |
 | `notes/specs/` の関連文書 | 少なくとも `listening_flow.md`（バックグラウンド挙動の追記）と `listening_bottom_sheet.md`（Step 3 で変わる、設定を ON にする流れ）。対象の洗い出しは着手時 |
+| サイトのデモ動画（`docs/videos/how-it-works.mp4`） | 撮り直す。収録後に検索フィールドとボトムシートが画面に加わり、現行画面と合っていないため（収録は `RECORDING_MODE` の収録モードで行う） |
