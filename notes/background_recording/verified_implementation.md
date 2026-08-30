@@ -10,7 +10,7 @@
 - 開示＋同意画面がない（Play の prominent disclosure 要件を満たさない）
 - 常駐通知に停止ボタンがない
 - 常駐通知の重要度が既定のままで、通知欄の「サイレント」欄に入る
-- iOS 側に録音中を示す表示がない（Live Activity・ローカル通知いずれも未実装）
+- iOS 側に録音中を示す表示がない（その後、Live Activity で出すと決定 → `impl/phase2/step06_recording_indicator_on_ios.md`）
 
 中断復帰の設定（`RecordConfig` の `audioInterruption` ほか）だけは独立した不具合修正として本体に取り込み済みなので、以下には含めない。また、設定での ON / OFF と開示＋同意画面はその後アプリ本体側で実装済みになっている（→ 末尾「実装に着手するときの注意」）。
 
@@ -198,6 +198,6 @@ import 'package:momeo/stt/listening_foreground_service.dart';
 | ON にするタイミングの開示＋同意画面 | 実装済み（`lib/widgets/listening_inset_sheet.dart`） |
 | 常駐通知への停止ボタン | 未実装（`FlutterForegroundTask.startService` の `notificationButtons`） |
 | 常駐通知の重要度の引き上げ | 未実装（`AndroidNotificationOptions` のチャンネル設定） |
-| iOS の録音中表示（Live Activity かローカル通知） | 未実装 |
+| iOS の録音中表示 | Live Activity で出すと決定・未実装（→ `impl/phase2/step06_recording_indicator_on_ios.md`） |
 
 上記の検証実装は `SttListeningPipeline.start()` / `stop()` にサービスの起動を直結させており、「録音するなら常にバックグラウンド対応」を意味する。設定の ON/OFF はすでにあるため、戻すときはこの結線を、設定値とライフサイクルに応じて起動を判断する形へ見直すことになる。
