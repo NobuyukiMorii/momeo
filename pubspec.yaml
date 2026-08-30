@@ -52,6 +52,10 @@ dependencies:
   # バックグラウンドでも録音を続けるためのフォアグラウンドサービス（Android）
   flutter_foreground_task: ^10.0.0
 
+  # バックグラウンド録音中の iOS の Live Activity
+  # （2.5 以降はこのプロジェクトより新しい Dart SDK を要求するため 2.4 系）
+  live_activities: ^2.4.9
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

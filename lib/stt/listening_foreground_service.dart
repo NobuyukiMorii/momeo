@@ -47,7 +47,7 @@ class ListeningForegroundService {
       serviceId: _serviceId,
       serviceTypes: [ForegroundServiceTypes.microphone],
       notificationTitle: 'momeo',
-      notificationText: '声を聞いています',
+      notificationText: '音声を認識しています',
       // 常駐通知に停止ボタンを置く（押下は下の _ListeningServiceHandler 経由でアプリ本体に届く）
       notificationButtons: [
         const NotificationButton(id: _stopButtonId, text: 'バックグラウンド録音を停止'),
@@ -85,7 +85,7 @@ class ListeningForegroundService {
       androidNotificationOptions: AndroidNotificationOptions(
         channelId: _channelId,
         channelName: '録音中の通知',
-        channelDescription: 'バックグラウンドで声を聞いている間、表示され続けます',
+        channelDescription: 'バックグラウンドで音声を認識している間、表示され続けます',
         // 既定の LOW だと通知欄の「サイレント」欄に入るため、通常欄に出す
         channelImportance: NotificationChannelImportance.DEFAULT,
         onlyAlertOnce: true,

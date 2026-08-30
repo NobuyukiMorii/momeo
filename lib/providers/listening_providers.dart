@@ -15,6 +15,7 @@ import 'package:momeo/providers/settings_providers.dart';
 import 'package:momeo/providers/stt_providers.dart';
 import 'package:momeo/repositories/voice_memo_repository.dart';
 import 'package:momeo/stt/listening_foreground_service.dart';
+import 'package:momeo/stt/listening_live_activity.dart';
 import 'package:momeo/stt/stt_listening_pipeline.dart';
 import 'package:momeo/stt/stt_model_provisioner.dart';
 
@@ -163,6 +164,7 @@ class ListeningNotifier extends AsyncNotifier<ListeningState> {
       _pipeline?.dispose();
       _pipeline = null;
       unawaited(ListeningForegroundService.stop()); // フォアグラウンドサービスを終了
+      unawaited(ListeningLiveActivity.dismiss()); // 「録音中」の Live Activity を消す（iOS）
     });
 
     final memos = await _repository.findAll();
@@ -196,11 +198,17 @@ class ListeningNotifier extends AsyncNotifier<ListeningState> {
       // 録音を始める前にバックグラウンドでも続ける状態を作る
       _keepsRecordingInBackground = await _prepareBackgroundRecording();
 
+      // iOS の Live Activity を表示
+      if (_keepsRecordingInBackground) {
+        unawaited(ListeningLiveActivity.show());
+      }
+
       await pipeline.start();
 
       if (_disposed) {
         await pipeline.dispose();
         await ListeningForegroundService.stop();
+        await ListeningLiveActivity.dismiss();
         return;
       }
       _pipeline = pipeline;
@@ -254,10 +262,16 @@ class ListeningNotifier extends AsyncNotifier<ListeningState> {
     if (isEnabled) {
       // フォアグラウンドサービスを起動
       _keepsRecordingInBackground = await _prepareBackgroundRecording();
+      // iOS の Live Activity を表示
+      if (_keepsRecordingInBackground) {
+        unawaited(ListeningLiveActivity.show());
+      }
     } else { // 「バックグラウンド録音」設定が OFF なら
       // フォアグラウンドサービスを終了
       _keepsRecordingInBackground = false;
       await ListeningForegroundService.stop();
+      // iOS の Live Activity を消す
+      await ListeningLiveActivity.dismiss();
     }
   }
 
@@ -299,6 +313,10 @@ class ListeningNotifier extends AsyncNotifier<ListeningState> {
   // ---------------------------------
   Future<void> _onAppResumed() async {
     debugPrint('[listening] フォアグラウンド復帰: 録音を再開します');
+    // バックグラウンドでも録音を続ける状態なら、iOS の Live Activity が消えていないか確認して出し直す
+    if (_keepsRecordingInBackground) {
+      unawaited(ListeningLiveActivity.show());
+    }
     try {
       await _pipeline?.start();
     } catch (error) {
@@ -334,6 +352,9 @@ class ListeningNotifier extends AsyncNotifier<ListeningState> {
 
     final createdAt = DateTime.now();
     final id = await _repository.insert(content: content, createdAt: createdAt);
+
+    // バックグラウンド録音中なら、iOS の Live Activity の件数を進める（表示していなければ何もしない）
+    unawaited(ListeningLiveActivity.incrementMemoCount());
 
     if (_disposed) return;
     final current = state.value;
