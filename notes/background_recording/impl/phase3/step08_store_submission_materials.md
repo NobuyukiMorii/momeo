@@ -22,7 +22,11 @@
 | App Store Connect | App Privacy（プライバシーラベル）の更新 |
 | 両方 | プライバシーポリシー（Step 7）とストア掲載文が実際の挙動と食い違っていないことの確認 |
 
-注意が2つある（→ `../../spike_findings.md` の「細かい発見」）。
+注意が2つある（→ `../../spike_findings.md` の「細かい発見」）。どちらも確認済みで、扱いは決めてある。
 
-- マニフェストには、既存の Play Asset Delivery（アプリ本体と別に大きなファイルを Play から配る仕組み。モデルの配布用に導入済み）由来で `dataSync` 型のサービスも混ざっている。Play の用途申告が microphone だけで済まない可能性がある
-- `flutter_foreground_task` は momeo が使わない権限（`RECEIVE_BOOT_COMPLETED` など）も持ち込む。審査で目を引くなら削ることをここで検討する
+- マニフェストには、既存の Play Asset Delivery（アプリ本体と別に大きなファイルを Play から配る仕組み。モデルの配布用に導入済み）由来で `dataSync` 型のサービスも混ざっている。マージ後のマニフェストで確認済みで、Play の用途申告は **microphone と dataSync の2つ**を出す
+- `flutter_foreground_task` は momeo が使わない権限（`RECEIVE_BOOT_COMPLETED` など）も持ち込む。ただしこの権限は Play Asset Delivery も再起動後のアセット展開の再開に使うため、**削らない**（削ると配布が壊れる恐れがある）
+
+## 提出資料
+
+管理画面へ入力する文面（英文＋対訳）・実演動画の撮影手順・権限の由来一覧は `notes/release/store_submission/background_recording_submission.md` にまとめてある。
