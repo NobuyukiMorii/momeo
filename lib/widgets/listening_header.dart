@@ -7,10 +7,13 @@ import 'package:momeo/foundation/app_text_styles.dart';
 // ヘッダーの高さ
 const listeningHeaderHeight = 56.0;
 
-// 入力欄がヘッダーの上下に残す余白
-const _fieldMargin = AppSpacing.xs;
+// 入力欄がヘッダーの上に残す余白
+const _fieldMarginTop = AppSpacing.xs;
 
-// 入力欄の枠線の太さ
+// 入力欄がヘッダーの下線との間に残す余白
+const _fieldMarginBottom = AppSpacing.s;
+
+// 入力欄の枠線と、カード一覧との境目の線の太さ
 const _fieldBorderWidth = 1.5;
 
 // 虫めがねと消すボタンの大きさ
@@ -127,14 +130,18 @@ class ListeningHeader extends StatelessWidget {
         fit: StackFit.expand,
         children: [
           // ---------------------------------
-          // 背景の上半分
+          // 背景と、カード一覧との境目の線
           // ---------------------------------
-          Positioned(
-            top: 0,
-            left: 0,
-            right: 0,
-            height: safeAreaTop + listeningHeaderHeight / 2,
-            child: const ColoredBox(color: AppColors.surface),
+          const DecoratedBox(
+            decoration: BoxDecoration(
+              color: AppColors.surface,
+              border: Border(
+                bottom: BorderSide(
+                  color: AppColors.onSurface,
+                  width: _fieldBorderWidth,
+                ),
+              ),
+            ),
           ),
           // ---------------------------------
           // 入力欄
@@ -142,9 +149,9 @@ class ListeningHeader extends StatelessWidget {
           Padding(
             padding: EdgeInsets.fromLTRB(
               AppSpacing.l,
-              safeAreaTop + _fieldMargin,
+              safeAreaTop + _fieldMarginTop,
               AppSpacing.l,
-              _fieldMargin,
+              _fieldMarginBottom,
             ),
             child: GestureDetector(
               onTap: _toggleInput,
