@@ -64,8 +64,8 @@ fi
 # ---------------------------------
 # Android の release 以外は flutter run
 # ---------------------------------
-# 端末が変わっていたら掃除する
-bash "$SCRIPT_DIR/clean_on_simulator_device_switch.sh" "$FLUTTER_DEVICE_ID"
+# 前回の iOS ビルドの残骸が残っていたらクリーンする
+bash "$SCRIPT_DIR/clean_stale_ios_build.sh" "$FLUTTER_DEVICE_ID"
 
 # Android のモデルを置く
 bash "$SCRIPT_DIR/place_android_device_models.sh" "$FLUTTER_DEVICE_ID"
