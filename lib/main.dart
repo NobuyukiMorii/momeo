@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -15,6 +17,7 @@ import 'package:momeo/pages/preparation_gate_page.dart';
 import 'package:momeo/pages/splash_page.dart';
 import 'package:momeo/pages/listening/listening_page.dart';
 import 'package:momeo/providers/stt_providers.dart';
+import 'package:momeo/stt/listening_live_activity.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -56,6 +59,11 @@ void main() {
     runApp(const RecordingApp());
     return;
   }
+
+  // ---------------------------------
+  // 前回のプロセスが残した「録音中」の Live Activity を消す（iOS）
+  // ---------------------------------
+  unawaited(ListeningLiveActivity.dismissLeftovers());
 
   // ---------------------------------
   // ProviderScope で包むと、配下のどこからでも Provider を参照できる

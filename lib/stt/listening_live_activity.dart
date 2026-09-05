@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:io' show Platform;
 
+import 'package:flutter/foundation.dart' show debugPrint;
+
 import 'package:live_activities/live_activities.dart';
 import 'package:live_activities/models/live_activity_state.dart';
 
@@ -37,6 +39,9 @@ class ListeningLiveActivity {
   // 出し直しのタイマー
   static Timer? _restartTimer;
 
+  // 起動時の片付け（前回残った Live Activity の終了）。show はこれが終わるのを待ってから出す
+  static Future<void>? _leftoverCleanup;
+
   // ---------------------------------
   // 初期設定
   // ---------------------------------
@@ -50,6 +55,19 @@ class ListeningLiveActivity {
   }
 
   // ---------------------------------
+  // 前回のプロセスが残した Live Activity を消す（アプリ起動時に呼ぶ）
+  // ---------------------------------
+  static Future<void> dismissLeftovers() {
+    // iOS でなければ何もしない
+    if (!Platform.isIOS) return Future.value();
+    // 片付けを始める（show が待てるように Future を持っておく）
+    _leftoverCleanup = _plugin.endAllActivities().catchError((Object error) {
+      debugPrint('[live_activity] 前回の Live Activity を消せませんでした: $error');
+    });
+    return _leftoverCleanup!;
+  }
+
+  // ---------------------------------
   // ライブアクティビティを表示
   // ---------------------------------
   static Future<void> show() async {
@@ -59,6 +77,9 @@ class ListeningLiveActivity {
 
     // Live Activity を表示するか
     _shouldShowActivity = true;
+
+    // 起動時の片付けが終わる前に出すと、出した直後に消されてしまうので待つ
+    await _leftoverCleanup;
 
     // 初期設定
     await _initializeOnce();
