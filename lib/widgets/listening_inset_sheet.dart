@@ -841,34 +841,42 @@ class _ListeningInsetSheetState extends ConsumerState<ListeningInsetSheet>
         builder: (context, content) {
           return SizedBox(
             height: _currentHeight + safeBottom,
-            child: GestureDetector(
-              // --- ドラッグ中は指に追従させる
-              onVerticalDragUpdate: _onDragUpdate,
-              // --- 指を離したら開くか閉じるかへ落ち着かせる
-              onVerticalDragEnd: _onDragEnd,
-              // 背景が透けていても、素通りして後ろの一覧に触れないよう受け止める
-              behavior: HitTestBehavior.opaque,
-              // --- シートの見た目（土台は塗らないので、タブの外は一覧がそのまま見える） ---
-              child: Column(
-                children: [
-                  // 中身は常に自然な高さで並べ、シートが低い間は下へはみ出させて隠す
-                  Expanded(
-                    child: ClipRect(
-                      child: OverflowBox(
-                        alignment: Alignment.topCenter,
-                        minHeight: 0,
-                        maxHeight: double.infinity,
-                        child: content,
+            child: CustomPaint(
+              // 帯の下から Safe Area の手前まで、左右へ太線を引く。
+              // foregroundPainter にして、中の白い面より必ず手前へ描く。
+              foregroundPainter: _SheetSideStrokePainter(
+                progress: _openController.value,
+                safeBottom: safeBottom,
+              ),
+              child: GestureDetector(
+                // --- ドラッグ中は指に追従させる
+                onVerticalDragUpdate: _onDragUpdate,
+                // --- 指を離したら開くか閉じるかへ落ち着かせる
+                onVerticalDragEnd: _onDragEnd,
+                // 背景が透けていても、素通りして後ろの一覧に触れないよう受け止める
+                behavior: HitTestBehavior.opaque,
+                // --- シートの見た目（土台は塗らないので、タブの外は一覧がそのまま見える） ---
+                child: Column(
+                  children: [
+                    // 中身は常に自然な高さで並べ、シートが低い間は下へはみ出させて隠す
+                    Expanded(
+                      child: ClipRect(
+                        child: OverflowBox(
+                          alignment: Alignment.topCenter,
+                          minHeight: 0,
+                          maxHeight: double.infinity,
+                          child: content,
+                        ),
                       ),
                     ),
-                  ),
-                  // --- 安全領域は透けさせない
-                  SizedBox(
-                    width: double.infinity,
-                    height: safeBottom,
-                    child: const ColoredBox(color: AppColors.surface),
-                  ),
-                ],
+                    // --- 安全領域は透けさせない
+                    SizedBox(
+                      width: double.infinity,
+                      height: safeBottom,
+                      child: const ColoredBox(color: AppColors.surface),
+                    ),
+                  ],
+                ),
               ),
             ),
           );
@@ -894,6 +902,45 @@ class _ListeningInsetSheetState extends ConsumerState<ListeningInsetSheet>
       ),
     );
   }
+}
+
+// ---------------------------------
+// 開いたシートの左右線
+//
+//   帯のベースラインから Safe Area の手前まで左右へ線を下ろす。
+//   Safe Area 内には左右線・下線とも描かない。
+// ---------------------------------
+class _SheetSideStrokePainter extends CustomPainter {
+  const _SheetSideStrokePainter({
+    required this.progress,
+    required this.safeBottom,
+  });
+
+  final double progress;
+  final double safeBottom;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (progress <= 0) return;
+
+    final inset = _tabStrokeWidth / 2;
+    final top = _bandHeight - inset;
+    final bottom = size.height - safeBottom;
+    final paint = Paint()
+      ..color = AppColors.onSurface
+      ..strokeWidth = _tabStrokeWidth
+      ..style = PaintingStyle.stroke;
+
+    final left = inset;
+    final right = size.width - inset;
+
+    canvas.drawLine(Offset(left, top), Offset(left, bottom), paint);
+    canvas.drawLine(Offset(right, top), Offset(right, bottom), paint);
+  }
+
+  @override
+  bool shouldRepaint(_SheetSideStrokePainter oldDelegate) =>
+      oldDelegate.progress != progress || oldDelegate.safeBottom != safeBottom;
 }
 
 // ---------------------------------
