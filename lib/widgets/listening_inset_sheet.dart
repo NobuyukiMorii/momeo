@@ -34,7 +34,7 @@ import 'package:permission_handler/permission_handler.dart';
 // ---------------------------------
 
 // タブの帯の高さ（閉じているときはこの帯だけが見えている）
-const _bandHeight = 48.0;
+const _bandHeight = 52.0;
 
 // 帯の下に出すカード群の高さ（背の高い録音の選択肢に合わせた固定値）
 const _panelCardHeight = 172.0;
