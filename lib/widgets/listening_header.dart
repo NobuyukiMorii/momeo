@@ -28,6 +28,7 @@ class ListeningHeader extends StatelessWidget {
     required this.controller,
     required this.focusNode,
     required this.onCleared,
+    this.noticeLabel,
   });
 
   // 入力中のキーワード
@@ -38,6 +39,9 @@ class ListeningHeader extends StatelessWidget {
 
   // クリアボタンを押したときの通知
   final VoidCallback onCleared;
+
+  // 入力欄の代わりに出す文言（null なら入力欄を出す）
+  final String? noticeLabel;
 
   // ---------------------------------
   // テキストフィールド
@@ -116,13 +120,79 @@ class ListeningHeader extends StatelessWidget {
   }
 
   // ---------------------------------
+  // 入力欄の代わりに出す文言（選択中のメモを操作している間など）
+  // ---------------------------------
+  Widget _buildNotice(String label) {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Padding(
+        padding: const EdgeInsets.only(left: AppSpacing.l),
+        child: Text(
+          label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: AppTextStyles.caption.copyWith(
+            fontSize: _inputFontSize,
+            color: AppColors.onSurface,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ---------------------------------
+  // 入力欄（虫めがね・テキストフィールド・クリアボタン）
+  // ---------------------------------
+  Widget _buildField() {
+    return GestureDetector(
+      onTap: _toggleInput,
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        padding: const EdgeInsets.only(left: AppSpacing.l),
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(AppRadius.pill),
+          border: Border.all(
+            color: AppColors.onSurface,
+            width: _fieldBorderWidth,
+          ),
+        ),
+        child: Row(
+          children: [
+            // --------------------
+            // 検索アイコン
+            // --------------------
+            const Icon(
+              Icons.search,
+              size: _iconSize,
+              color: AppColors.onSurface,
+            ),
+            // --------------------
+            // テキストフィールド
+            // --------------------
+            const SizedBox(width: AppSpacing.xs),
+            Expanded(child: _buildInput()),
+            // --------------------
+            // クリアボタン
+            // --------------------
+            _buildClearButton(),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ---------------------------------
   // 組み立て
   // ---------------------------------
   @override
   Widget build(BuildContext context) {
-
     // 安全領域の上端
     final safeAreaTop = MediaQuery.paddingOf(context).top;
+
+    // 入力欄の代わりに出す文言（null なら入力欄を出す）
+    final label = noticeLabel;
 
     return SizedBox(
       height: safeAreaTop + listeningHeaderHeight,
@@ -144,7 +214,7 @@ class ListeningHeader extends StatelessWidget {
             ),
           ),
           // ---------------------------------
-          // 入力欄
+          // 入力欄、または入力欄の代わりの文言
           // ---------------------------------
           Padding(
             padding: EdgeInsets.fromLTRB(
@@ -153,42 +223,7 @@ class ListeningHeader extends StatelessWidget {
               AppSpacing.l,
               _fieldMarginBottom,
             ),
-            child: GestureDetector(
-              onTap: _toggleInput,
-              behavior: HitTestBehavior.opaque,
-              child: Container(
-                padding: const EdgeInsets.only(left: AppSpacing.l),
-                decoration: BoxDecoration(
-                  color: AppColors.surface,
-                  borderRadius: BorderRadius.circular(AppRadius.pill),
-                  border: Border.all(
-                    color: AppColors.onSurface,
-                    width: _fieldBorderWidth,
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    // --------------------
-                    // 検索アイコン
-                    // --------------------
-                    const Icon(
-                      Icons.search,
-                      size: _iconSize,
-                      color: AppColors.onSurface,
-                    ),
-                    // --------------------
-                    // テキストフィールド
-                    // --------------------
-                    const SizedBox(width: AppSpacing.xs),
-                    Expanded(child: _buildInput()),
-                    // --------------------
-                    // クリアボタン
-                    // --------------------
-                    _buildClearButton(),
-                  ],
-                ),
-              ),
-            ),
+            child: label == null ? _buildField() : _buildNotice(label),
           ),
         ],
       ),

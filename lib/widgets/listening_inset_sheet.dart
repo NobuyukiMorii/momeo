@@ -1,14 +1,8 @@
-import 'dart:async';
 import 'dart:io' show Platform;
-import 'dart:math' as math;
 
-import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
-import 'package:permission_handler/permission_handler.dart';
-import 'package:momeo/database/app_database.dart';
 import 'package:momeo/foundation/app_colors.dart';
 import 'package:momeo/foundation/app_radius.dart';
 import 'package:momeo/foundation/app_spacing.dart';
@@ -16,37 +10,60 @@ import 'package:momeo/foundation/app_text_styles.dart';
 import 'package:momeo/providers/settings_providers.dart';
 import 'package:momeo/widgets/background_recording_disclosure_dialog.dart';
 import 'package:momeo/widgets/dot.dart';
-import 'package:momeo/widgets/listening_header.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 // ============================================================
-// 画面下端の領域をつまみで広げ縮めするシート
+// 画面下端の領域を上下のスワイプで広げ縮めするシート
+//
+//   帯の左右にタブが1つずつあり、常にどちらかを選んでいる。
+//   「どのタブを選んでいるか」と「シートを開いているか」は別の状態で、
+//   どちらも画面側（ListeningPage）が持つ。このシートは受け取った状態を
+//   高さに翻訳して描く。閉じても選んでいたタブはそのまま残る。
 // ============================================================
 
 // ---------------------------------
-// 定数: 高さ関連
+// シートのタブ
+// ---------------------------------
+enum ListeningSheetTab {
+  // 帯の左: いつ録音するかの選択肢
+  recordingOptions,
+  // 帯の右: 選択中のメモへの操作
+  selectionActions,
+}
+
+// ---------------------------------
+// 定数: 高さ
 // ---------------------------------
 
-// 閉じているときに覗かせる高さ（安全領域より上のぶん）
-const _peekHeight = 64.0;
+// タブの帯の高さ（閉じているときはこの帯だけが見えている）
+const _bandHeight = 36.0;
 
-// シート上辺の枠線の太さ（帯の高さはこのぶん削られる）
-const _sheetBorderWidth = 1.0;
+// 帯の下に出すカード群の高さ（背の高い録音の選択肢に合わせた固定値）
+const _panelCardHeight = 168.0;
 
-// 開き切ったとき、ヘッダーとの間に残す余白
-const _openTopMargin = AppSpacing.s;
+// カード群の上下の余白（上は帯との間、下は安全領域との間）
+const _panelPaddingTop = AppSpacing.s;
+const _panelPaddingBottom = AppSpacing.l;
 
-// 開き切ったときの高さが、ヘッダーの下に残る範囲のどれだけを占めるか
-const _openHeightRatio = 0.5;
+// 開き切ったときの高さ（帯 + 余白 + カード群）
+const _openHeight =
+    _bandHeight + _panelPaddingTop + _panelCardHeight + _panelPaddingBottom;
 
-// ブラックボードのエリア（余白・上の一言・ブラックボード本体）が潰れずに収まる高さ
-const _blackboardAreaMinHeight = 100.0;
+// ドラッグの移動量を開き具合の割合へ換算する分母
+const _dragRange = _openHeight - _bandHeight;
 
-// 録音の選択肢のエリアが潰れずに収まる高さ
-// （文字の折り返しで伸びても足りるよう、実際のカードより多めに取る）
-const _optionAreaMinHeight = 200.0;
+// ---------------------------------
+// 定数: 見た目
+// ---------------------------------
 
-// 操作ボタンを置く、シート最下部のエリアの高さ
-const _bottomAreaHeight = 64.0;
+// シートの土台の不透明度（タブの中・カード群・安全領域は白で塗るので透けない）
+const _sheetBackgroundOpacity = 0.92;
+
+// タブの枠線と下線の太さ（ヘッダーの入力欄の枠線に揃える）
+const _tabStrokeWidth = 1.5;
+
+// 選んでいるタブの上の角の丸み
+const _tabCornerRadius = AppRadius.l;
 
 // ---------------------------------
 // 定数: 画面に出る文言
@@ -60,15 +77,15 @@ const _statusLabelDisabled = 'このアプリを使っている時だけ録音';
 const _optionTitleDisabled = 'このアプリを使っている時だけ録音';
 const _optionDescriptionDisabled = 'アプリがバックグラウンドに移ると録音を止め、フォアグラウンドに戻ると再開します。';
 const _optionTitleEnabled = 'ほかのアプリを使っていても録音';
-const _optionDescriptionEnabled = 'ほかのアプリを使っている間や画面を消している間も、マイクで音声を録り続けます。アプリを終了すると止まります。';
+const _optionDescriptionEnabled =
+    'ほかのアプリを使っている間や画面を消している間も、マイクで音声を録り続けます。アプリを終了すると止まります。';
 
-// ブラックボードの上に出す一言（空のとき・空のまま触れたとき・コピーした直後）
-const _emptyNoticeLabel = '選択したテキストが表示されます';
-const _emptyTouchNoticeLabel = 'テキストを選択するとコピーできます';
-const _copyNoticeLabel = 'クリップボードにコピーしました';
+// 選択中のメモへの操作（カードは削除・コピーの2枚、解除は右下のテキスト）
+const _actionTitleDelete = '削除';
+const _actionTitleCopy = 'コピー';
+const _actionTitleClear = '解除';
 
-// 削除ボタンを押したときに出す確認ダイアログの文言
-// （ボタン自体の文言は件数を含むので、_buildBottomArea で組み立てる）
+// 削除カードを押したときに出す確認ダイアログの文言
 const _deleteDialogTitle = '選択中のメモを削除しますか？';
 const _deleteDialogMessage = '一度削除すると復元できません。';
 const _deleteDialogCancelLabel = 'キャンセル';
@@ -81,9 +98,6 @@ const _deleteDialogConfirmLabel = '削除する';
 // 選択件数の3桁区切り（1000 件を超えることはまず無いが、桁が読める形にしておく）
 final _selectionCountFormat = NumberFormat('#,###');
 
-// メモとメモのつなぎ目（空行1つ。コピーした文字列にもそのまま入る）
-const _selectedMemoSeparator = '\n\n';
-
 // ---------------------------------
 // クラス本体
 // ---------------------------------
@@ -91,26 +105,46 @@ class ListeningInsetSheet extends ConsumerStatefulWidget {
   const ListeningInsetSheet({
     super.key,
     required this.heightNotifier,
-    required this.isCollapsed,
-    required this.selectedMemos,
+    required this.isForcedCollapsed,
+    required this.tab,
+    required this.isOpen,
+    required this.onTabSelected,
+    required this.onOpenChanged,
+    required this.selectedCount,
     required this.onClearSelection,
     required this.onDeleteSelection,
+    required this.onCopySelection,
   });
 
   // 今のシートの高さ（安全領域を除いた、一覧を押し上げるぶん）
   final ValueNotifier<double> heightNotifier;
 
-  // シートが畳んであるかどうか
-  final bool isCollapsed;
+  // 画面側の都合で、アニメーションを挟まずその場で畳ませる
+  final bool isForcedCollapsed;
 
-  // 選択中のメモ（時系列順。古いものが先頭）
-  final List<VoiceMemo> selectedMemos;
+  // 今選んでいるタブ
+  final ListeningSheetTab tab;
 
-  // 帯の右側をタップしたときに、選択をすべて解除する
+  // シートを開いているか
+  final bool isOpen;
+
+  // タブをタップしたときの通知（選んでいるタブを押したときも届く）
+  final ValueChanged<ListeningSheetTab> onTabSelected;
+
+  // スワイプでシートを開き閉じしたときの通知
+  final ValueChanged<bool> onOpenChanged;
+
+  // 選択中のメモの件数
+  final int selectedCount;
+
+  // 解除ボタンをタップしたときに、選択をすべて解除する
   final VoidCallback onClearSelection;
 
   // 削除を確認したときに、選択中のメモを DB ごと消す
   final Future<void> Function() onDeleteSelection;
+
+  // コピーカードをタップしたときに、選択中のメモをクリップボードに入れる
+  final VoidCallback onCopySelection;
 
   @override
   ConsumerState<ListeningInsetSheet> createState() =>
@@ -123,24 +157,6 @@ class ListeningInsetSheet extends ConsumerStatefulWidget {
 class _ListeningInsetSheetState extends ConsumerState<ListeningInsetSheet>
     with SingleTickerProviderStateMixin {
   late final AnimationController _openController;
-
-  // ---------------------------------
-  // ドラッグの移動量を開き具合の割合へ換算する分母
-  // ---------------------------------
-  double _dragRange = 1.0;
-
-  // ---------------------------------
-  // 録音の選択肢を開いているか（起動のたびに閉じた状態から始める）
-  // ---------------------------------
-  bool _isOptionExpanded = false;
-
-  // ---------------------------------
-  // 少しの間だけ出している一言
-  // ---------------------------------
-  String? _transientNoticeLabel;
-
-  // 文言を引っ込めるためのタイマー（続けて出したときは張り替える）
-  Timer? _noticeTimer;
 
   // ---------------------------------
   // コントローラを用意し、高さの変化を外へ流す
@@ -159,15 +175,20 @@ class _ListeningInsetSheetState extends ConsumerState<ListeningInsetSheet>
   }
 
   // ---------------------------------
-  // 畳んでおく指示を受け取る
+  // 画面側から届いた変化を開閉に翻訳する
   // ---------------------------------
   @override
   void didUpdateWidget(ListeningInsetSheet oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // --- 検索フィールドの入力が始まったら
-    if (widget.isCollapsed && !oldWidget.isCollapsed) {
-      _collapseImmediately(); // 開いていたシートを閉じる
+    // --- 検索フィールドの入力が始まったら、アニメーションを挟まずその場で閉じる
+    if (widget.isForcedCollapsed && !oldWidget.isForcedCollapsed) {
+      _collapseImmediately();
+      return;
     }
+    // --- 開き閉じが変わっていなければ何もしない
+    if (widget.isOpen == oldWidget.isOpen) return;
+    // --- 画面側の状態に合わせて動かす
+    widget.isOpen ? _openController.forward() : _openController.reverse();
   }
 
   // ---------------------------------
@@ -176,9 +197,6 @@ class _ListeningInsetSheetState extends ConsumerState<ListeningInsetSheet>
   void _collapseImmediately() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      // --- バックグラウンド録音の選択肢カードを非表示にする
-      setState(() => _isOptionExpanded = false);
-      // --- アニメーションを挟まず、その場で閉じる
       _openController.value = 0;
     });
   }
@@ -188,8 +206,6 @@ class _ListeningInsetSheetState extends ConsumerState<ListeningInsetSheet>
   // ---------------------------------
   @override
   void dispose() {
-    // --- 一言を引っ込めるタイマーを止める
-    _noticeTimer?.cancel();
     // --- 高さの通知を止める
     _openController.removeListener(_publishHeight);
     // --- コントローラを破棄する
@@ -199,9 +215,9 @@ class _ListeningInsetSheetState extends ConsumerState<ListeningInsetSheet>
   }
 
   // ---------------------------------
-  // 高さ
+  // 今の高さ
   // ---------------------------------
-  double get _currentHeight => _peekHeight + _dragRange * _openController.value;
+  double get _currentHeight => _bandHeight + _dragRange * _openController.value;
 
   // ---------------------------------
   // 今の高さを画面側へ伝える
@@ -214,23 +230,16 @@ class _ListeningInsetSheetState extends ConsumerState<ListeningInsetSheet>
   // ---------------------------------
   // 開閉
   // ---------------------------------
-  void _open() => _openController.forward();
 
-  void _close() {
-    // --- バックグラウンド録音の選択肢カードを非表示にする
-    setState(() => _isOptionExpanded = false);
-    // --- シートを閉じる
-    _openController.reverse();
+  // スワイプで開き閉じしたとき（画面側の通知を待たず、ここでも動かして落ち着かせる）
+  void _open() {
+    _openController.forward();
+    if (!widget.isOpen) widget.onOpenChanged(true);
   }
 
-  // ---------------------------------
-  // 録音の選択肢を開き閉じする
-  // ---------------------------------
-  void _toggleOption() {
-    // --- バックグラウンド録音の選択肢カードの表示を切り替える
-    setState(() => _isOptionExpanded = !_isOptionExpanded);
-    // --- シートを開く
-    _open();
+  void _close() {
+    _openController.reverse();
+    if (widget.isOpen) widget.onOpenChanged(false);
   }
 
   // ---------------------------------
@@ -261,15 +270,82 @@ class _ListeningInsetSheetState extends ConsumerState<ListeningInsetSheet>
   }
 
   // ---------------------------------
-  // つまみ（ハンドル）
+  // タブの文言のスタイル（選んでいるほうを太字にする）
   // ---------------------------------
-  Widget _buildHandle() {
-    return Container(
-      width: 40,
-      height: 4,
-      decoration: BoxDecoration(
-        color: AppColors.onSurface,
-        borderRadius: BorderRadius.circular(AppRadius.pill),
+  TextStyle _tabLabelStyle({required bool isActive}) {
+    return AppTextStyles.caption.copyWith(
+      color: AppColors.onSurface,
+      fontWeight: isActive ? FontWeight.w700 : FontWeight.w400,
+    );
+  }
+
+  // ---------------------------------
+  // タブ（選んでいるほうは文言を線で囲み、その線が下のカード群へつながる）
+  // ---------------------------------
+  Widget _buildTab({required ListeningSheetTab tab, required Widget child}) {
+    final isSelected = widget.tab == tab;
+
+    return GestureDetector(
+      onTap: () => widget.onTabSelected(tab),
+      behavior: HitTestBehavior.opaque,
+      child: CustomPaint(
+        painter: _TabStrokePainter(
+          isSelected ? _TabStroke.tab : _TabStroke.baseline,
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.m),
+          child: Center(child: child),
+        ),
+      ),
+    );
+  }
+
+  // ---------------------------------
+  // タブが無い区間（下線だけを引く）
+  // ---------------------------------
+  Widget _buildTabBaseline({double? width}) {
+    return SizedBox(
+      width: width,
+      child: const CustomPaint(painter: _TabStrokePainter(_TabStroke.baseline)),
+    );
+  }
+
+  // ---------------------------------
+  // 左のタブの中身: バックグラウンド録音の状態
+  // ---------------------------------
+  Widget _buildRecordingTabLabel({required bool isBackgroundRecordingEnabled}) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // --- ドット（どちらの状態でも録音は続くので点滅させる）
+        Dot(
+          // 画面を離れても録音が続く有効側は強い注意の色、アプリ内だけの無効側は弱い注意の色にする
+          color: isBackgroundRecordingEnabled
+              ? AppColors.caution
+              : AppColors.notice,
+        ),
+        const SizedBox(width: AppSpacing.s),
+        // --- 文言
+        Text(
+          isBackgroundRecordingEnabled
+              ? _statusLabelEnabled
+              : _statusLabelDisabled,
+          style: _tabLabelStyle(
+            isActive: widget.tab == ListeningSheetTab.recordingOptions,
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ---------------------------------
+  // 右のタブの中身: 選択中のメモへの操作
+  // ---------------------------------
+  Widget _buildSelectionTabLabel() {
+    return Text(
+      '選択中の${_selectionCountFormat.format(widget.selectedCount)}件を操作',
+      style: _tabLabelStyle(
+        isActive: widget.tab == ListeningSheetTab.selectionActions,
       ),
     );
   }
@@ -278,125 +354,80 @@ class _ListeningInsetSheetState extends ConsumerState<ListeningInsetSheet>
   // 帯（閉じていても見えている、シートの上端）
   // ---------------------------------
   Widget _buildBand({required bool isBackgroundRecordingEnabled}) {
-    // 選択肢の開閉を示す矢印の大きさ
-    const statusArrowSize = 18.0;
-
     return SizedBox(
-      height: _peekHeight - _sheetBorderWidth,
-      child: Column(
+      height: _bandHeight,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // --- 中央のつまみ
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: AppSpacing.m),
-            child: _buildHandle(),
-          ),
-          // --- つまみの下の余りを、左右の表示で分け合う
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.l),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  // ---------------------------------
-                  // 左: バックグラウンド録音の状態
-                  // ---------------------------------
-                  GestureDetector(
-                    onTap: _toggleOption,
-                    behavior: HitTestBehavior.opaque,
-                    // 指で押しやすいよう、上下にも当たり判定を広げる
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        vertical: AppSpacing.s,
-                      ),
-                      child: Row(
-                        children: [
-                          // ---------------------------------
-                          // ドット（どちらの状態でも録音は続くので点滅させる）
-                          // ---------------------------------
-                          Dot(
-                            // 画面を離れても録音が続く有効側は強い注意の色、アプリ内だけの無効側は弱い注意の色にする
-                            color: isBackgroundRecordingEnabled
-                                ? AppColors.caution
-                                : AppColors.notice,
-                          ),
-                          const SizedBox(width: AppSpacing.s),
-                          // ---------------------------------
-                          // 文言
-                          // ---------------------------------
-                          Text(
-                            isBackgroundRecordingEnabled
-                                ? _statusLabelEnabled
-                                : _statusLabelDisabled,
-                            style: AppTextStyles.caption,
-                          ),
-                          const SizedBox(width: AppSpacing.xs),
-                          // ---------------------------------
-                          // アコーディオンの矢印
-                          // ---------------------------------
-                          Icon(
-                            _isOptionExpanded
-                                ? Icons.keyboard_arrow_up
-                                : Icons.keyboard_arrow_down,
-                            size: statusArrowSize,
-                            color: AppColors.onSurfaceVariant,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  // ---------------------------------
-                  // 右: 選択の解除（0 件なら出さない）
-                  // ---------------------------------
-                  if (widget.selectedMemos.isNotEmpty)
-                    GestureDetector(
-                      onTap: widget.onClearSelection,
-                      behavior: HitTestBehavior.opaque,
-                      // 指で押しやすいよう、上下にも当たり判定を広げる
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                          vertical: AppSpacing.s,
-                        ),
-                        child: Text(
-                          '${_selectionCountFormat.format(widget.selectedMemos.length)}件の選択を解除',
-                          style: AppTextStyles.caption.copyWith(
-                            color: AppColors.link,
-                          ),
-                        ),
-                      ),
-                    ),
-                ],
-              ),
+          _buildTabBaseline(width: AppSpacing.l),
+          _buildTab(
+            tab: ListeningSheetTab.recordingOptions,
+            child: _buildRecordingTabLabel(
+              isBackgroundRecordingEnabled: isBackgroundRecordingEnabled,
             ),
           ),
+          Expanded(child: _buildTabBaseline()),
+          // --- 右のタブは 1 件以上選んでいるときだけ
+          if (widget.selectedCount > 0)
+            _buildTab(
+              tab: ListeningSheetTab.selectionActions,
+              child: _buildSelectionTabLabel(),
+            ),
+          _buildTabBaseline(width: AppSpacing.l),
         ],
       ),
     );
   }
 
   // ---------------------------------
-  // いつ録音するかの選択肢カード（2つ並ぶうちの1つ）
+  // 選択中のメモへの操作カード（タイトルだけの小さなカード）
   // ---------------------------------
-  Widget _buildBackgroundRecordingOption({
+  Widget _buildSelectionActionCard({
+    required String title,
+    required VoidCallback onTap,
+    Color titleColor = AppColors.onSurface,
+  }) {
+    // 枠線の太さ（録音の選択肢の細いほうに揃える）
+    const borderWidth = 1.5;
+
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: AppSpacing.m),
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(AppRadius.l),
+          border: Border.all(color: AppColors.outline, width: borderWidth),
+        ),
+        child: Text(
+          title,
+          textAlign: TextAlign.center,
+          style: AppTextStyles.caption.copyWith(
+            color: titleColor,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ---------------------------------
+  // 録音の選択肢カード（タイトルと説明文を持つ）
+  // ---------------------------------
+  Widget _buildRecordingOptionCard({
     required String title,
     required String description,
-    required bool isSelected,
     required VoidCallback onTap,
+    bool isSelected = false,
   }) {
-    // ---------------------------------
-    // 枠線の太さ（選ばれていないとき・選ばれているとき）
-    // ---------------------------------
+    // 枠線の太さ（選んでいる選択肢だけ太くする）
     const normalBorderWidth = 1.5;
     const selectedBorderWidth = 3.0;
     final borderWidth = isSelected ? selectedBorderWidth : normalBorderWidth;
 
-    // ---------------------------------
     // カードの内側の余白（枠線が太った分だけ削り、中身の位置を保つ）
-    // ---------------------------------
     final contentPadding = AppSpacing.l - (borderWidth - normalBorderWidth);
 
-    // ---------------------------------
-    // 選択肢カード
-    // ---------------------------------
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -429,156 +460,6 @@ class _ListeningInsetSheetState extends ConsumerState<ListeningInsetSheet>
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  // ---------------------------------
-  // 選択中のメモを1つの文字列にまとめる
-  // ---------------------------------
-  String get _selectedMemoText => widget.selectedMemos
-      .map((memo) => memo.content)
-      .join(_selectedMemoSeparator);
-
-  // ---------------------------------
-  // ブラックボードの上の通知メッセージ
-  // ---------------------------------
-  void _showNoticeBriefly(String label) {
-    // 文言を出しておく時間
-    const noticeDuration = Duration(milliseconds: 3600);
-    // --- 文言を出しておく
-    setState(() => _transientNoticeLabel = label);
-    // --- 続けて出したときも、最後の1回から数えて引っ込める
-    _noticeTimer?.cancel();
-    // --- 文言を引っ込めるタイマーをセット
-    _noticeTimer = Timer(noticeDuration, () {
-      if (mounted) setState(() => _transientNoticeLabel = null);
-    });
-  }
-
-  // ---------------------------------
-  // メモをクリップボードにコピー
-  // ---------------------------------
-  void _copySelectedMemos() {
-    // --- クリップボードにコピー
-    Clipboard.setData(ClipboardData(text: _selectedMemoText));
-    // --- コピーしたことを知らせる
-    _showNoticeBriefly(_copyNoticeLabel);
-  }
-
-  // ---------------------------------
-  // ブラックボードの上に出す一言（何も選んでいないときの案内と、コピーしたことの知らせ）
-  // ---------------------------------
-  Widget _buildNotice() {
-    // 文言の出入りでブラックボードの位置が動かないよう、常に空けておく高さ
-    const noticeHeight = 16.0;
-
-    // 文字の大きさ（日時より少し大きくして読み取りやすくする）
-    const noticeFontSize = 12.0;
-
-    final hasSelection = widget.selectedMemos.isNotEmpty;
-
-    // 少しの間だけ出す一言を優先し、無いときは選択中ならコピーの文言のまま消えていく
-    final transientLabel = _transientNoticeLabel;
-    final label =
-        transientLabel ?? (hasSelection ? _copyNoticeLabel : _emptyNoticeLabel);
-
-    // 何も選んでいない間はブラックボードの案内を出したままにする
-    final isVisible = transientLabel != null || !hasSelection;
-
-    return SizedBox(
-      height: noticeHeight,
-      child: Align(
-        alignment: Alignment.centerLeft,
-        child: Opacity(
-          opacity: isVisible ? 1.0 : 0.0,
-          child: Text(
-            label,
-            // 文字を大きくする設定でも2行にならないよう、1行に収めて末尾を省く
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: AppTextStyles.micro.copyWith(
-              fontSize: noticeFontSize,
-              color: AppColors.onSurface,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  // ---------------------------------
-  // ブラックボード（選択中のメモをまとめて映す黒い面）
-  // ---------------------------------
-  Widget _buildBlackboard() {
-    // 押したままにしたとき、コピーと見なすまでの時間
-    // （既定の長押し 500ms は待たされる感じが出るので短くする）
-    const longPressDuration = Duration(milliseconds: 150);
-
-    // 枠線の太さ（一覧のカードの細いほうに揃える）
-    const borderWidth = 1.5;
-
-    // ブラックボードに入れる本文があるか
-    final hasSelection = widget.selectedMemos.isNotEmpty;
-
-    // ---------------------------------
-    // ジェスチャーイベントのハンドラー
-    // ---------------------------------
-    void handleTouch() {
-      // --- 選択中のメモがあれば
-      if (hasSelection) {
-        // --- コピー
-        _copySelectedMemos();
-        return;
-      }
-      // --- 選択中のメモがなければ
-      _showNoticeBriefly(_emptyTouchNoticeLabel); // ブラックボードの上に通知メッセージ
-    }
-
-    // ---------------------------------
-    // ブラックボードのジェスチャーイベント
-    // ---------------------------------
-    final touchGestures = <Type, GestureRecognizerFactory>{
-      // --- 押してすぐ離したとき
-      TapGestureRecognizer:
-          GestureRecognizerFactoryWithHandlers<TapGestureRecognizer>(
-            TapGestureRecognizer.new,
-            (recognizer) => recognizer.onTap = handleTouch,
-          ),
-      // --- 押したまま留めたとき
-      LongPressGestureRecognizer:
-          GestureRecognizerFactoryWithHandlers<LongPressGestureRecognizer>(
-            () => LongPressGestureRecognizer(duration: longPressDuration),
-            (recognizer) => recognizer.onLongPress = handleTouch,
-          ),
-    };
-
-    // ---------------------------------
-    // ブラックボードを組み立てて返す
-    // ---------------------------------
-    return RawGestureDetector(
-      gestures: touchGestures,
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(AppSpacing.l),
-        decoration: BoxDecoration(
-          color: AppColors.primary,
-          borderRadius: BorderRadius.circular(AppRadius.l),
-          border: Border.all(
-            color: AppColors.primary,
-            width: borderWidth,
-          ),
-        ),
-        child: hasSelection
-            ? SingleChildScrollView( // スクロール
-                child: Text(
-                  _selectedMemoText,
-                  style: AppTextStyles.caption.copyWith(
-                    color: AppColors.onPrimary,
-                  ),
-                ),
-              )
-            : null,
       ),
     );
   }
@@ -636,107 +517,170 @@ class _ListeningInsetSheetState extends ConsumerState<ListeningInsetSheet>
   }
 
   // ---------------------------------
-  // シート最下部の操作エリア
+  // 選択をすべて解除するテキストボタン（文字が小さいので当たり判定を広く取る）
   // ---------------------------------
-  Widget _buildBottomArea() {
-    // 削除ボタンの文字の大きさ（caption の 12 では小さいので上げる）
-    const deleteLabelFontSize = 15.0;
+  Widget _buildClearButton() {
+    // 指で押しやすい大きさ（iOS の目安に合わせる）
+    const minTapSize = 44.0;
 
-    return Container(
-      height: _bottomAreaHeight,
-      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.l),
-      alignment: Alignment.centerRight,
-      child: widget.selectedMemos.isEmpty
-          ? null
-          // ---------------------------------
-          // 削除ボタン
-          // ---------------------------------
-          : GestureDetector(
-              onTap: _confirmAndDeleteSelectedMemos,
-              behavior: HitTestBehavior.opaque,
-              // 指で押しやすいよう、文字のまわりに当たり判定を広げる
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: AppSpacing.s,
-                  vertical: AppSpacing.s,
-                ),
-                child: Text(
-                  '選択中の${_selectionCountFormat.format(widget.selectedMemos.length)}件を削除',
-                  style: AppTextStyles.caption.copyWith(
-                    fontSize: deleteLabelFontSize,
-                    color: AppColors.error,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-            ),
+    // 文字の大きさ（caption の 12 では小さいので上げる）
+    const labelFontSize = 15.0;
+
+    return GestureDetector(
+      onTap: widget.onClearSelection,
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        constraints: const BoxConstraints(
+          minWidth: minTapSize,
+          minHeight: minTapSize,
+        ),
+        // 文字の左へ当たり判定を広げる（右はカードの右端に揃える）
+        padding: const EdgeInsets.only(left: AppSpacing.xxl),
+        alignment: Alignment.centerRight,
+        child: Text(
+          _actionTitleClear,
+          style: AppTextStyles.caption.copyWith(
+            fontSize: labelFontSize,
+            color: AppColors.onSurface,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ),
     );
   }
 
   // ---------------------------------
-  // シート上側
+  // 選択中のメモへの操作（削除・コピーのカードと、右下の解除）
   // ---------------------------------
-  Widget _buildBackgroundRecordingSection({
+  Widget _buildSelectionActionsSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // --- 削除とコピーのカードは領域の上端に寄せる
+        Row(
+          children: [
+            // --- 削除（取り返しがつかないので、タイトルを危険の色にする）
+            Expanded(
+              child: _buildSelectionActionCard(
+                title: _actionTitleDelete,
+                titleColor: AppColors.error,
+                onTap: _confirmAndDeleteSelectedMemos,
+              ),
+            ),
+            const SizedBox(width: AppSpacing.m),
+            // --- コピー
+            Expanded(
+              child: _buildSelectionActionCard(
+                title: _actionTitleCopy,
+                onTap: widget.onCopySelection,
+              ),
+            ),
+          ],
+        ),
+        // --- 解除はシートの右下に置く
+        const Spacer(),
+        Align(alignment: Alignment.centerRight, child: _buildClearButton()),
+      ],
+    );
+  }
+
+  // ---------------------------------
+  // 選んだほうを設定として保存する（初めて有効にするときは開示ダイアログを挟む）
+  // ---------------------------------
+  Future<void> _selectBackgroundRecording(
+    bool isEnabled, {
+    required bool hasEverEnabled,
+  }) async {
+    // --- 初めて有効にするときは、開示ダイアログを出す
+    var shouldShowDisclosureDialog = isEnabled && !hasEverEnabled;
+    // --- 2回目以降の Android では
+    if (isEnabled && !shouldShowDisclosureDialog && Platform.isAndroid) {
+      // --- 通知の許可が無いときも出す
+      shouldShowDisclosureDialog =
+          !await Permission.notification.status.isGranted;
+    }
+    // --- マウントされていない場合は何もしない
+    if (!mounted) return;
+    // --- 開示ダイアログを出すなら
+    if (shouldShowDisclosureDialog) {
+      // --- 開示ダイアログを出して、同意されたかを受け取る
+      final isConfirmed = await BackgroundRecordingDisclosureDialog.show(
+        context,
+      );
+      // --- 同意が得られなければ何もしない
+      if (!isConfirmed) return;
+    }
+    // --- 設定を保存
+    await ref.read(backgroundRecordingProvider.notifier).setEnabled(isEnabled);
+  }
+
+  // ---------------------------------
+  // いつ録音するかの選択肢カード（2枚）
+  // ---------------------------------
+  Widget _buildRecordingOptionsSection({
     required bool isBackgroundRecordingEnabled,
     required bool hasEverEnabledBackgroundRecording,
   }) {
-    // ---------------------------------
-    // 選んだほうを設定として保存する
-    // ---------------------------------
-    Future<void> select(bool isEnabled) async {
-      // --- 初めて有効にするときは、開示ダイアログを出す
-      var shouldShowDisclosureDialog = isEnabled && !hasEverEnabledBackgroundRecording;
-      // --- 2回目以降の Android では
-      if (isEnabled && !shouldShowDisclosureDialog && Platform.isAndroid) {
-        // --- 通知の許可が無いときも出す
-        shouldShowDisclosureDialog = !await Permission.notification.status.isGranted;
-      }
-      // --- マウントされていない場合は何もしない
-      if (!mounted) return;
-      // --- 開示ダイアログを出すなら
-      if (shouldShowDisclosureDialog) {
-        // --- 開示ダイアログを出して、同意されたかを受け取る
-        final isConfirmed = await BackgroundRecordingDisclosureDialog.show(context);
-        // --- 同意が得られなければ何もしない
-        if (!isConfirmed) return;
-      }
-      // --- 設定を保存
-      await ref
-          .read(backgroundRecordingProvider.notifier)
-          .setEnabled(isEnabled);
-    }
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // --- バックグラウンド録音の無効
+        Expanded(
+          child: _buildRecordingOptionCard(
+            title: _optionTitleDisabled,
+            description: _optionDescriptionDisabled,
+            isSelected: !isBackgroundRecordingEnabled,
+            onTap: () => _selectBackgroundRecording(
+              false,
+              hasEverEnabled: hasEverEnabledBackgroundRecording,
+            ),
+          ),
+        ),
+        const SizedBox(width: AppSpacing.m),
+        // --- バックグラウンド録音の有効
+        Expanded(
+          child: _buildRecordingOptionCard(
+            title: _optionTitleEnabled,
+            description: _optionDescriptionEnabled,
+            isSelected: isBackgroundRecordingEnabled,
+            onTap: () => _selectBackgroundRecording(
+              true,
+              hasEverEnabled: hasEverEnabledBackgroundRecording,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
 
-    // ---------------------------------
-    // バックグラウンド録音設定の選択カード
-    // ---------------------------------
-    return IntrinsicHeight(
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // ---------------------------------
-          // バックグラウンド録音の無効
-          // ---------------------------------
-          Expanded(
-            child: _buildBackgroundRecordingOption(
-              title: _optionTitleDisabled,
-              description: _optionDescriptionDisabled,
-              isSelected: !isBackgroundRecordingEnabled,
-              onTap: () => select(false),
-            ),
-          ),
-          const SizedBox(width: AppSpacing.m),
-          // ---------------------------------
-          // バックグラウンド録音の有効
-          // ---------------------------------
-          Expanded(
-            child: _buildBackgroundRecordingOption(
-              title: _optionTitleEnabled,
-              description: _optionDescriptionEnabled,
-              isSelected: isBackgroundRecordingEnabled,
-              onTap: () => select(true),
-            ),
-          ),
-        ],
+  // ---------------------------------
+  // 帯の下に出す、選んでいるタブのカード群
+  // ---------------------------------
+  Widget _buildPanel({
+    required bool isBackgroundRecordingEnabled,
+    required bool hasEverEnabledBackgroundRecording,
+  }) {
+    final Widget section;
+    switch (widget.tab) {
+      case ListeningSheetTab.recordingOptions:
+        section = _buildRecordingOptionsSection(
+          isBackgroundRecordingEnabled: isBackgroundRecordingEnabled,
+          hasEverEnabledBackgroundRecording: hasEverEnabledBackgroundRecording,
+        );
+      case ListeningSheetTab.selectionActions:
+        section = _buildSelectionActionsSection();
+    }
+    // どちらのタブでも同じ高さになるよう、ここで高さを決める
+    return ColoredBox(
+      color: AppColors.surface,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(
+          AppSpacing.l,
+          _panelPaddingTop,
+          AppSpacing.l,
+          _panelPaddingBottom,
+        ),
+        child: SizedBox(height: _panelCardHeight, child: section),
       ),
     );
   }
@@ -746,61 +690,17 @@ class _ListeningInsetSheetState extends ConsumerState<ListeningInsetSheet>
   // ---------------------------------
   @override
   Widget build(BuildContext context) {
-
-    // ---------------------------------
-    // バックグラウンド録音の設定を取得
-    // ---------------------------------
+    // --- バックグラウンド録音の設定
     final backgroundRecording = ref.watch(backgroundRecordingProvider).value;
+    final isBackgroundRecordingEnabled =
+        backgroundRecording?.isEnabled ?? false;
+    final hasEverEnabledBackgroundRecording =
+        backgroundRecording?.hasEverEnabled ?? false;
 
-    // ---------------------------------
-    // 今バックグラウンド録音を有効にしているか
-    // ---------------------------------
-    final isBackgroundRecordingEnabled = backgroundRecording?.isEnabled ?? false;
+    // --- 安全領域の下端
+    final safeBottom = MediaQuery.paddingOf(context).bottom;
 
-    // ---------------------------------
-    // 一度でも有効にしたか
-    // ---------------------------------
-    final hasEverEnabledBackgroundRecording = backgroundRecording?.hasEverEnabled ?? false;
-
-    // ---------------------------------
-    // 安全領域
-    // ---------------------------------
-    final safeArea = MediaQuery.paddingOf(context);
-
-    // ---------------------------------
-    // 安全領域の下端
-    // ---------------------------------
-    final safeBottom = safeArea.bottom;
-
-    // ---------------------------------
-    // ヘッダーの下に残る、シートが伸びる範囲
-    // ---------------------------------
-    final availableHeight =
-        MediaQuery.sizeOf(context).height -
-        safeArea.top -
-        safeBottom -
-        listeningHeaderHeight -
-        _openTopMargin;
-
-    // ---------------------------------
-    // シートを開き切ったときの高さ
-    // ---------------------------------
-    final openHeight = math.max(
-      availableHeight * _openHeightRatio,
-      _peekHeight +
-          _optionAreaMinHeight +
-          _blackboardAreaMinHeight +
-          _bottomAreaHeight,
-    );
-
-    // ---------------------------------
-    // 開き具合の範囲を計算
-    // ---------------------------------
-    _dragRange = openHeight - _peekHeight;
-
-    // ---------------------------------
-    // 初回と画面サイズの変化に合わせて高さを伝え直す
-    // ---------------------------------
+    // --- 初回と画面サイズの変化に合わせて高さを伝え直す
     WidgetsBinding.instance.addPostFrameCallback((_) => _publishHeight());
 
     // ---------------------------------
@@ -813,24 +713,6 @@ class _ListeningInsetSheetState extends ConsumerState<ListeningInsetSheet>
         animation: _openController,
         // --- 開き具合を高さに変えて、シートの背丈を決める ---
         builder: (context, content) {
-
-          // -------------------------------------------------------------
-          // 高さの最小値を計算
-          // -------------------------------------------------------------
-          final minContentHeight =
-              _peekHeight -
-              _sheetBorderWidth +
-              (_isOptionExpanded ? _optionAreaMinHeight : 0) +
-              _blackboardAreaMinHeight +
-              _bottomAreaHeight;
-
-          // -------------------------------------------------------------
-          // 高さの最大値を計算
-          // -------------------------------------------------------------
-          final contentHeight = math.max(
-            _currentHeight - _sheetBorderWidth,
-            minContentHeight,
-          );
           return SizedBox(
             height: _currentHeight + safeBottom,
             child: GestureDetector(
@@ -838,31 +720,35 @@ class _ListeningInsetSheetState extends ConsumerState<ListeningInsetSheet>
               onVerticalDragUpdate: _onDragUpdate,
               // --- 指を離したら開くか閉じるかへ落ち着かせる
               onVerticalDragEnd: _onDragEnd,
+              // 背景が透けていても、素通りして後ろの一覧に触れないよう受け止める
+              behavior: HitTestBehavior.opaque,
               // --- シートの見た目 ---
-              child: Container(
-                decoration: const BoxDecoration(
-                  color: AppColors.surface,
-                  // borderRadius: BorderRadius.vertical(
-                  //   top: Radius.circular(AppRadius.xl),
-                  // ),
-                  border: Border(
-                    top: BorderSide(
-                      color: AppColors.onSurface,
-                      width: _sheetBorderWidth,
-                    ),
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: AppColors.surface.withValues(
+                    alpha: _sheetBackgroundOpacity,
                   ),
                 ),
-                padding: EdgeInsets.only(bottom: safeBottom),
-                // 閉じている間、帯からはみ出す中身を切り落とす
-                clipBehavior: Clip.hardEdge,
-                // シートが低いときは中身を縮めず、上を残して下へはみ出させて隠す
-                child: ClipRect(
-                  child: OverflowBox(
-                    alignment: Alignment.topCenter,
-                    minHeight: contentHeight,
-                    maxHeight: contentHeight,
-                    child: content,
-                  ),
+                child: Column(
+                  children: [
+                    // 中身は常に自然な高さで並べ、シートが低い間は下へはみ出させて隠す
+                    Expanded(
+                      child: ClipRect(
+                        child: OverflowBox(
+                          alignment: Alignment.topCenter,
+                          minHeight: 0,
+                          maxHeight: double.infinity,
+                          child: content,
+                        ),
+                      ),
+                    ),
+                    // --- 安全領域は透けさせない
+                    SizedBox(
+                      width: double.infinity,
+                      height: safeBottom,
+                      child: const ColoredBox(color: AppColors.surface),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -872,58 +758,84 @@ class _ListeningInsetSheetState extends ConsumerState<ListeningInsetSheet>
         // シートの中身
         // ---------------------------------
         child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            // ---------------------------------
-            // シートを閉じていても見えるエリア
-            // ---------------------------------
+            // --- シートを閉じていても見えるエリア
             _buildBand(
               isBackgroundRecordingEnabled: isBackgroundRecordingEnabled,
             ),
-            // ---------------------------------
-            // シートを開いたときに見えるエリア
-            // ---------------------------------
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(
-                  AppSpacing.l,
-                  AppSpacing.s,
-                  AppSpacing.l,
-                  0,
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    // ---------------------------------
-                    // 録音の選択肢
-                    // ---------------------------------
-                    if (_isOptionExpanded)
-                      _buildBackgroundRecordingSection(
-                        isBackgroundRecordingEnabled:
-                            isBackgroundRecordingEnabled,
-                        hasEverEnabledBackgroundRecording:
-                            hasEverEnabledBackgroundRecording,
-                      ),
-                    // ---------------------------------
-                    // ブラックボードの上に出す一言
-                    // ---------------------------------
-                    const SizedBox(height: AppSpacing.xs),
-                    _buildNotice(),
-                    // ---------------------------------
-                    // ブラックボード
-                    // ---------------------------------
-                    const SizedBox(height: AppSpacing.s),
-                    Expanded(child: _buildBlackboard()),
-                  ],
-                ),
-              ),
+            // --- シートを開いたときに見えるエリア
+            _buildPanel(
+              isBackgroundRecordingEnabled: isBackgroundRecordingEnabled,
+              hasEverEnabledBackgroundRecording:
+                  hasEverEnabledBackgroundRecording,
             ),
-            // ---------------------------------
-            // 操作ボタンのエリア
-            // ---------------------------------
-            _buildBottomArea(),
           ],
         ),
       ),
     );
   }
+}
+
+// ---------------------------------
+// タブの線の種類
+// ---------------------------------
+enum _TabStroke {
+  // 下辺だけの線（選んでいないタブと、タブの間）
+  baseline,
+  // 文言を囲む枠（選んでいるタブ。下は開けて、下の中身につなげる）
+  tab,
+}
+
+// ---------------------------------
+// タブの線を描く（下線と枠がひと続きに見えるよう、同じ太さ・色で区間ごとに描く）
+// ---------------------------------
+class _TabStrokePainter extends CustomPainter {
+  const _TabStrokePainter(this.stroke);
+
+  final _TabStroke stroke;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = AppColors.onSurface
+      ..strokeWidth = _tabStrokeWidth
+      ..style = PaintingStyle.stroke;
+
+    // 線の太さの半分（線が区間の外へはみ出さないよう、中心をこのぶん内側に寄せる）
+    final inset = _tabStrokeWidth / 2;
+
+    // --- 下辺だけの線
+    if (stroke == _TabStroke.baseline) {
+      final y = size.height - inset;
+      canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
+      return;
+    }
+
+    // --- 文言を囲む枠（左下から上がり、上の角を丸めて、右下へ下りる）
+    final radius = Radius.circular(_tabCornerRadius);
+    final path = Path()
+      ..moveTo(inset, size.height)
+      ..lineTo(inset, _tabCornerRadius + inset)
+      ..arcToPoint(Offset(_tabCornerRadius + inset, inset), radius: radius)
+      ..lineTo(size.width - _tabCornerRadius - inset, inset)
+      ..arcToPoint(
+        Offset(size.width - inset, _tabCornerRadius + inset),
+        radius: radius,
+      )
+      ..lineTo(size.width - inset, size.height);
+
+    // --- 枠の中は白で塗る（下辺で閉じた形が塗る範囲になる）
+    canvas.drawPath(
+      Path.from(path)..close(),
+      Paint()..color = AppColors.surface,
+    );
+
+    // --- 枠の線
+    canvas.drawPath(path, paint);
+  }
+
+  @override
+  bool shouldRepaint(_TabStrokePainter oldDelegate) =>
+      oldDelegate.stroke != stroke;
 }
