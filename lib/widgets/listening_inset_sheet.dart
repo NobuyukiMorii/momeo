@@ -10,6 +10,7 @@ import 'package:momeo/foundation/app_text_styles.dart';
 import 'package:momeo/providers/settings_providers.dart';
 import 'package:momeo/widgets/background_recording_disclosure_dialog.dart';
 import 'package:momeo/widgets/dot.dart';
+import 'package:momeo/widgets/pressable_scale.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 // ============================================================
@@ -19,6 +20,9 @@ import 'package:permission_handler/permission_handler.dart';
 //   「どのタブを選んでいるか」と「シートを開いているか」は別の状態で、
 //   どちらも画面側（ListeningPage）が持つ。このシートは受け取った状態を
 //   高さに翻訳して描く。閉じても選んでいたタブはそのまま残る。
+//
+//   操作のタブは 1 件も選んでいなくても出し、中の操作を押せない見た目にする。
+//   タブが出たり消えたりすると、帯の並びが変わって押し間違いを招くため。
 // ============================================================
 
 // ---------------------------------
@@ -27,7 +31,7 @@ import 'package:permission_handler/permission_handler.dart';
 enum ListeningSheetTab {
   // 帯の左: いつ録音するかの選択肢
   recordingOptions,
-  // 帯の右: 選択中のメモへの操作
+  // 帯の右: 選択中のメモへの操作（0 件でも出す）
   selectionActions,
 }
 
@@ -39,7 +43,7 @@ enum ListeningSheetTab {
 const _bandHeight = 48.0;
 
 // 帯の下に出すカード群の高さ（背の高い録音の選択肢に合わせた固定値）
-const _panelCardHeight = 168.0;
+const _panelCardHeight = 172.0;
 
 // カード群の上下の余白（上は帯との間、下は安全領域との間）
 const _panelPaddingTop = AppSpacing.s;
@@ -67,6 +71,13 @@ const _tabCornerRadius = AppRadius.l;
 
 // 選んでいないタブの枠を、上端からさらに下げて描く量（面の奥へ沈んで見せる）
 const _inactiveTabDepth = 3.0;
+
+// 押せない操作の薄さ
+const _disabledOpacity = 0.35;
+
+// 録音の選択肢のドットの直径（選んでいる選択肢だけ少し大きくする）
+const _optionDotSize = 8.0;
+const _optionSelectedDotSize = 12.0;
 
 // ---------------------------------
 // 定数: 画面に出る文言
@@ -373,12 +384,10 @@ class _ListeningInsetSheetState extends ConsumerState<ListeningInsetSheet>
                 ),
               ),
             ),
-            // --- 右のタブは 1 件以上選んでいるときだけ
-            if (widget.selectedCount > 0)
-              _buildTab(
-                tab: ListeningSheetTab.selectionActions,
-                child: _buildSelectionTabLabel(),
-              ),
+            _buildTab(
+              tab: ListeningSheetTab.selectionActions,
+              child: _buildSelectionTabLabel(),
+            ),
           ],
         ),
       ),
@@ -392,26 +401,48 @@ class _ListeningInsetSheetState extends ConsumerState<ListeningInsetSheet>
     required String title,
     required VoidCallback onTap,
     Color titleColor = AppColors.onSurface,
+    required bool isEnabled,
   }) {
     // 枠線の太さ（録音の選択肢の細いほうに揃える）
     const borderWidth = 1.5;
 
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: AppSpacing.m),
-        decoration: BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.circular(AppRadius.l),
-          border: Border.all(color: AppColors.outline, width: borderWidth),
-        ),
-        child: Text(
-          title,
-          textAlign: TextAlign.center,
-          style: AppTextStyles.caption.copyWith(
-            color: titleColor,
-            fontWeight: FontWeight.w700,
+    return Opacity(
+      opacity: isEnabled ? 1.0 : _disabledOpacity,
+      child: PressableScale(
+        onTap: isEnabled ? onTap : null,
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: AppSpacing.m),
+          decoration: BoxDecoration(
+            color: AppColors.surface,
+            borderRadius: BorderRadius.circular(AppRadius.l),
+            border: Border.all(color: AppColors.onSurface, width: borderWidth),
           ),
+          child: Text(
+            title,
+            textAlign: TextAlign.center,
+            style: AppTextStyles.caption.copyWith(
+              color: titleColor,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ---------------------------------
+  // 録音の選択肢のドット（選んでいる選択肢だけ少し大きくする）
+  // ---------------------------------
+  Widget _buildOptionDot({required Color dotColor, required bool isSelected}) {
+    // 大きさが変わっても下の文言がずれないよう、どちらも大きいほうの箱に入れる
+    return SizedBox(
+      width: _optionSelectedDotSize,
+      height: _optionSelectedDotSize,
+      child: Center(
+        child: Dot(
+          color: dotColor,
+          size: isSelected ? _optionSelectedDotSize : _optionDotSize,
+          isBlinking: false,
         ),
       ),
     );
@@ -425,7 +456,7 @@ class _ListeningInsetSheetState extends ConsumerState<ListeningInsetSheet>
     required String description,
     required Color dotColor,
     required VoidCallback onTap,
-    bool isSelected = false,
+    required bool isSelected,
   }) {
     // 枠線の太さ（選んでいる選択肢だけ太くする）
     const normalBorderWidth = 1.5;
@@ -443,16 +474,13 @@ class _ListeningInsetSheetState extends ConsumerState<ListeningInsetSheet>
         decoration: BoxDecoration(
           color: AppColors.surface,
           borderRadius: BorderRadius.circular(AppRadius.l),
-          border: Border.all(
-            color: isSelected ? AppColors.primary : AppColors.outline,
-            width: borderWidth,
-          ),
+          border: Border.all(color: AppColors.onSurface, width: borderWidth),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // --- 状態の色を示すドット（帯のタブと違い、ここでは点滅させない）
-            Dot(color: dotColor, isBlinking: false),
+            // --- 状態の色を示すドット（選んでいる選択肢は少し大きい）
+            _buildOptionDot(dotColor: dotColor, isSelected: isSelected),
             const SizedBox(height: AppSpacing.xs),
             // --- タイトル
             Text(
@@ -530,30 +558,33 @@ class _ListeningInsetSheetState extends ConsumerState<ListeningInsetSheet>
   // ---------------------------------
   // 選択をすべて解除するテキストボタン（文字が小さいので当たり判定を広く取る）
   // ---------------------------------
-  Widget _buildClearButton() {
+  Widget _buildClearButton({required bool isEnabled}) {
     // 指で押しやすい大きさ（iOS の目安に合わせる）
     const minTapSize = 44.0;
 
     // 文字の大きさ（caption の 12 では小さいので上げる）
     const labelFontSize = 15.0;
 
-    return GestureDetector(
-      onTap: widget.onClearSelection,
-      behavior: HitTestBehavior.opaque,
-      child: Container(
-        constraints: const BoxConstraints(
-          minWidth: minTapSize,
-          minHeight: minTapSize,
-        ),
-        // 文字の左へ当たり判定を広げる（右はカードの右端に揃える）
-        padding: const EdgeInsets.only(left: AppSpacing.xxl),
-        alignment: Alignment.centerRight,
-        child: Text(
-          _actionTitleClear,
-          style: AppTextStyles.caption.copyWith(
-            fontSize: labelFontSize,
-            color: AppColors.onSurface,
-            fontWeight: FontWeight.w700,
+    return Opacity(
+      opacity: isEnabled ? 1.0 : _disabledOpacity,
+      child: GestureDetector(
+        onTap: isEnabled ? widget.onClearSelection : null,
+        behavior: HitTestBehavior.opaque,
+        child: Container(
+          constraints: const BoxConstraints(
+            minWidth: minTapSize,
+            minHeight: minTapSize,
+          ),
+          // 文字の左へ当たり判定を広げる（右はカードの右端に揃える）
+          padding: const EdgeInsets.only(left: AppSpacing.xxl),
+          alignment: Alignment.centerRight,
+          child: Text(
+            _actionTitleClear,
+            style: AppTextStyles.caption.copyWith(
+              fontSize: labelFontSize,
+              color: AppColors.onSurface,
+              fontWeight: FontWeight.w700,
+            ),
           ),
         ),
       ),
@@ -564,33 +595,44 @@ class _ListeningInsetSheetState extends ConsumerState<ListeningInsetSheet>
   // 選択中のメモへの操作（削除・コピーのカードと、右下の解除）
   // ---------------------------------
   Widget _buildSelectionActionsSection() {
+    // 1 件も選んでいなければ、どの操作も押せない
+    final hasSelectedMemos = widget.selectedCount > 0;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // --- 削除とコピーのカードは領域の上端に寄せる
-        Row(
-          children: [
-            // --- 削除（取り返しがつかないので、タイトルを危険の色にする）
-            Expanded(
-              child: _buildSelectionActionCard(
-                title: _actionTitleDelete,
-                titleColor: AppColors.error,
-                onTap: _confirmAndDeleteSelectedMemos,
-              ),
+        // --- 削除とコピーのカードは、領域の上端と解除ボタンの間の中央に置く
+        Expanded(
+          child: Center(
+            child: Row(
+              children: [
+                // --- 削除（取り返しがつかないので、タイトルを危険の色にする）
+                Expanded(
+                  child: _buildSelectionActionCard(
+                    title: _actionTitleDelete,
+                    titleColor: AppColors.error,
+                    onTap: _confirmAndDeleteSelectedMemos,
+                    isEnabled: hasSelectedMemos,
+                  ),
+                ),
+                const SizedBox(width: AppSpacing.m),
+                // --- コピー
+                Expanded(
+                  child: _buildSelectionActionCard(
+                    title: _actionTitleCopy,
+                    onTap: widget.onCopySelection,
+                    isEnabled: hasSelectedMemos,
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(width: AppSpacing.m),
-            // --- コピー
-            Expanded(
-              child: _buildSelectionActionCard(
-                title: _actionTitleCopy,
-                onTap: widget.onCopySelection,
-              ),
-            ),
-          ],
+          ),
         ),
         // --- 解除はシートの右下に置く
-        const Spacer(),
-        Align(alignment: Alignment.centerRight, child: _buildClearButton()),
+        Align(
+          alignment: Alignment.centerRight,
+          child: _buildClearButton(isEnabled: hasSelectedMemos),
+        ),
       ],
     );
   }
@@ -620,6 +662,8 @@ class _ListeningInsetSheetState extends ConsumerState<ListeningInsetSheet>
       );
       // --- 同意が得られなければ何もしない
       if (!isConfirmed) return;
+      // --- ダイアログを開いている間に画面が消えていたら何もしない
+      if (!mounted) return;
     }
     // --- 設定を保存
     await ref.read(backgroundRecordingProvider.notifier).setEnabled(isEnabled);
@@ -714,7 +758,11 @@ class _ListeningInsetSheetState extends ConsumerState<ListeningInsetSheet>
     final safeBottom = MediaQuery.paddingOf(context).bottom;
 
     // --- 初回と画面サイズの変化に合わせて高さを伝え直す
-    WidgetsBinding.instance.addPostFrameCallback((_) => _publishHeight());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      // 破棄と同じフレームで走ると、片付いた notifier に書いてしまう
+      if (!mounted) return;
+      _publishHeight();
+    });
 
     // ---------------------------------
     // 下端に貼り付いたシート本体（高さが開き具合に追従）
