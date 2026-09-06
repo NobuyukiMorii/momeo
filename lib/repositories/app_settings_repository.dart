@@ -1,10 +1,33 @@
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:momeo/constants/preferences_keys.dart';
+import 'package:momeo/models/listening_sheet_tab.dart';
 
 // ---------------------------------
 // 端末に残すユーザー設定の読み書き
 // ---------------------------------
 class AppSettingsRepository {
+  // ---------------------------------
+  // 下端シートのタブの並び順を取得する
+  // ---------------------------------
+  Future<List<ListeningSheetTab>> listeningSheetTabOrder() async {
+    final preferences = await SharedPreferences.getInstance();
+    final storageIds = preferences.getStringList(
+      PreferencesKeys.listeningSheetTabOrder,
+    );
+    return ListeningSheetTab.restoreOrder(storageIds);
+  }
+
+  // ---------------------------------
+  // 下端シートのタブの並び順を保存する
+  // ---------------------------------
+  Future<void> saveListeningSheetTabOrder(List<ListeningSheetTab> order) async {
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setStringList(
+      PreferencesKeys.listeningSheetTabOrder,
+      order.map((tab) => tab.storageId).toList(growable: false),
+    );
+  }
+
   // ---------------------------------
   // バックグラウンド録音を有効/無効を取得する
   // ---------------------------------

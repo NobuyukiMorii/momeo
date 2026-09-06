@@ -39,6 +39,7 @@ class _StorageSharedPreferencesDetailPageState
   Object? _getValue(SharedPreferences prefs, PreferenceEntry entry) {
     return switch (entry.type) {
       PreferenceType.boolean => prefs.getBool(entry.key),
+      PreferenceType.stringList => prefs.getStringList(entry.key),
     };
   }
 

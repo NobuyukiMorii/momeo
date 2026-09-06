@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:momeo/models/listening_sheet_tab.dart';
 import 'package:momeo/repositories/app_settings_repository.dart';
 
 // ============================================================
@@ -15,6 +18,60 @@ import 'package:momeo/repositories/app_settings_repository.dart';
 final appSettingsRepositoryProvider = Provider<AppSettingsRepository>((ref) {
   return AppSettingsRepository();
 });
+
+// ============================================================
+// listeningSheetTabOrderProvider — 下端シートのタブの並び順
+//
+//   画面には既定順をすぐ返し、端末に保存された順序を読み込めたら置き換える。
+//   並び替えは画面へ即座に反映してから保存する。
+// ============================================================
+
+final listeningSheetTabOrderProvider =
+    NotifierProvider<ListeningSheetTabOrderNotifier, List<ListeningSheetTab>>(
+      ListeningSheetTabOrderNotifier.new,
+    );
+
+class ListeningSheetTabOrderNotifier extends Notifier<List<ListeningSheetTab>> {
+  late AppSettingsRepository _repository;
+
+  // 読み込み中にユーザーが並び替えた場合、古い読み込み結果で上書きしないための世代
+  var _revision = 0;
+
+  @override
+  List<ListeningSheetTab> build() {
+    _repository = ref.watch(appSettingsRepositoryProvider);
+    unawaited(_restoreSavedOrder(_revision));
+    return ListeningSheetTab.defaultOrder;
+  }
+
+  Future<void> _restoreSavedOrder(int startedAtRevision) async {
+    final savedOrder = await _repository.listeningSheetTabOrder();
+    if (startedAtRevision != _revision) return;
+    state = savedOrder;
+  }
+
+  // ReorderableListView が渡す挿入位置へタブを移す
+  void reorder(int oldIndex, int newIndex) {
+    if (oldIndex < 0 || oldIndex >= state.length) return;
+
+    // 前から後ろへ動かす場合、先に元要素が抜けるぶんを補正する
+    var destinationIndex = newIndex;
+    if (oldIndex < destinationIndex) destinationIndex--;
+    if (destinationIndex < 0) destinationIndex = 0;
+    if (destinationIndex >= state.length) {
+      destinationIndex = state.length - 1;
+    }
+    if (destinationIndex == oldIndex) return;
+
+    final reordered = [...state];
+    final movedTab = reordered.removeAt(oldIndex);
+    reordered.insert(destinationIndex, movedTab);
+
+    _revision++;
+    state = List.unmodifiable(reordered);
+    unawaited(_repository.saveListeningSheetTabOrder(state));
+  }
+}
 
 final backgroundRecordingProvider =
     AsyncNotifierProvider<
@@ -66,7 +123,6 @@ class BackgroundRecordingNotifier
   // ユーザーが承諾したあとでこのメソッドを呼ぶ
   // ---------------------------------
   Future<void> setEnabled(bool isEnabled) async {
-
     // 設定を保存する
     await _repository.saveBackgroundRecordingEnabled(isEnabled);
 

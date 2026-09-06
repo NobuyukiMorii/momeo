@@ -30,6 +30,7 @@ class _StorageSharedPreferencesSectionState
   Object? _getValue(PreferenceEntry entry) {
     return switch (entry.type) {
       PreferenceType.boolean => _prefs!.getBool(entry.key),
+      PreferenceType.stringList => _prefs!.getStringList(entry.key),
     };
   }
 
@@ -53,9 +54,8 @@ class _StorageSharedPreferencesSectionState
             await Navigator.push(
               context,
               MaterialPageRoute(
-                builder: (_) => StorageSharedPreferencesDetailPage(
-                  entry: entry,
-                ),
+                builder: (_) =>
+                    StorageSharedPreferencesDetailPage(entry: entry),
               ),
             );
             _load();

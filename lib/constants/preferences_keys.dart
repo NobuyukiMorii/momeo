@@ -1,9 +1,11 @@
 // SharedPreferences で使用する型
 enum PreferenceType {
-  boolean;
+  boolean,
+  stringList;
 
   String get label => switch (this) {
     PreferenceType.boolean => 'bool',
+    PreferenceType.stringList => 'List<String>',
   };
 }
 
@@ -17,7 +19,6 @@ class PreferenceEntry {
 // SharedPreferences で使用するキーを一元管理する
 // all の並び順がコンソール画面の表示順になる
 abstract final class PreferencesKeys {
-
   // 初回起動かどうか
   static const isFirstLaunch = 'is_first_launch';
 
@@ -25,7 +26,11 @@ abstract final class PreferencesKeys {
   static const backgroundRecordingEnabled = 'background_recording_enabled';
 
   // バックグラウンド録音を一度でも有効にしたことがあるか
-  static const backgroundRecordingEverEnabled = 'background_recording_ever_enabled';
+  static const backgroundRecordingEverEnabled =
+      'background_recording_ever_enabled';
+
+  // 下端シートのタブの並び順
+  static const listeningSheetTabOrder = 'listening_sheet_tab_order';
 
   static const all = [
     // 初回起動かどうか
@@ -39,6 +44,11 @@ abstract final class PreferencesKeys {
     PreferenceEntry(
       key: backgroundRecordingEverEnabled,
       type: PreferenceType.boolean,
+    ),
+    // 下端シートのタブの並び順
+    PreferenceEntry(
+      key: listeningSheetTabOrder,
+      type: PreferenceType.stringList,
     ),
   ];
 }

@@ -1,12 +1,15 @@
 import 'dart:io' show Platform;
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:momeo/foundation/app_colors.dart';
 import 'package:momeo/foundation/app_radius.dart';
 import 'package:momeo/foundation/app_spacing.dart';
 import 'package:momeo/foundation/app_text_styles.dart';
+import 'package:momeo/models/listening_sheet_tab.dart';
 import 'package:momeo/providers/settings_providers.dart';
 import 'package:momeo/widgets/background_recording_disclosure_dialog.dart';
 import 'package:momeo/widgets/dot.dart';
@@ -16,24 +19,15 @@ import 'package:permission_handler/permission_handler.dart';
 // ============================================================
 // 画面下端の領域を上下のスワイプで広げ縮めするシート
 //
-//   帯にタブが2つ並んでいて、常にどちらかを選んでいる。
+//   帯にタブが並んでいて、常にどれかを選んでいる。
 //   「どのタブを選んでいるか」と「シートを開いているか」は別の状態で、
 //   どちらも画面側（ListeningPage）が持つ。このシートは受け取った状態を
 //   高さに翻訳して描く。閉じても選んでいたタブはそのまま残る。
 //
 //   操作のタブは 1 件も選んでいなくても出し、中の操作を押せない見た目にする。
 //   タブが出たり消えたりすると、帯の並びが変わって押し間違いを招くため。
+//   タブは長押しして左右へ動かすと並び替えられ、その順序は端末に保存する。
 // ============================================================
-
-// ---------------------------------
-// シートのタブ
-// ---------------------------------
-enum ListeningSheetTab {
-  // 帯の左: いつ録音するかの選択肢
-  recordingOptions,
-  // 帯の右: 選択中のメモへの操作（0 件でも出す）
-  selectionActions,
-}
 
 // ---------------------------------
 // 定数: 高さ
@@ -81,6 +75,13 @@ const _optionSelectedDotSize = 12.0;
 
 // 帯に出す録音状態の文言の幅（状態が切り替わってもタブ幅を動かさない）
 const _recordingStatusLabelWidth = 186.0;
+
+// 並び替え中のタブを持ち上げる距離と拡大率
+const _draggedTabLift = 4.0;
+const _draggedTabScale = 1.02;
+
+// タブの並び替えを始めるまで押し続ける時間（Flutter 標準は 500ms）
+const _tabReorderLongPressDuration = Duration(milliseconds: 350);
 
 // ---------------------------------
 // 定数: 画面に出る文言
@@ -298,7 +299,11 @@ class _ListeningInsetSheetState extends ConsumerState<ListeningInsetSheet>
   // ---------------------------------
   // タブ（選んでいるほうは文言を線で囲み、その線が下のカード群へつながる）
   // ---------------------------------
-  Widget _buildTab({required ListeningSheetTab tab, required Widget child}) {
+  Widget _buildTab({
+    required ListeningSheetTab tab,
+    required Widget child,
+    bool isFloating = false,
+  }) {
     final isSelected = widget.tab == tab;
 
     return GestureDetector(
@@ -307,6 +312,7 @@ class _ListeningInsetSheetState extends ConsumerState<ListeningInsetSheet>
       child: CustomPaint(
         painter: _TabStrokePainter(
           isSelected ? _TabStroke.activeTab : _TabStroke.inactiveTab,
+          isFloating: isFloating,
         ),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: AppSpacing.m),
@@ -318,7 +324,22 @@ class _ListeningInsetSheetState extends ConsumerState<ListeningInsetSheet>
   }
 
   // ---------------------------------
-  // 左のタブの中身: バックグラウンド録音の状態
+  // タブの種類に対応する文言
+  // ---------------------------------
+  Widget _buildTabLabel({
+    required ListeningSheetTab tab,
+    required bool isBackgroundRecordingEnabled,
+  }) {
+    return switch (tab) {
+      ListeningSheetTab.recordingOptions => _buildRecordingTabLabel(
+        isBackgroundRecordingEnabled: isBackgroundRecordingEnabled,
+      ),
+      ListeningSheetTab.selectionActions => _buildSelectionTabLabel(),
+    };
+  }
+
+  // ---------------------------------
+  // 録音タブの中身: バックグラウンド録音の状態
   // ---------------------------------
   Widget _buildRecordingTabLabel({required bool isBackgroundRecordingEnabled}) {
     final labelStyle = _tabLabelStyle(
@@ -337,17 +358,15 @@ class _ListeningInsetSheetState extends ConsumerState<ListeningInsetSheet>
         ),
         const SizedBox(width: AppSpacing.s),
         // --- 文言（状態が切り替わってもタブ幅が動かないよう、長いほうの幅を確保する）
-        Flexible(
-          child: SizedBox(
-            width: _recordingStatusLabelWidth,
-            child: Text(
-              isBackgroundRecordingEnabled
-                  ? _statusLabelEnabled
-                  : _statusLabelDisabled,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: labelStyle,
-            ),
+        SizedBox(
+          width: _recordingStatusLabelWidth,
+          child: Text(
+            isBackgroundRecordingEnabled
+                ? _statusLabelEnabled
+                : _statusLabelDisabled,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: labelStyle,
           ),
         ),
       ],
@@ -355,7 +374,7 @@ class _ListeningInsetSheetState extends ConsumerState<ListeningInsetSheet>
   }
 
   // ---------------------------------
-  // 右のタブの中身: 選択中のメモへの操作
+  // 選択操作タブの中身: 選択中のメモへの操作
   // ---------------------------------
   Widget _buildSelectionTabLabel() {
     return Text(
@@ -372,29 +391,69 @@ class _ListeningInsetSheetState extends ConsumerState<ListeningInsetSheet>
   // 帯（閉じていても見えている、シートの上端）
   // ---------------------------------
   Widget _buildBand({required bool isBackgroundRecordingEnabled}) {
+    final tabOrder = ref.watch(listeningSheetTabOrderProvider);
+
     return SizedBox(
       height: _bandHeight,
       // --- 下線は帯の全幅に引いておき、その上へタブを重ねる
       child: CustomPaint(
         painter: const _TabStrokePainter(_TabStroke.baseline),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // --- 2 つ並べて画面に収まらないときは、文言の長い録音のタブだけを縮める
-            //     （両方を Flexible にすると空き幅が比で割られ、収まる文言まで切れる）
-            Flexible(
+        // --- タブが画面幅を超えたら横へスクロールし、長押しで任意の位置へ並び替える
+        child: ReorderableListView.builder(
+          scrollDirection: Axis.horizontal,
+          padding: EdgeInsets.zero,
+          buildDefaultDragHandles: false,
+          clipBehavior: Clip.none,
+          itemCount: tabOrder.length,
+          itemBuilder: (context, index) {
+            final tab = tabOrder[index];
+            return _TabReorderDragStartListener(
+              key: ValueKey(tab.storageId),
+              index: index,
+              enabled: tabOrder.length > 1,
               child: _buildTab(
-                tab: ListeningSheetTab.recordingOptions,
-                child: _buildRecordingTabLabel(
+                tab: tab,
+                child: _buildTabLabel(
+                  tab: tab,
                   isBackgroundRecordingEnabled: isBackgroundRecordingEnabled,
                 ),
               ),
-            ),
-            _buildTab(
-              tab: ListeningSheetTab.selectionActions,
-              child: _buildSelectionTabLabel(),
-            ),
-          ],
+            );
+          },
+          onReorderStart: (_) {
+            // 長押しが成立し、タブが浮いたことを小さな振動でも伝える
+            HapticFeedback.selectionClick();
+          },
+          onReorder: (oldIndex, newIndex) {
+            ref
+                .read(listeningSheetTabOrderProvider.notifier)
+                .reorder(oldIndex, newIndex);
+          },
+          proxyDecorator: (_, index, animation) {
+            final draggedTab = tabOrder[index];
+            return AnimatedBuilder(
+              animation: animation,
+              child: _buildTab(
+                tab: draggedTab,
+                isFloating: true,
+                child: _buildTabLabel(
+                  tab: draggedTab,
+                  isBackgroundRecordingEnabled: isBackgroundRecordingEnabled,
+                ),
+              ),
+              builder: (context, floatingTab) {
+                final progress = Curves.easeOut.transform(animation.value);
+                final lift = _draggedTabLift * progress;
+                return Transform.translate(
+                  offset: Offset(0, -lift),
+                  child: Transform.scale(
+                    scale: 1 + (_draggedTabScale - 1) * progress,
+                    child: floatingTab,
+                  ),
+                );
+              },
+            );
+          },
         ),
       ),
     );
@@ -838,6 +897,26 @@ class _ListeningInsetSheetState extends ConsumerState<ListeningInsetSheet>
 }
 
 // ---------------------------------
+// 標準より短い長押しでタブの並び替えを始める
+// ---------------------------------
+class _TabReorderDragStartListener extends ReorderableDragStartListener {
+  const _TabReorderDragStartListener({
+    super.key,
+    required super.child,
+    required super.index,
+    super.enabled,
+  });
+
+  @override
+  MultiDragGestureRecognizer createRecognizer() {
+    return DelayedMultiDragGestureRecognizer(
+      delay: _tabReorderLongPressDuration,
+      debugOwner: this,
+    );
+  }
+}
+
+// ---------------------------------
 // タブの線の種類
 // ---------------------------------
 enum _TabStroke {
@@ -857,9 +936,10 @@ enum _TabStroke {
 //   タブは自分で下線を引き直し、線の手前に来ることで奥にあるように見せる。
 // ---------------------------------
 class _TabStrokePainter extends CustomPainter {
-  const _TabStrokePainter(this.stroke);
+  const _TabStrokePainter(this.stroke, {this.isFloating = false});
 
   final _TabStroke stroke;
+  final bool isFloating;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -890,6 +970,10 @@ class _TabStrokePainter extends CustomPainter {
 
     final isActive = stroke == _TabStroke.activeTab;
 
+    // 浮いているタブは帯のベースラインへ重ならない位置で面と側線を止める。
+    // これにより、タブ自身の下辺は消しつつ、背後のベースラインは常に見える。
+    final bottom = isFloating ? baselineY - _tabStrokeWidth / 2 : size.height;
+
     // 枠の線を内側へ寄せる量（太さが違うので、選んでいるかで変わる）
     final frameInset =
         (isActive ? _tabStrokeWidth : _inactiveTabStrokeWidth) / 2;
@@ -904,12 +988,12 @@ class _TabStrokePainter extends CustomPainter {
     final cornerY = _tabCornerRadius + top;
 
     final path = Path()
-      ..moveTo(frameInset, size.height)
+      ..moveTo(frameInset, bottom)
       ..lineTo(frameInset, cornerY)
       ..arcToPoint(Offset(_tabCornerRadius + frameInset, top), radius: radius)
       ..lineTo(size.width - _tabCornerRadius - frameInset, top)
       ..arcToPoint(Offset(size.width - frameInset, cornerY), radius: radius)
-      ..lineTo(size.width - frameInset, size.height);
+      ..lineTo(size.width - frameInset, bottom);
 
     // --- 枠の中は白で塗る（下辺で閉じた形が塗る範囲になる）
     canvas.drawPath(
@@ -921,7 +1005,7 @@ class _TabStrokePainter extends CustomPainter {
     canvas.drawPath(path, isActive ? strokePaint : inactiveStrokePaint);
 
     // --- 選んでいないタブは、下線を枠の手前に通して奥にあることを示す
-    if (!isActive) {
+    if (!isActive && !isFloating) {
       canvas.drawLine(
         Offset(0, baselineY),
         Offset(size.width, baselineY),
@@ -932,5 +1016,5 @@ class _TabStrokePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_TabStrokePainter oldDelegate) =>
-      oldDelegate.stroke != stroke;
+      oldDelegate.stroke != stroke || oldDelegate.isFloating != isFloating;
 }
