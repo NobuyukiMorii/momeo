@@ -102,6 +102,10 @@ const _actionTitleDelete = '削除';
 const _actionTitleCopy = 'コピー';
 const _actionTitleClear = '解除';
 
+// コピーカードの上に出す知らせの文言と大きさ
+const _copyNoticeLabel = 'コピーしました';
+const _copyNoticeFontSize = 10.0;
+
 // 削除カードを押したときに出す確認ダイアログの文言
 const _deleteDialogTitle = '選択中のメモを削除しますか？';
 const _deleteDialogMessage = '一度削除すると復元できません。';
@@ -131,6 +135,7 @@ class ListeningInsetSheet extends ConsumerStatefulWidget {
     required this.onClearSelection,
     required this.onDeleteSelection,
     required this.onCopySelection,
+    required this.isCopyNoticeVisible,
   });
 
   // 今のシートの高さ（安全領域を除いた、一覧を押し上げるぶん）
@@ -162,6 +167,9 @@ class ListeningInsetSheet extends ConsumerStatefulWidget {
 
   // コピーカードをタップしたときに、選択中のメモをクリップボードに入れる
   final VoidCallback onCopySelection;
+
+  // コピーした知らせを、コピーカードの上に出しているか
+  final bool isCopyNoticeVisible;
 
   @override
   ConsumerState<ListeningInsetSheet> createState() =>
@@ -460,6 +468,33 @@ class _ListeningInsetSheetState extends ConsumerState<ListeningInsetSheet>
   }
 
   // ---------------------------------
+  // コピーした知らせ（カードの位置を動かさないよう、高さ 0 の箱から上へはみ出させる）
+  // ---------------------------------
+  Widget _buildCopyNotice() {
+    return SizedOverflowBox(
+      size: const Size(double.infinity, 0),
+      alignment: Alignment.bottomRight,
+      child: Padding(
+        padding: const EdgeInsets.only(bottom: AppSpacing.xs),
+        child: Opacity(
+          opacity: widget.isCopyNoticeVisible ? 1.0 : 0.0,
+          // 箱はカードの幅いっぱいに広がるため、寄せは文字側で決める
+          child: Text(
+            _copyNoticeLabel,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.right,
+            style: AppTextStyles.micro.copyWith(
+              fontSize: _copyNoticeFontSize,
+              color: AppColors.onSurface,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ---------------------------------
   // 選択中のメモへの操作カード（タイトルだけの小さなカード）
   // ---------------------------------
   Widget _buildSelectionActionCard({
@@ -681,12 +716,20 @@ class _ListeningInsetSheetState extends ConsumerState<ListeningInsetSheet>
                   ),
                 ),
                 const SizedBox(width: AppSpacing.m),
-                // --- コピー
+                // --- コピー（知らせは高さを持たせず、カードの上へはみ出させる）
                 Expanded(
-                  child: _buildSelectionActionCard(
-                    title: _actionTitleCopy,
-                    onTap: widget.onCopySelection,
-                    isEnabled: hasSelectedMemos,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    // 子は既定では横に伸びないため、カードの幅を削除カードと揃える
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      _buildCopyNotice(),
+                      _buildSelectionActionCard(
+                        title: _actionTitleCopy,
+                        onTap: widget.onCopySelection,
+                        isEnabled: hasSelectedMemos,
+                      ),
+                    ],
                   ),
                 ),
               ],

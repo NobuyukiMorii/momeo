@@ -18,8 +18,6 @@ import 'package:momeo/widgets/listening_inset_sheet.dart';
 import 'package:momeo/widgets/voice_card.dart';
 
 // ヘッダーに入力欄の代わりに出す文言
-const _showingSelectedOnlyLabel = '選択中のみ表示';
-const _selectionCopiedLabel = 'コピーしました';
 
 // コピーの知らせを出しておく時間（カード1枚のコピーと、まとめてコピーで共通）
 const _copyNoticeDuration = Duration(milliseconds: 3600);
@@ -364,7 +362,7 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
     // --- クリップボードにコピー
     final text = selectedMemos.map((memo) => memo.content).join(separator);
     Clipboard.setData(ClipboardData(text: text));
-    // --- ヘッダーに知らせを出す
+    // --- コピーカードの上に知らせを出す
     setState(() => _isSelectionCopyNoticeVisible = true);
     // --- 続けてコピーした場合、最後の1回から数えて引っ込める
     _selectionCopyNoticeTimer?.cancel();
@@ -412,16 +410,6 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
         ref.read(listeningProvider.notifier).onTypingComplete(card.memo.id);
       },
     );
-  }
-
-  // ---------------------------------
-  // ヘッダーに入力欄の代わりに出す文言（出さないときは null）
-  // ---------------------------------
-  String? _headerNoticeLabel(ListeningViewMode mode) {
-    if (mode is! OperatingSelectedMemos) return null;
-    return _isSelectionCopyNoticeVisible
-        ? _selectionCopiedLabel
-        : _showingSelectedOnlyLabel;
   }
 
   // ---------------------------------
@@ -566,6 +554,7 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
                       onClearSelection: _clearMemoSelection,
                       onDeleteSelection: _deleteSelectedMemos,
                       onCopySelection: () => _copySelectedMemos(selectedMemos),
+                      isCopyNoticeVisible: _isSelectionCopyNoticeVisible,
                     ),
                   ),
                 ],
@@ -575,17 +564,17 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
           // ---------------------------------
           // ヘッダー
           // ---------------------------------
-          Positioned(
-            top: 0,
-            left: 0,
-            right: 0,
-            child: ListeningHeader(
-              controller: _keywordController,
-              focusNode: _keywordFocusNode,
-              onCleared: _applyKeywords,
-              noticeLabel: _headerNoticeLabel(mode),
+          if (mode is BrowsingMemos)
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              child: ListeningHeader(
+                controller: _keywordController,
+                focusNode: _keywordFocusNode,
+                onCleared: _applyKeywords,
+              ),
             ),
-          ),
         ],
       ),
     );

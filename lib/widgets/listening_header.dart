@@ -7,20 +7,26 @@ import 'package:momeo/foundation/app_text_styles.dart';
 // ヘッダーの高さ
 const listeningHeaderHeight = 56.0;
 
-// 入力欄がヘッダーの上に残す余白
-const _fieldMarginTop = AppSpacing.xs;
+// ヘッダーを囲む線の太さ
+const _borderWidth = 3.0;
 
-// 入力欄がヘッダーの下線との間に残す余白
-const _fieldMarginBottom = AppSpacing.s;
+// ヘッダーの角の丸み
+const _cornerRadius = AppRadius.l;
 
-// 入力欄の枠線と、カード一覧との境目の線の太さ
-const _fieldBorderWidth = 1.5;
-
-// 虫めがねと消すボタンの大きさ
-const _iconSize = 20.0;
+// 線の内側にできる角の丸み
+const _innerCornerRadius = _cornerRadius - _borderWidth;
 
 // 入力文字の大きさ
-const _inputFontSize = 15.0;
+const _inputFontSize = 17.0;
+
+// カーソルの太さ
+const _cursorWidth = 1.0;
+
+// カーソルの高さ
+const _cursorHeight = 26.0;
+
+// 虫めがねと消すボタンの大きさ。カーソルの高さに合わせる
+const _iconSize = _cursorHeight;
 
 class ListeningHeader extends StatelessWidget {
   const ListeningHeader({
@@ -28,7 +34,6 @@ class ListeningHeader extends StatelessWidget {
     required this.controller,
     required this.focusNode,
     required this.onCleared,
-    this.noticeLabel,
   });
 
   // 入力中のキーワード
@@ -39,9 +44,6 @@ class ListeningHeader extends StatelessWidget {
 
   // クリアボタンを押したときの通知
   final VoidCallback onCleared;
-
-  // 入力欄の代わりに出す文言（null なら入力欄を出す）
-  final String? noticeLabel;
 
   // ---------------------------------
   // テキストフィールド
@@ -54,6 +56,8 @@ class ListeningHeader extends StatelessWidget {
       textInputAction: TextInputAction.search,
       onSubmitted: (_) => focusNode.unfocus(),
       cursorColor: AppColors.onSurface,
+      cursorWidth: _cursorWidth,
+      cursorHeight: _cursorHeight,
       style: AppTextStyles.caption.copyWith(
         fontSize: _inputFontSize,
         color: AppColors.onSurface,
@@ -120,65 +124,27 @@ class ListeningHeader extends StatelessWidget {
   }
 
   // ---------------------------------
-  // 入力欄の代わりに出す文言（選択中のメモを操作している間など）
-  // ---------------------------------
-  Widget _buildNotice(String label) {
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: Padding(
-        padding: const EdgeInsets.only(left: AppSpacing.l),
-        child: Text(
-          label,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: AppTextStyles.caption.copyWith(
-            fontSize: _inputFontSize,
-            color: AppColors.onSurface,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-      ),
-    );
-  }
-
-  // ---------------------------------
   // 入力欄（虫めがね・テキストフィールド・クリアボタン）
   // ---------------------------------
   Widget _buildField() {
-    return GestureDetector(
-      onTap: _toggleInput,
-      behavior: HitTestBehavior.opaque,
-      child: Container(
-        padding: const EdgeInsets.only(left: AppSpacing.l),
-        decoration: BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.circular(AppRadius.pill),
-          border: Border.all(
-            color: AppColors.onSurface,
-            width: _fieldBorderWidth,
-          ),
-        ),
-        child: Row(
-          children: [
-            // --------------------
-            // 検索アイコン
-            // --------------------
-            const Icon(
-              Icons.search,
-              size: _iconSize,
-              color: AppColors.onSurface,
-            ),
-            // --------------------
-            // テキストフィールド
-            // --------------------
-            const SizedBox(width: AppSpacing.xs),
-            Expanded(child: _buildInput()),
-            // --------------------
-            // クリアボタン
-            // --------------------
-            _buildClearButton(),
-          ],
-        ),
+    return Padding(
+      padding: const EdgeInsets.only(left: AppSpacing.l),
+      child: Row(
+        children: [
+          // --------------------
+          // 検索アイコン
+          // --------------------
+          const Icon(Icons.search, size: _iconSize, color: AppColors.onSurface),
+          // --------------------
+          // テキストフィールド
+          // --------------------
+          const SizedBox(width: AppSpacing.xs),
+          Expanded(child: _buildInput()),
+          // --------------------
+          // クリアボタン
+          // --------------------
+          _buildClearButton(),
+        ],
       ),
     );
   }
@@ -191,41 +157,66 @@ class ListeningHeader extends StatelessWidget {
     // 安全領域の上端
     final safeAreaTop = MediaQuery.paddingOf(context).top;
 
-    // 入力欄の代わりに出す文言（null なら入力欄を出す）
-    final label = noticeLabel;
-
-    return SizedBox(
-      height: safeAreaTop + listeningHeaderHeight,
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          // ---------------------------------
-          // 背景と、カード一覧との境目の線
-          // ---------------------------------
-          const DecoratedBox(
-            decoration: BoxDecoration(
-              color: AppColors.surface,
-              border: Border(
-                bottom: BorderSide(
-                  color: AppColors.onSurface,
-                  width: _fieldBorderWidth,
+    return GestureDetector(
+      // ヘッダーのどこを触っても入力欄を開閉できるようにする
+      onTap: _toggleInput,
+      behavior: HitTestBehavior.opaque,
+      child: SizedBox(
+        height: safeAreaTop + listeningHeaderHeight,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            // ---------------------------------
+            // 背景と、ヘッダーを囲む線
+            // ---------------------------------
+            Column(
+              // 子は既定では横に伸びないため、明示して画面幅いっぱいに広げる
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // 安全領域は線を引かず、背景だけを敷く
+                SizedBox(
+                  height: safeAreaTop,
+                  child: const ColoredBox(color: AppColors.surface),
                 ),
+                // ヘッダー本体は四辺を線で囲み、四隅を丸める。
+                // 線の色で塗った土台の内側に、本体をひと回り小さく重ねる
+                const Expanded(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: AppColors.onSurface,
+                      borderRadius: BorderRadius.all(
+                        Radius.circular(_cornerRadius),
+                      ),
+                    ),
+                    child: Padding(
+                      padding: EdgeInsets.all(_borderWidth),
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: AppColors.surface,
+                          borderRadius: BorderRadius.all(
+                            Radius.circular(_innerCornerRadius),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            // ---------------------------------
+            // 入力欄、または入力欄の代わりの文言
+            // ---------------------------------
+            Padding(
+              padding: EdgeInsets.only(
+                left: _borderWidth,
+                top: safeAreaTop + _borderWidth,
+                right: _borderWidth,
+                bottom: _borderWidth,
               ),
+              child: _buildField(),
             ),
-          ),
-          // ---------------------------------
-          // 入力欄、または入力欄の代わりの文言
-          // ---------------------------------
-          Padding(
-            padding: EdgeInsets.fromLTRB(
-              AppSpacing.l,
-              safeAreaTop + _fieldMarginTop,
-              AppSpacing.l,
-              _fieldMarginBottom,
-            ),
-            child: label == null ? _buildField() : _buildNotice(label),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
