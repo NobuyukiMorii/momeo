@@ -3,100 +3,49 @@ import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart' show debugPrint, kDebugMode;
 import 'package:record/record.dart';
-import 'package:sherpa_onnx/sherpa_onnx.dart' as sherpa;
 
-import 'package:momeo/stt/stt_transcriber.dart';
+import 'package:momeo/stt/stt_audio_worker.dart';
 
 // ============================================================
-// リスニングの録音パイプライン（録音 → 区切り → 文字化）
+// リスニングの録音パイプライン（録音 → 音声 isolate → 通知）
 //
-//   マイクの音を連続キャプチャし、発話ごとに区切って日本語テキストに変換し、
-//   1発話確定するたびに onText で通知する部品。画面（listening_page）から
-//   録音まわりの詳細を分離するためのもの。
+//   マイクの音を連続キャプチャして音声 isolate へ流し、そこから戻ってくる
+//   「発話中フラグ・音量・確定テキスト」をコールバックへ配る。
+//   区切りと文字化は音声 isolate の担当で、ここでは一切行わない。
 //
-//   ■ 配線（dev catalog「文字化」セクションと同じ）
-//   🎤 record（PCM16 / 16kHz / モノラル）
-//     ↓ Float32 に変換し、512サンプル窓で供給
-//   sherpa 内蔵 Silero VAD（無音 1.5秒で発話終了を検出）
-//     ↓ 1発話ぶんの音声チャンク
-//   SttTranscriber.transcribe()（100〜300ms）
-//     ↓
-//   onText(テキスト) で通知（空文字の扱いは受け手が決める）
-//
-//   ■ 所有関係
-//   - この部品が所有する: AudioRecorder・VAD（dispose で後始末する）
-//   - 借り物: SttTranscriber（Step 9 の共有エンジン。dispose しない）
-//
-//   ※ 生成前に sherpa.initBindings() が済んでいること（Step 9 の provider が
-//     エンジン準備で先に呼ぶため、エンジン取得後に作れば自然に満たされる）。
-//   ※ 転写はメインスレッドで動く（spike 指摘C・②）。取りこぼしの実機計測用に
-//     発話長と転写時間を debug ログに出す。
+//   所有するのは AudioRecorder だけ。SttAudioWorker は借り物で、
+//   dispose では区切り役の解放だけを頼み、認識器には触れない。
 // ============================================================
 
-const int _kSampleRate = 16000; // 1秒あたりのサンプル数
-const int _kBytesPerSample = 2; // PCM16 = 1サンプル2バイト
-const int _kInt16Amplitude = 32768; // PCM16 の正規化基準（2^15）
-const int _kVadWindow = 512; // VAD に1回で渡すサンプル数（16kHz の Silero 用）
-const double _kVadBufferSeconds = 60; // VAD 内部バッファ（秒）。maxSpeechDuration を余裕で収める
-
-// VAD の区切り設定
-//   無音 1.5秒 = メモ確定条件（旧仕様 pauseFor と同じ値。担い手が VAD に変わった）
-const double _kMinSilenceDuration = 1.5;
-const double _kMinSpeechDuration = 0.25;
-const double _kMaxSpeechDuration = 30.0;
+const int _kSampleRate = 16000; // 録音のサンプリングレート（VAD・NeMo の前提）
 
 class SttListeningPipeline {
   SttListeningPipeline({
-    required SttTranscriber transcriber,
+    required SttAudioWorker worker,
     required String sileroPath,
-    required this.onText,
+    required this.onTranscribed,
     this.onSpeechActiveChanged,
     this.onLevelChanged,
-  })  : _transcriber = transcriber,
-        _vad = _createVad(sileroPath);
+  })  : _worker = worker,
+        _sileroPath = sileroPath;
 
-  // 文字化エンジン（借り物）。後始末は Step 9 の provider の担当
-  final SttTranscriber _transcriber;
+  final SttAudioWorker _worker;
+  final String _sileroPath;
 
-  // 1発話確定するたびに呼ばれる通知先（リスニング画面の _addMemo につなぐ）
-  final void Function(String text) onText;
+  // 1発話ぶんの文字化が終わるたびに呼ばれる通知先
+  final void Function(SttTranscribed result) onTranscribed;
 
-  // VAD の「発話中かどうか」が切り替わるたびに呼ばれる通知先（任意）
-  //   true: 発話の開始を検出した（発話開始から約 minSpeechDuration 後）
-  //   false: 発話の終了を検出した（無音 minSilenceDuration 後 = 確定と同時）
+  // 発話中かどうかが切り替わるたびに呼ばれる通知先（任意）
   final void Function(bool isActive)? onSpeechActiveChanged;
 
-  // マイク音量メーター用：チャンクごとのピーク音量（0.0=無音 〜 1.0=最大）を外へ出す通知先（任意）
+  // マイク音量メーター用に、チャンクごとのピーク音量を渡す通知先（任意）
   final void Function(double level)? onLevelChanged;
 
   final AudioRecorder _recorder = AudioRecorder();
-  final sherpa.VoiceActivityDetector _vad;
-  StreamSubscription<Uint8List>? _subscription;
-
-  // VAD へ窓単位で渡すための累積バッファ
-  final List<double> _floatBuffer = <double>[];
+  StreamSubscription<Uint8List>? _audioSubscription;
+  StreamSubscription<SttAudioEvent>? _eventSubscription;
 
   bool _running = false;
-
-  // 直近に通知した「発話中かどうか」（変化したときだけ通知するため）
-  bool _speechActive = false;
-
-  // silero の住所から VAD を生成する
-  static sherpa.VoiceActivityDetector _createVad(String sileroPath) {
-    return sherpa.VoiceActivityDetector(
-      config: sherpa.VadModelConfig(
-        sileroVad: sherpa.SileroVadModelConfig(
-          model: sileroPath,
-          minSilenceDuration: _kMinSilenceDuration,
-          minSpeechDuration: _kMinSpeechDuration,
-          maxSpeechDuration: _kMaxSpeechDuration,
-        ),
-        sampleRate: _kSampleRate,
-        numThreads: 1,
-      ),
-      bufferSizeInSeconds: _kVadBufferSeconds,
-    );
-  }
 
   // ---------------------------------
   // リスニングの開始 / 停止
@@ -105,14 +54,13 @@ class SttListeningPipeline {
   Future<void> start() async {
     if (_running) return;
 
-    // 権限フロー（Step 2）で許可済みの前提だが、念のため確認する
+    // 権限フローで許可済みの前提だが、念のため確認する
     final granted = await _recorder.hasPermission();
     if (!granted) {
       throw StateError('マイクの利用が許可されていません（RECORD_AUDIO）');
     }
 
-    _vad.clear();
-    _floatBuffer.clear();
+    await _worker.startListening(sileroPath: _sileroPath);
 
     // 中断（着信・他アプリのマイク奪取）からの復帰設定
     //   既定の pause は自動停止・手動再開のため、再開処理が無いと止まったまま戻らない。
@@ -134,10 +82,15 @@ class SttListeningPipeline {
       ),
     );
     final stream = await _recorder.startStream(config);
-    _subscription = stream.listen(
-      _onAudioChunk,
-      onError: (Object error) =>
-          debugPrint('[sttPipeline] 録音ストリームのエラー: $error'),
+
+    // 通知の購読を先に始めてから音声を流す（順番が逆だと最初の通知を取りこぼす）
+    _eventSubscription = _worker.events.listen(
+      _onWorkerEvent,
+      onError: (Object error) => debugPrint('[sttPipeline] 音声 isolate のエラー: $error'),
+    );
+    _audioSubscription = stream.listen(
+      _worker.pushAudio,
+      onError: (Object error) => debugPrint('[sttPipeline] 録音ストリームのエラー: $error'),
     );
     _running = true;
   }
@@ -146,109 +99,58 @@ class SttListeningPipeline {
     if (!_running) return;
     _running = false;
 
-    await _subscription?.cancel();
-    _subscription = null;
-    _notifySpeechActive(detected: false);
+    await _audioSubscription?.cancel();
+    _audioSubscription = null;
     try {
       await _recorder.stop();
     } catch (_) {
       // 停止時の例外は致命的でないため無視
     }
 
-    // 末尾に残った発話を VAD から押し出して文字化する
-    _vad.flush();
-    _drainAndTranscribe();
+    // 末尾に残った発話を押し出す。確定テキストは通知で戻ってくるため、
+    // それを受け取り終えてから購読を切る
+    try {
+      await _worker.stopListening();
+    } catch (error) {
+      debugPrint('[sttPipeline] 末尾の発話を確定できませんでした: $error');
+    }
+    await _eventSubscription?.cancel();
+    _eventSubscription = null;
   }
 
   // ---------------------------------
-  // 音声チャンクの受信
-  //   ① Float32 へ変換 → ② 512サンプル窓で VAD に供給 → ③ 区切り → 文字化
+  // 音声 isolate からの通知を配る
   // ---------------------------------
 
-  void _onAudioChunk(Uint8List bytes) {
-    // ① PCM16（整数）を Float32（小数）に変換して貯める
-    final samples = _pcm16ToFloat32(bytes);
-    _floatBuffer.addAll(samples);
-
-    // ② 512サンプルたまるごとに VAD へ渡す
-    while (_floatBuffer.length >= _kVadWindow) {
-      final window = Float32List.fromList(_floatBuffer.sublist(0, _kVadWindow));
-      _floatBuffer.removeRange(0, _kVadWindow);
-      _vad.acceptWaveform(window);
-    }
-
-    // 「発話中かどうか」の変化を通知する（区切り＝onText より先に知らせる）
-    _notifySpeechActive(detected: _vad.isDetected());
-
-    // ③ 区切られた発話を取り出して文字化する
-    _drainAndTranscribe();
-
-    // 音量メーター用：このチャンクのピーク音量を外へ出す（0.0=無音 〜 1.0=最大）
-    onLevelChanged?.call(_peakLevel(samples));
-  }
-
-  // 発話中かどうかが前回通知から変化していたら通知する
-  void _notifySpeechActive({required bool detected}) {
-    if (detected == _speechActive) return;
-    _speechActive = detected;
-    onSpeechActiveChanged?.call(detected);
-  }
-
-  // PCM16 little-endian の生バイトを [-1, 1] の Float32 へ
-  Float32List _pcm16ToFloat32(Uint8List bytes) {
-    final sampleCount = bytes.length ~/ _kBytesPerSample;
-    final view = ByteData.sublistView(bytes);
-    final out = Float32List(sampleCount);
-    for (var i = 0; i < sampleCount; i++) {
-      out[i] =
-          view.getInt16(i * _kBytesPerSample, Endian.little) / _kInt16Amplitude;
-    }
-    return out;
-  }
-
-  // チャンクのピーク音量（最大振幅）を 0.0〜1.0 で返す。
-  // サンプルはすでに [-1,1] に正規化済みなので、絶対値の最大がそのまま音量になる。
-  // 正規化の考え方は catalog の _peakLevel（packages_record_section.dart）と同じ。
-  double _peakLevel(Float32List samples) {
-    var maxAbs = 0.0;
-    for (final sample in samples) {
-      final abs = sample < 0 ? -sample : sample;
-      if (abs > maxAbs) maxAbs = abs;
-    }
-    return maxAbs;
-  }
-
-  // VAD が区切った発話チャンクを順に取り出し、文字化して onText へ渡す
-  void _drainAndTranscribe() {
-    while (!_vad.isEmpty()) {
-      final segment = _vad.front();
-      _vad.pop();
-
-      final durationSec = segment.samples.length / _kSampleRate;
-
-      // 転写時間を計測する（spike 指摘C・②の取りこぼし判定に使う）
-      final stopwatch = Stopwatch()..start();
-      final text = _transcriber.transcribe(segment.samples);
-      stopwatch.stop();
-
-      if (kDebugMode) {
-        debugPrint(
-          '[sttPipeline] 発話 ${durationSec.toStringAsFixed(1)}s'
-          ' → 転写 ${stopwatch.elapsedMilliseconds}ms'
-          ' → 「$text」',
-        );
-      }
-      onText(text);
+  void _onWorkerEvent(SttAudioEvent event) {
+    switch (event) {
+      case SttSpeechActiveChanged(:final isActive):
+        onSpeechActiveChanged?.call(isActive);
+      case SttMicLevelMeasured(:final level):
+        onLevelChanged?.call(level);
+      case SttTranscribed():
+        if (kDebugMode) {
+          debugPrint(
+            '[sttPipeline] 発話 ${event.durationSec.toStringAsFixed(1)}s'
+            ' → 転写 ${event.elapsedMs}ms'
+            ' → 「${event.text}」',
+          );
+        }
+        onTranscribed(event);
     }
   }
 
   // ---------------------------------
-  // 後始末（借り物の transcriber には触らない）
+  // 後始末（借り物の認識器には触らない）
   // ---------------------------------
 
   Future<void> dispose() async {
     await stop();
     await _recorder.dispose();
-    _vad.free();
+    try {
+      await _worker.releaseListening();
+    } catch (_) {
+      // isolate が既に終わっている場合は解放するものが無い
+    }
   }
 }

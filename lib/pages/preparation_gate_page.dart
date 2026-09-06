@@ -4,7 +4,7 @@ import 'package:momeo/foundation/app_colors.dart';
 import 'package:momeo/foundation/app_text_styles.dart';
 import 'package:momeo/platform/asset_pack_delivery.dart';
 import 'package:momeo/providers/stt_providers.dart';
-import 'package:momeo/stt/stt_transcriber.dart';
+import 'package:momeo/stt/stt_audio_worker.dart';
 import 'package:momeo/widgets/activity_dots_text.dart';
 import 'package:momeo/widgets/downloading_progress_text.dart';
 import 'package:momeo/widgets/intro_setting_layout.dart';
@@ -61,7 +61,7 @@ class PreparationGatePage extends ConsumerWidget {
   // エンジン・DLの状態からフェーズを判定する
   // ---------------------------------
   PreparationPhase _resolvePhase(
-    AsyncValue<SttTranscriber> engineState,
+    AsyncValue<SttAudioWorker> engineState,
     AsyncValue<AssetPackState> downloadState,
     bool restartSuggested,
   ) {

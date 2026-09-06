@@ -16,6 +16,7 @@ import 'package:momeo/providers/stt_providers.dart';
 import 'package:momeo/repositories/voice_memo_repository.dart';
 import 'package:momeo/stt/listening_foreground_service.dart';
 import 'package:momeo/stt/listening_live_activity.dart';
+import 'package:momeo/stt/stt_audio_worker.dart';
 import 'package:momeo/stt/stt_listening_pipeline.dart';
 import 'package:momeo/stt/stt_model_provisioner.dart';
 
@@ -181,16 +182,16 @@ class ListeningNotifier extends AsyncNotifier<ListeningState> {
   // ---------------------------------
   Future<void> _startPipeline() async {
     try {
-      // 全画面で共有しているSTTエンジンを受け取る（ここでは新規作成しない）
-      final transcriber = await ref.read(sttEngineProvider.future);
+      // 全画面で共有している音声 isolate を受け取る（ここでは新規作成しない）
+      final worker = await ref.read(sttEngineProvider.future);
       // VADモデル（silero）のパスを取得する
       final sileroPath = await SttModelProvisioner().ensureSilero();
       if (_disposed) return;
 
       final pipeline = SttListeningPipeline(
-        transcriber: transcriber,
+        worker: worker,
         sileroPath: sileroPath,
-        onText: _onText,
+        onTranscribed: _onTranscribed,
         onSpeechActiveChanged: _onSpeechActiveChanged,
         onLevelChanged: (level) => _latestLevel = level,
       );
@@ -339,8 +340,8 @@ class ListeningNotifier extends AsyncNotifier<ListeningState> {
   //   あり: DB へ保存して先頭に差し、タイピング演出の対象にする
   //   ※ 画面を離れた後に届く末尾の発話も、DB への保存だけは行う
   // ---------------------------------
-  Future<void> _onText(String text) async {
-    final content = text.trim();
+  Future<void> _onTranscribed(SttTranscribed result) async {
+    final content = result.text.trim();
 
     if (content.isEmpty) {
       if (_disposed) return;

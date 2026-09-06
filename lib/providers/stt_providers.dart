@@ -3,32 +3,29 @@ import 'dart:math' show min;
 
 import 'package:flutter/foundation.dart' show debugPrint, kDebugMode;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:sherpa_onnx/sherpa_onnx.dart' as sherpa;
 
 import 'package:momeo/platform/asset_pack_delivery.dart';
+import 'package:momeo/stt/stt_audio_worker.dart';
 import 'package:momeo/stt/stt_model_provisioner.dart';
-import 'package:momeo/stt/stt_transcriber.dart';
 
 // ============================================================
-// sttEngineProvider — 文字化エンジン（SttTranscriber）をアプリ全体で1つだけ持つ
+// sttEngineProvider — 音声 isolate（SttAudioWorker）をアプリ全体で1つだけ持つ
 //
-//   読み込みは数秒かかるため、起動時に1回だけ行い全画面で使い回す。
+//   認識器の読み込みは数秒かかるため、起動時に1回だけ行い全画面で使い回す。
 //   状態は AsyncValue で公開する（loading=準備中 / data=完了 / error=失敗）。
 //
 //   準備が失敗したら、この provider が自分でバックオフ付きの再試行を予約する。
 //   画面側（ゲート・待ち画面）は状態を表示するだけで、復帰には関与しない。
-//
-//   ※ VAD（silero）はここでは作らない（録音セッション側の持ち物）。
 // ============================================================
 
 final sttEngineProvider =
-    AsyncNotifierProvider<SttEngineNotifier, SttTranscriber>(
+    AsyncNotifierProvider<SttEngineNotifier, SttAudioWorker>(
   SttEngineNotifier.new,
   // Riverpod 標準の自動リトライ（0.2〜6.4秒）を無効化。自前のバックオフと二重に走るため
   retry: (retryCount, error) => null,
 );
 
-class SttEngineNotifier extends AsyncNotifier<SttTranscriber> {
+class SttEngineNotifier extends AsyncNotifier<SttAudioWorker> {
   // ---------------------------------
   // 自動再試行の設定（間隔は失敗のたびに1段広げ、最後の値が上限）
   // ---------------------------------
@@ -42,16 +39,16 @@ class SttEngineNotifier extends AsyncNotifier<SttTranscriber> {
   // エンジンの準備を実行する。失敗したら自動で再試行を予約する
   // ---------------------------------
   @override
-  Future<SttTranscriber> build() async {
+  Future<SttAudioWorker> build() async {
     // 再実行の入口。予約済みの再試行が残っていれば止める（多重予約を防ぐ）
     _retryTimer?.cancel();
     ref.onDispose(() => _retryTimer?.cancel());
 
     try {
-      final transcriber = await _prepare();
+      final worker = await _prepare();
       _consecutiveFailures = 0;
       ref.read(sttRestartSuggestedProvider.notifier).set(false);
-      return transcriber;
+      return worker;
     } catch (error) {
       _scheduleRetry();
       rethrow;
@@ -60,19 +57,15 @@ class SttEngineNotifier extends AsyncNotifier<SttTranscriber> {
 
   // ---------------------------------
   // 起動時の準備処理
-  //   ① ネイティブ初期化 → ② モデルパス取得 → ③ (Android初回のみ) DL完了待ち
-  //   → ④ エンジン生成・保持
+  //   ① モデルパス取得 → ② (Android初回のみ) DL完了待ち → ③ 音声 isolate の立ち上げ
   // ---------------------------------
-  Future<SttTranscriber> _prepare() async {
-    // ① 複数回呼んでも安全
-    sherpa.initBindings();
-
+  Future<SttAudioWorker> _prepare() async {
     final provisioner = SttModelProvisioner();
 
-    // ② モデル3ファイルのパス・整合性を取得（silero の端末コピーもこの中で済む）
+    // ① モデル3ファイルのパス・整合性を取得（silero の端末コピーもこの中で済む）
     var models = await provisioner.provision();
 
-    // ③ NeMo が未到着なら、DL中に限り完了を待ってからパスを取り直す
+    // ② NeMo が未到着なら、DL中に限り完了を待ってからパスを取り直す
     if (!_isNemoReady(models)) {
       await _waitForModelDownload(provisioner);
       models = await provisioner.provision();
@@ -87,23 +80,22 @@ class SttEngineNotifier extends AsyncNotifier<SttTranscriber> {
       );
     }
 
-    // ④ エンジン生成（数秒かかる本体）。破棄時にメモリから解放する。
-    //    生成は同期呼び出しでメインスレッドを止めるため、所要時間を計測している
+    // ③ 音声 isolate を立ち上げる。認識器の生成（数秒）もこの中で済む
     final stopwatch = Stopwatch()..start();
-    final transcriber = SttTranscriber.create(
+    final worker = await SttAudioWorker.spawn(
       modelPath: models.nemoModel.path,
       tokensPath: models.nemoTokens.path,
     );
     stopwatch.stop();
-    ref.onDispose(transcriber.dispose);
+    ref.onDispose(worker.dispose);
 
     if (kDebugMode) {
       debugPrint(
         '[sttEngine] エンジンの読み込みが完了しました'
-        '（create: ${stopwatch.elapsedMilliseconds}ms・メインスレッド占有）',
+        '（${stopwatch.elapsedMilliseconds}ms・音声 isolate 内）',
       );
     }
-    return transcriber;
+    return worker;
   }
 
   // NeMo（本体・tokens）の2ファイルが正しく置いてあるか
