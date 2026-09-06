@@ -79,16 +79,19 @@ const _disabledOpacity = 0.35;
 const _optionDotSize = 8.0;
 const _optionSelectedDotSize = 12.0;
 
+// 帯に出す録音状態の文言の幅（状態が切り替わってもタブ幅を動かさない）
+const _recordingStatusLabelWidth = 186.0;
+
 // ---------------------------------
 // 定数: 画面に出る文言
 // ---------------------------------
 
 // バックグラウンド録音の状態を伝える、帯の文言
 const _statusLabelEnabled = 'ほかのアプリを使っていても録音';
-const _statusLabelDisabled = 'このアプリを使っている時だけ録音';
+const _statusLabelDisabled = 'このアプリを使ってる時だけ録音';
 
 // バックグラウンド録音の選択肢（無効側・有効側）
-const _optionTitleDisabled = 'このアプリを使っている時だけ録音';
+const _optionTitleDisabled = 'このアプリを使ってる時だけ録音';
 const _optionDescriptionDisabled = 'ほかのアプリを使っている間やホーム画面では録音を止め、このアプリに戻ると再開します。';
 const _optionTitleEnabled = 'ほかのアプリを使っていても録音';
 const _optionDescriptionEnabled = 'ほかのアプリを使っている間やホーム画面でも録音し続けます。';
@@ -318,6 +321,10 @@ class _ListeningInsetSheetState extends ConsumerState<ListeningInsetSheet>
   // 左のタブの中身: バックグラウンド録音の状態
   // ---------------------------------
   Widget _buildRecordingTabLabel({required bool isBackgroundRecordingEnabled}) {
+    final labelStyle = _tabLabelStyle(
+      isActive: widget.tab == ListeningSheetTab.recordingOptions,
+    );
+
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -329,16 +336,17 @@ class _ListeningInsetSheetState extends ConsumerState<ListeningInsetSheet>
               : AppColors.notice,
         ),
         const SizedBox(width: AppSpacing.s),
-        // --- 文言
+        // --- 文言（状態が切り替わってもタブ幅が動かないよう、長いほうの幅を確保する）
         Flexible(
-          child: Text(
-            isBackgroundRecordingEnabled
-                ? _statusLabelEnabled
-                : _statusLabelDisabled,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: _tabLabelStyle(
-              isActive: widget.tab == ListeningSheetTab.recordingOptions,
+          child: SizedBox(
+            width: _recordingStatusLabelWidth,
+            child: Text(
+              isBackgroundRecordingEnabled
+                  ? _statusLabelEnabled
+                  : _statusLabelDisabled,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: labelStyle,
             ),
           ),
         ),
@@ -372,8 +380,6 @@ class _ListeningInsetSheetState extends ConsumerState<ListeningInsetSheet>
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // --- 帯の左端の余白（右端はタブを画面の端まで伸ばすので設けない）
-            const SizedBox(width: AppSpacing.l),
             // --- 2 つ並べて画面に収まらないときは、文言の長い録音のタブだけを縮める
             //     （両方を Flexible にすると空き幅が比で割られ、収まる文言まで切れる）
             Flexible(
