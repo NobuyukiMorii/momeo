@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import 'package:momeo/database/app_database.dart';
 import 'package:momeo/foundation/app_colors.dart';
 import 'package:momeo/foundation/app_spacing.dart';
+import 'package:momeo/pages/listening/listening_view_mode.dart';
 import 'package:momeo/pages/listening/memo_card_view_data.dart';
 import 'package:momeo/pages/listening/memo_keyword_filter.dart';
 import 'package:momeo/providers/listening_providers.dart';
@@ -19,12 +20,18 @@ import 'package:momeo/widgets/voice_card.dart';
 const _showingSelectedOnlyLabel = '選択中のみ表示';
 const _selectionCopiedLabel = 'コピーしました';
 
+// コピーの知らせを出しておく時間（カード1枚のコピーと、まとめてコピーで共通）
+const _copyNoticeDuration = Duration(milliseconds: 3600);
+
 // =====================================================================
 // ListeningPage — リスニング画面
 //
-//   状態（メモ一覧・発話中かどうか・演出の対象）は listeningProvider が
-//   一元管理する。この画面は watch して描画し、状態の変化をアクティブ
-//   カードのアニメーションに翻訳するだけの View に徹する。
+//   メモ一覧・発話中かどうか・演出の対象は listeningProvider が一元管理し、
+//   この画面は watch して描画する。
+//
+//   画面側で持つのは見せ方の状態だけ。どのモードか（ListeningViewMode）、
+//   どのメモを選んでいるか、下端のシートを開いているか、検索フィールドに
+//   入力中か、コピーの知らせを出しているか、の 5 つがそれにあたる。
 // =====================================================================
 class ListeningPage extends ConsumerStatefulWidget {
   const ListeningPage({super.key});
@@ -44,14 +51,18 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
   final Set<int> _selectedMemoIds = {};
 
   // ---------------------------------
+  // 画面のモード
+  // ---------------------------------
+  // 今のモード（起動直後は通常の一覧）
+  ListeningViewMode _viewMode = const BrowsingMemos();
+
+  // ---------------------------------
   // 検索フィールドに関する状態
   // ---------------------------------
   // 検索フィールドに打たれている文字列
   final TextEditingController _keywordController = TextEditingController();
   // 検索フィールドにカーソルが当たっているか
   final FocusNode _keywordFocusNode = FocusNode();
-  // 検索フィールドに入力されたキーワード
-  List<String> _keywords = const [];
   // 検索フィールドに入力中か（入力に入った時点で下端のシートを畳む）
   bool _isKeywordInputActive = false;
   // 前回このイベントが届いた時、キーボードが出ていたか
@@ -62,12 +73,8 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
   // ---------------------------------
   // 下端のシートの高さ
   final ValueNotifier<double> _sheetHeight = ValueNotifier(0);
-  // 下端のシートで選んでいるタブ（起動直後は録音の選択肢）
-  ListeningSheetTab _sheetTab = ListeningSheetTab.recordingOptions;
   // 下端のシートを開いているか
   bool _isSheetOpen = false;
-  // 「選択中のみ表示」で一覧に出し続けるメモの id（開いた瞬間の選択で固定する）
-  final Set<int> _selectedOnlyVisibleMemoIds = {};
 
   // ---------------------------------
   // コピーの知らせに関する状態
@@ -149,8 +156,17 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
   // 検索フィールドのキーワードを反映
   // ---------------------------------
   void _applyKeywords() {
+    // --- 選択済みのメモへの操作の間は、キーワードでの絞り込みを効かせない
+    if (_viewMode is! BrowsingMemos) return;
+    setState(() => _viewMode = _browsingFromKeywordField());
+  }
+
+  // ---------------------------------
+  // 検索フィールドに打たれている文字列から、通常の一覧のモードを作る
+  // ---------------------------------
+  BrowsingMemos _browsingFromKeywordField() {
     // --- 入力文字列を、照合に使う語の一覧へ分解
-    setState(() => _keywords = parseMemoKeywords(_keywordController.text));
+    return BrowsingMemos(keywords: parseMemoKeywords(_keywordController.text));
   }
 
   // ---------------------------------
@@ -164,7 +180,7 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
     // --- カーソルが当たっている間は下端のシートを畳んでおく
     setState(() {
       _isKeywordInputActive = isActive;
-      if (isActive) _updateSheet(isOpen: false);
+      if (isActive) _isSheetOpen = false;
     });
     // --- カーソルが外れたら文字列を絞り込みへ取り込む
     if (!isActive) _applyKeywords();
@@ -243,41 +259,43 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
   }
 
   // ---------------------------------
-  // 「選択中のみ表示」にしている間か（操作タブを選んでいて、かつシートを開いている）
+  // 今のモードに対応する、下端のシートのタブ
   // ---------------------------------
-  bool get _isShowingSelectedOnly =>
-      _sheetTab == ListeningSheetTab.selectionActions && _isSheetOpen;
+  ListeningSheetTab get _sheetTab => switch (_viewMode) {
+    BrowsingMemos() => ListeningSheetTab.recordingOptions,
+    OperatingSelectedMemos() => ListeningSheetTab.selectionActions,
+  };
 
   // ---------------------------------
-  // 下端のシートのタブと開閉を変える（「選択中のみ表示」への出入りもここで揃える）
+  // モードを移る（タブを移ったときだけ通る。シートの開閉では移らない）
   // ---------------------------------
-  void _updateSheet({ListeningSheetTab? tab, bool? isOpen}) {
-    final wasShowingSelectedOnly = _isShowingSelectedOnly;
-    if (tab != null) _sheetTab = tab;
-    if (isOpen != null) _isSheetOpen = isOpen;
-    // --- 変わっていなければ何もしない
-    if (_isShowingSelectedOnly == wasShowingSelectedOnly) return;
-    // --- 入るときは、その瞬間の選択を一覧に出す対象として固定する
-    if (_isShowingSelectedOnly) {
-      _selectedOnlyVisibleMemoIds
-        ..clear()
-        ..addAll(_selectedMemoIds);
-      return;
+  void _changeViewMode(ListeningSheetTab tab) {
+    switch (tab) {
+      // --- 選択中のメモへの操作へ
+      case ListeningSheetTab.selectionActions:
+        _viewMode = OperatingSelectedMemos(pinnedMemoIds: _selectedMemoIds);
+      // --- 通常の一覧へ（検索フィールドの文字列を絞り込みへ取り込み直す）
+      case ListeningSheetTab.recordingOptions:
+        _viewMode = _browsingFromKeywordField();
+        // 出しかけのコピーの知らせも引っ込める
+        _selectionCopyNoticeTimer?.cancel();
+        _isSelectionCopyNoticeVisible = false;
     }
-    // --- 出るときは固定を解き、出しかけのコピーの知らせも引っ込める
-    _selectedOnlyVisibleMemoIds.clear();
-    _selectionCopyNoticeTimer?.cancel();
-    _isSelectionCopyNoticeVisible = false;
   }
 
   // ---------------------------------
-  // シートのタブをタップしたとき（別のタブなら選んで開き、同じタブなら開閉を切り替える）
+  // シートのタブをタップしたとき（別のタブなら移って開き、同じタブなら開閉を切り替える）
   // ---------------------------------
   void _onSheetTabSelected(ListeningSheetTab tab) {
     setState(() {
-      tab == _sheetTab
-          ? _updateSheet(isOpen: !_isSheetOpen)
-          : _updateSheet(tab: tab, isOpen: true);
+      // --- 同じタブなら開閉だけを切り替える
+      if (tab == _sheetTab) {
+        _isSheetOpen = !_isSheetOpen;
+        return;
+      }
+      // --- 別のタブならモードを移って開く
+      _changeViewMode(tab);
+      _isSheetOpen = true;
     });
   }
 
@@ -285,28 +303,14 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
   // シートをスワイプで開き閉じしたとき
   // ---------------------------------
   void _onSheetOpenChanged(bool isOpen) {
-    setState(() => _updateSheet(isOpen: isOpen));
-  }
-
-  // ---------------------------------
-  // 選択を変える（0 件になったら、開いていた操作を閉じる）
-  // ---------------------------------
-  void _updateMemoSelection(void Function() change) {
-    setState(() {
-      change();
-      // --- 操作タブは 0 件では出せないので、録音のタブに戻して閉じる
-      if (_selectedMemoIds.isEmpty &&
-          _sheetTab == ListeningSheetTab.selectionActions) {
-        _updateSheet(tab: ListeningSheetTab.recordingOptions, isOpen: false);
-      }
-    });
+    setState(() => _isSheetOpen = isOpen);
   }
 
   // ---------------------------------
   // カードの選択・非選択
   // ---------------------------------
   void _toggleMemoSelection(int memoId) {
-    _updateMemoSelection(() {
+    setState(() {
       if (_selectedMemoIds.contains(memoId)) {
         // 選択中のメモを除外
         _selectedMemoIds.remove(memoId);
@@ -321,8 +325,6 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
   // カード長押しでコピー
   // ---------------------------------
   void _copyMemo(int memoId, String text) {
-    // 知らせを出しておく時間
-    const noticeDuration = Duration(milliseconds: 3600);
     // --- クリップボードにコピー
     Clipboard.setData(ClipboardData(text: text));
     // --- カード左上に通知を表示
@@ -330,7 +332,7 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
     // --- 続けてコピーした場合、最後の通知を非表示とする
     _copyNoticeTimer?.cancel();
     // --- 通知を一定時間表示
-    _copyNoticeTimer = Timer(noticeDuration, () {
+    _copyNoticeTimer = Timer(_copyNoticeDuration, () {
       if (mounted) setState(() => _copiedMemoId = null);
     });
   }
@@ -339,7 +341,7 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
   // 選択をすべて解除する（メモ自体は残る）
   // ---------------------------------
   void _clearMemoSelection() {
-    _updateMemoSelection(_selectedMemoIds.clear);
+    setState(_selectedMemoIds.clear);
   }
 
   // ---------------------------------
@@ -349,15 +351,13 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
     final targetIds = Set<int>.from(_selectedMemoIds);
     await ref.read(listeningProvider.notifier).deleteMemos(targetIds);
     if (!mounted) return;
-    _updateMemoSelection(() => _selectedMemoIds.removeAll(targetIds));
+    setState(() => _selectedMemoIds.removeAll(targetIds));
   }
 
   // ---------------------------------
   // 選択中のメモをまとめてコピーする（時系列順に空行1つでつなぐ）
   // ---------------------------------
   void _copySelectedMemos(List<VoiceMemo> selectedMemos) {
-    // 知らせを出しておく時間
-    const noticeDuration = Duration(milliseconds: 3600);
     // メモとメモのつなぎ目（コピーした文字列にもそのまま入る）
     const separator = '\n\n';
     // --- クリップボードにコピー
@@ -367,7 +367,7 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
     setState(() => _isSelectionCopyNoticeVisible = true);
     // --- 続けてコピーした場合、最後の1回から数えて引っ込める
     _selectionCopyNoticeTimer?.cancel();
-    _selectionCopyNoticeTimer = Timer(noticeDuration, () {
+    _selectionCopyNoticeTimer = Timer(_copyNoticeDuration, () {
       if (mounted) setState(() => _isSelectionCopyNoticeVisible = false);
     });
   }
@@ -416,8 +416,8 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
   // ---------------------------------
   // ヘッダーに入力欄の代わりに出す文言（出さないときは null）
   // ---------------------------------
-  String? _headerNoticeLabel(bool isShowingSelectedOnly) {
-    if (!isShowingSelectedOnly) return null;
+  String? _headerNoticeLabel(ListeningViewMode mode) {
+    if (mode is! OperatingSelectedMemos) return null;
     return _isSelectionCopyNoticeVisible
         ? _selectionCopiedLabel
         : _showingSelectedOnlyLabel;
@@ -453,8 +453,7 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
             SizedBox(height: index == 0 ? 0 : AppSpacing.xl),
         itemBuilder: (context, index) {
           if (index == 0) {
-            // --- 一番下はアクティブカード
-            // --- 絞り込み中はアクティブカードを出さず、一覧を絞り込んだ結果に徹させる
+            // --- 一番下はアクティブカード（出すかは呼び出し側が決める）
             return hidesActiveCard
                 ? const SizedBox.shrink()
                 : _buildActiveCard();
@@ -476,19 +475,29 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
         ref.watch(listeningProvider).value ?? const ListeningState();
 
     // ---------------------------------
-    // 一覧に出すメモ
-    //   選択中のメモへの操作を開いている間は、開いた瞬間に選んでいたメモだけ
-    //   （キーワードの絞り込みは効かせない）。それ以外はキーワードで絞り込む
+    // 一覧に出すメモ（モードで決まる）
+    //   固定したメモを全部削除したときは、一覧は空のままにする
     // ---------------------------------
-    final isShowingSelectedOnly = _isShowingSelectedOnly;
-    final isFilteringByKeywords =
-        !isShowingSelectedOnly && _keywords.isNotEmpty;
-    final visibleMemos = isShowingSelectedOnly
-        ? [
-            for (final memo in listening.memos)
-              if (_selectedOnlyVisibleMemoIds.contains(memo.id)) memo,
-          ]
-        : filterMemosByKeywords(listening.memos, _keywords);
+    final mode = _viewMode;
+    final visibleMemos = switch (mode) {
+      OperatingSelectedMemos(:final pinnedMemoIds) => [
+        for (final memo in listening.memos)
+          if (pinnedMemoIds.contains(memo.id)) memo,
+      ],
+      BrowsingMemos(:final keywords) => filterMemosByKeywords(
+        listening.memos,
+        keywords,
+      ),
+    };
+
+    // ---------------------------------
+    // アクティブカード（発話中のカード）
+    //   一覧に出すメモを選り分けている間は出さず、その結果に徹させる
+    // ---------------------------------
+    final hidesActiveCard = switch (mode) {
+      OperatingSelectedMemos() => true,
+      BrowsingMemos(:final keywords) => keywords.isNotEmpty,
+    };
 
     // ---------------------------------
     // ボイスカード一覧（日時の出し分けは絞り込んだ後の並びで決める）
@@ -537,8 +546,7 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
                   _buildMemoList(
                     cards: cards,
                     typeInMemoId: listening.typeInMemoId,
-                    hidesActiveCard:
-                        isFilteringByKeywords || isShowingSelectedOnly,
+                    hidesActiveCard: hidesActiveCard,
                     safeAreaTop: safeAreaTop,
                     safeAreaBottom: safeAreaBottom,
                   ),
@@ -574,7 +582,7 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
               controller: _keywordController,
               focusNode: _keywordFocusNode,
               onCleared: _applyKeywords,
-              noticeLabel: _headerNoticeLabel(isShowingSelectedOnly),
+              noticeLabel: _headerNoticeLabel(mode),
             ),
           ),
         ],
