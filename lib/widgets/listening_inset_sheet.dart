@@ -15,7 +15,7 @@ import 'package:permission_handler/permission_handler.dart';
 // ============================================================
 // 画面下端の領域を上下のスワイプで広げ縮めするシート
 //
-//   帯の左右にタブが1つずつあり、常にどちらかを選んでいる。
+//   帯にタブが2つ並んでいて、常にどちらかを選んでいる。
 //   「どのタブを選んでいるか」と「シートを開いているか」は別の状態で、
 //   どちらも画面側（ListeningPage）が持つ。このシートは受け取った状態を
 //   高さに翻訳して描く。閉じても選んでいたタブはそのまま残る。
@@ -36,7 +36,7 @@ enum ListeningSheetTab {
 // ---------------------------------
 
 // タブの帯の高さ（閉じているときはこの帯だけが見えている）
-const _bandHeight = 36.0;
+const _bandHeight = 48.0;
 
 // 帯の下に出すカード群の高さ（背の高い録音の選択肢に合わせた固定値）
 const _panelCardHeight = 168.0;
@@ -56,14 +56,17 @@ const _dragRange = _openHeight - _bandHeight;
 // 定数: 見た目
 // ---------------------------------
 
-// シートの土台の不透明度（タブの中・カード群・安全領域は白で塗るので透けない）
-const _sheetBackgroundOpacity = 0.92;
+// 下線と、選んでいるタブの枠線の太さ（選択中のボイスカードの太い枠線に揃える）
+const _tabStrokeWidth = 3.0;
 
-// タブの枠線と下線の太さ（ヘッダーの入力欄の枠線に揃える）
-const _tabStrokeWidth = 1.5;
+// 選んでいないタブの枠線の太さ（選択していないボイスカードの細い枠線に揃える）
+const _inactiveTabStrokeWidth = 1.5;
 
 // 選んでいるタブの上の角の丸み
 const _tabCornerRadius = AppRadius.l;
+
+// 選んでいないタブの枠を、上端からさらに下げて描く量（面の奥へ沈んで見せる）
+const _inactiveTabDepth = 3.0;
 
 // ---------------------------------
 // 定数: 画面に出る文言
@@ -77,8 +80,7 @@ const _statusLabelDisabled = 'このアプリを使っている時だけ録音';
 const _optionTitleDisabled = 'このアプリを使っている時だけ録音';
 const _optionDescriptionDisabled = 'ほかのアプリを使っている間やホーム画面では録音を止め、このアプリに戻ると再開します。';
 const _optionTitleEnabled = 'ほかのアプリを使っていても録音';
-const _optionDescriptionEnabled =
-    'ほかのアプリを使っている間やホーム画面でも録音し続けます。';
+const _optionDescriptionEnabled = 'ほかのアプリを使っている間やホーム画面でも録音し続けます。';
 
 // 選択中のメモへの操作（カードは削除・コピーの2枚、解除は右下のテキスト）
 const _actionTitleDelete = '削除';
@@ -290,23 +292,14 @@ class _ListeningInsetSheetState extends ConsumerState<ListeningInsetSheet>
       behavior: HitTestBehavior.opaque,
       child: CustomPaint(
         painter: _TabStrokePainter(
-          isSelected ? _TabStroke.tab : _TabStroke.baseline,
+          isSelected ? _TabStroke.activeTab : _TabStroke.inactiveTab,
         ),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: AppSpacing.m),
-          child: Center(child: child),
+          // widthFactor を 1 にして、幅の上限が渡されても中身の幅に縮ませる
+          child: Align(widthFactor: 1.0, child: child),
         ),
       ),
-    );
-  }
-
-  // ---------------------------------
-  // タブが無い区間（下線だけを引く）
-  // ---------------------------------
-  Widget _buildTabBaseline({double? width}) {
-    return SizedBox(
-      width: width,
-      child: const CustomPaint(painter: _TabStrokePainter(_TabStroke.baseline)),
     );
   }
 
@@ -326,12 +319,16 @@ class _ListeningInsetSheetState extends ConsumerState<ListeningInsetSheet>
         ),
         const SizedBox(width: AppSpacing.s),
         // --- 文言
-        Text(
-          isBackgroundRecordingEnabled
-              ? _statusLabelEnabled
-              : _statusLabelDisabled,
-          style: _tabLabelStyle(
-            isActive: widget.tab == ListeningSheetTab.recordingOptions,
+        Flexible(
+          child: Text(
+            isBackgroundRecordingEnabled
+                ? _statusLabelEnabled
+                : _statusLabelDisabled,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: _tabLabelStyle(
+              isActive: widget.tab == ListeningSheetTab.recordingOptions,
+            ),
           ),
         ),
       ],
@@ -344,6 +341,8 @@ class _ListeningInsetSheetState extends ConsumerState<ListeningInsetSheet>
   Widget _buildSelectionTabLabel() {
     return Text(
       '選択中の${_selectionCountFormat.format(widget.selectedCount)}件を操作',
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
       style: _tabLabelStyle(
         isActive: widget.tab == ListeningSheetTab.selectionActions,
       ),
@@ -356,25 +355,32 @@ class _ListeningInsetSheetState extends ConsumerState<ListeningInsetSheet>
   Widget _buildBand({required bool isBackgroundRecordingEnabled}) {
     return SizedBox(
       height: _bandHeight,
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          _buildTabBaseline(width: AppSpacing.l),
-          _buildTab(
-            tab: ListeningSheetTab.recordingOptions,
-            child: _buildRecordingTabLabel(
-              isBackgroundRecordingEnabled: isBackgroundRecordingEnabled,
+      // --- 下線は帯の全幅に引いておき、その上へタブを重ねる
+      child: CustomPaint(
+        painter: const _TabStrokePainter(_TabStroke.baseline),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // --- 帯の左端の余白（右端はタブを画面の端まで伸ばすので設けない）
+            const SizedBox(width: AppSpacing.l),
+            // --- 2 つ並べて画面に収まらないときは、文言の長い録音のタブだけを縮める
+            //     （両方を Flexible にすると空き幅が比で割られ、収まる文言まで切れる）
+            Flexible(
+              child: _buildTab(
+                tab: ListeningSheetTab.recordingOptions,
+                child: _buildRecordingTabLabel(
+                  isBackgroundRecordingEnabled: isBackgroundRecordingEnabled,
+                ),
+              ),
             ),
-          ),
-          Expanded(child: _buildTabBaseline()),
-          // --- 右のタブは 1 件以上選んでいるときだけ
-          if (widget.selectedCount > 0)
-            _buildTab(
-              tab: ListeningSheetTab.selectionActions,
-              child: _buildSelectionTabLabel(),
-            ),
-          _buildTabBaseline(width: AppSpacing.l),
-        ],
+            // --- 右のタブは 1 件以上選んでいるときだけ
+            if (widget.selectedCount > 0)
+              _buildTab(
+                tab: ListeningSheetTab.selectionActions,
+                child: _buildSelectionTabLabel(),
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -729,34 +735,27 @@ class _ListeningInsetSheetState extends ConsumerState<ListeningInsetSheet>
               onVerticalDragEnd: _onDragEnd,
               // 背景が透けていても、素通りして後ろの一覧に触れないよう受け止める
               behavior: HitTestBehavior.opaque,
-              // --- シートの見た目 ---
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  color: AppColors.surface.withValues(
-                    alpha: _sheetBackgroundOpacity,
-                  ),
-                ),
-                child: Column(
-                  children: [
-                    // 中身は常に自然な高さで並べ、シートが低い間は下へはみ出させて隠す
-                    Expanded(
-                      child: ClipRect(
-                        child: OverflowBox(
-                          alignment: Alignment.topCenter,
-                          minHeight: 0,
-                          maxHeight: double.infinity,
-                          child: content,
-                        ),
+              // --- シートの見た目（土台は塗らないので、タブの外は一覧がそのまま見える） ---
+              child: Column(
+                children: [
+                  // 中身は常に自然な高さで並べ、シートが低い間は下へはみ出させて隠す
+                  Expanded(
+                    child: ClipRect(
+                      child: OverflowBox(
+                        alignment: Alignment.topCenter,
+                        minHeight: 0,
+                        maxHeight: double.infinity,
+                        child: content,
                       ),
                     ),
-                    // --- 安全領域は透けさせない
-                    SizedBox(
-                      width: double.infinity,
-                      height: safeBottom,
-                      child: const ColoredBox(color: AppColors.surface),
-                    ),
-                  ],
-                ),
+                  ),
+                  // --- 安全領域は透けさせない
+                  SizedBox(
+                    width: double.infinity,
+                    height: safeBottom,
+                    child: const ColoredBox(color: AppColors.surface),
+                  ),
+                ],
               ),
             ),
           );
@@ -788,14 +787,20 @@ class _ListeningInsetSheetState extends ConsumerState<ListeningInsetSheet>
 // タブの線の種類
 // ---------------------------------
 enum _TabStroke {
-  // 下辺だけの線（選んでいないタブと、タブの間）
+  // 帯の全幅に引く下線（タブはこの上に重ねる）
   baseline,
   // 文言を囲む枠（選んでいるタブ。下は開けて、下の中身につなげる）
-  tab,
+  activeTab,
+  // 文言を囲む枠（選んでいないタブ。下線をその手前に通して奥に見せる）
+  inactiveTab,
 }
 
 // ---------------------------------
-// タブの線を描く（下線と枠がひと続きに見えるよう、同じ太さ・色で区間ごとに描く）
+// 帯の線を描く
+//
+//   下線は帯の全幅に 1 本引き、その上にタブの枠を重ねる。選んでいるタブは
+//   中を白く塗って下線を隠し、下のカード群へつながって見せる。選んでいない
+//   タブは自分で下線を引き直し、線の手前に来ることで奥にあるように見せる。
 // ---------------------------------
 class _TabStrokePainter extends CustomPainter {
   const _TabStrokePainter(this.stroke);
@@ -804,33 +809,53 @@ class _TabStrokePainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final paint = Paint()
+    // 線は太さの半分だけ内側へ寄せて描く（そうしないと区間の外へはみ出す）
+    final baselineY = size.height - _tabStrokeWidth / 2;
+
+    // 太い線（下線と、選んでいるタブの枠）
+    final strokePaint = Paint()
       ..color = AppColors.onSurface
       ..strokeWidth = _tabStrokeWidth
       ..style = PaintingStyle.stroke;
 
-    // 線の太さの半分（線が区間の外へはみ出さないよう、中心をこのぶん内側に寄せる）
-    final inset = _tabStrokeWidth / 2;
+    // 細い線（選んでいないタブの枠）
+    final inactiveStrokePaint = Paint()
+      ..color = AppColors.onSurface
+      ..strokeWidth = _inactiveTabStrokeWidth
+      ..style = PaintingStyle.stroke;
 
-    // --- 下辺だけの線
+    // --- 下線（帯の全幅）
     if (stroke == _TabStroke.baseline) {
-      final y = size.height - inset;
-      canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
+      canvas.drawLine(
+        Offset(0, baselineY),
+        Offset(size.width, baselineY),
+        strokePaint,
+      );
       return;
     }
 
+    final isActive = stroke == _TabStroke.activeTab;
+
+    // 枠の線を内側へ寄せる量（太さが違うので、選んでいるかで変わる）
+    final frameInset =
+        (isActive ? _tabStrokeWidth : _inactiveTabStrokeWidth) / 2;
+
+    // 枠の上端（選んでいないタブは、面の奥へ沈んで見えるようさらに下げる）
+    final top = isActive ? frameInset : frameInset + _inactiveTabDepth;
+
     // --- 文言を囲む枠（左下から上がり、上の角を丸めて、右下へ下りる）
     final radius = Radius.circular(_tabCornerRadius);
+
+    // 上の角の丸みが始まる高さ（縦の辺はここまで引く）
+    final cornerY = _tabCornerRadius + top;
+
     final path = Path()
-      ..moveTo(inset, size.height)
-      ..lineTo(inset, _tabCornerRadius + inset)
-      ..arcToPoint(Offset(_tabCornerRadius + inset, inset), radius: radius)
-      ..lineTo(size.width - _tabCornerRadius - inset, inset)
-      ..arcToPoint(
-        Offset(size.width - inset, _tabCornerRadius + inset),
-        radius: radius,
-      )
-      ..lineTo(size.width - inset, size.height);
+      ..moveTo(frameInset, size.height)
+      ..lineTo(frameInset, cornerY)
+      ..arcToPoint(Offset(_tabCornerRadius + frameInset, top), radius: radius)
+      ..lineTo(size.width - _tabCornerRadius - frameInset, top)
+      ..arcToPoint(Offset(size.width - frameInset, cornerY), radius: radius)
+      ..lineTo(size.width - frameInset, size.height);
 
     // --- 枠の中は白で塗る（下辺で閉じた形が塗る範囲になる）
     canvas.drawPath(
@@ -839,7 +864,16 @@ class _TabStrokePainter extends CustomPainter {
     );
 
     // --- 枠の線
-    canvas.drawPath(path, paint);
+    canvas.drawPath(path, isActive ? strokePaint : inactiveStrokePaint);
+
+    // --- 選んでいないタブは、下線を枠の手前に通して奥にあることを示す
+    if (!isActive) {
+      canvas.drawLine(
+        Offset(0, baselineY),
+        Offset(size.width, baselineY),
+        strokePaint,
+      );
+    }
   }
 
   @override
