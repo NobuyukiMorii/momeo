@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:momeo/diagnostics/main_thread_watchdog.dart';
 import 'package:momeo/foundation/app_scroll_behavior.dart';
 import 'package:momeo/foundation/app_theme.dart';
 import 'package:momeo/pages/dev/console/console_page.dart';
@@ -64,6 +65,11 @@ void main() {
   // 前回のプロセスが残した「録音中」の Live Activity を消す（iOS）
   // ---------------------------------
   unawaited(ListeningLiveActivity.dismissLeftovers());
+
+  // ---------------------------------
+  // メインスレッドが長く止まっていないかの見張りを始める
+  // ---------------------------------
+  MainThreadWatchdog.instance.start();
 
   // ---------------------------------
   // ProviderScope で包むと、配下のどこからでも Provider を参照できる

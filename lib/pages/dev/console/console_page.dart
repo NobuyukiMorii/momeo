@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:momeo/pages/dev/console/console_detail_page.dart';
+import 'package:momeo/pages/dev/console/sections/diagnostics/diagnostics_main_thread_section.dart';
 import 'package:momeo/pages/dev/console/sections/storage/storage_shared_preferences_section.dart';
 
 // ---------------------------------
@@ -22,6 +23,9 @@ class _Section {
 const _sections = [
   _Section(title: 'Storage', items: [
     _Item(title: 'SharedPreferences', body: StorageSharedPreferencesSection()),
+  ]),
+  _Section(title: 'Diagnostics', items: [
+    _Item(title: 'メインスレッド', body: DiagnosticsMainThreadSection()),
   ]),
 ];
 
