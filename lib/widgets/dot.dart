@@ -16,6 +16,7 @@ class Dot extends StatefulWidget {
     super.key,
     required this.color,
     this.size = _defaultDotSize,
+    this.isBlinking = true,
     this.blinkInterval = _defaultBlinkInterval,
   });
 
@@ -24,6 +25,9 @@ class Dot extends StatefulWidget {
 
   // ドットの直径
   final double size;
+
+  // 点滅させるか（false なら点いたまま）
+  final bool isBlinking;
 
   // 点いている時間と消えている時間
   final Duration blinkInterval;
@@ -36,7 +40,6 @@ class Dot extends StatefulWidget {
 // ドットの状態
 // ---------------------------------
 class _DotState extends State<Dot> {
-  
   // ---------------------------------
   // 今出しているか（点滅で入れ替わる）
   // ---------------------------------
@@ -52,8 +55,8 @@ class _DotState extends State<Dot> {
   void initState() {
     // --- 親の初期化を先に済ませる
     super.initState();
-    // --- 点滅を始める
-    _startBlinking();
+    // --- 点滅させる指定なら点滅を始める
+    if (widget.isBlinking) _startBlinking();
   }
 
   // ---------------------------------
@@ -63,9 +66,17 @@ class _DotState extends State<Dot> {
   void didUpdateWidget(Dot oldWidget) {
     // --- 親の処理を先に済ませる
     super.didUpdateWidget(oldWidget);
-    // --- 間隔が同じなら、今のタイマーをそのまま使う
-    if (widget.blinkInterval == oldWidget.blinkInterval) return;
-    // --- 間隔が変わったので、タイマーを張り替える
+    // --- 点滅しない指定になったら、タイマーを止めて点いたままにする
+    if (!widget.isBlinking) {
+      _stopBlinking();
+      return;
+    }
+    // --- 点滅の有無も間隔も変わっていなければ、今のタイマーをそのまま使う
+    if (oldWidget.isBlinking &&
+        widget.blinkInterval == oldWidget.blinkInterval) {
+      return;
+    }
+    // --- 点滅を始め直す
     _startBlinking();
   }
 
@@ -80,6 +91,15 @@ class _DotState extends State<Dot> {
       widget.blinkInterval,
       (_) => setState(() => _isVisible = !_isVisible),
     );
+  }
+
+  // ---------------------------------
+  // 点滅を止めて、点いた状態に戻す
+  // ---------------------------------
+  void _stopBlinking() {
+    _blinkTimer?.cancel();
+    _blinkTimer = null;
+    if (!_isVisible) setState(() => _isVisible = true);
   }
 
   // ---------------------------------

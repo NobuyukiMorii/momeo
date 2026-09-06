@@ -75,10 +75,10 @@ const _statusLabelDisabled = 'このアプリを使っている時だけ録音';
 
 // バックグラウンド録音の選択肢（無効側・有効側）
 const _optionTitleDisabled = 'このアプリを使っている時だけ録音';
-const _optionDescriptionDisabled = 'アプリがバックグラウンドに移ると録音を止め、フォアグラウンドに戻ると再開します。';
+const _optionDescriptionDisabled = 'ほかのアプリを使っている間やホーム画面では録音を止め、このアプリに戻ると再開します。';
 const _optionTitleEnabled = 'ほかのアプリを使っていても録音';
 const _optionDescriptionEnabled =
-    'ほかのアプリを使っている間や画面を消している間も、マイクで音声を録り続けます。アプリを終了すると止まります。';
+    'ほかのアプリを使っている間やホーム画面でも録音し続けます。';
 
 // 選択中のメモへの操作（カードは削除・コピーの2枚、解除は右下のテキスト）
 const _actionTitleDelete = '削除';
@@ -417,6 +417,7 @@ class _ListeningInsetSheetState extends ConsumerState<ListeningInsetSheet>
   Widget _buildRecordingOptionCard({
     required String title,
     required String description,
+    required Color dotColor,
     required VoidCallback onTap,
     bool isSelected = false,
   }) {
@@ -444,6 +445,10 @@ class _ListeningInsetSheetState extends ConsumerState<ListeningInsetSheet>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // --- 状態の色を示すドット（帯のタブと違い、ここでは点滅させない）
+            Dot(color: dotColor, isBlinking: false),
+            const SizedBox(height: AppSpacing.xs),
+            // --- タイトル
             Text(
               title,
               style: AppTextStyles.caption.copyWith(
@@ -629,6 +634,7 @@ class _ListeningInsetSheetState extends ConsumerState<ListeningInsetSheet>
           child: _buildRecordingOptionCard(
             title: _optionTitleDisabled,
             description: _optionDescriptionDisabled,
+            dotColor: AppColors.notice,
             isSelected: !isBackgroundRecordingEnabled,
             onTap: () => _selectBackgroundRecording(
               false,
@@ -642,6 +648,7 @@ class _ListeningInsetSheetState extends ConsumerState<ListeningInsetSheet>
           child: _buildRecordingOptionCard(
             title: _optionTitleEnabled,
             description: _optionDescriptionEnabled,
+            dotColor: AppColors.caution,
             isSelected: isBackgroundRecordingEnabled,
             onTap: () => _selectBackgroundRecording(
               true,
