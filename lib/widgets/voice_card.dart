@@ -4,6 +4,7 @@ import 'package:momeo/foundation/app_radius.dart';
 import 'package:momeo/foundation/app_spacing.dart';
 import 'package:momeo/foundation/app_text_styles.dart';
 import 'package:momeo/widgets/activity_dots_text.dart';
+import 'package:momeo/widgets/pressable_scale.dart';
 import 'package:momeo/widgets/typewriter_text.dart';
 import 'package:momeo/widgets/voice_icon.dart';
 
@@ -116,7 +117,7 @@ class _VoiceCardState extends State<VoiceCard> {
         // ---------------------------------
         // カード本体
         // ---------------------------------
-        GestureDetector(
+        PressableScale(
           onTap: widget.onTap,
           onLongPress: widget.onLongPress,
           child: Container(
@@ -125,7 +126,10 @@ class _VoiceCardState extends State<VoiceCard> {
             decoration: BoxDecoration(
               color: AppColors.surface,
               borderRadius: BorderRadius.circular(AppRadius.l),
-              border: Border.all(color: AppColors.onSurface, width: borderWidth),
+              border: Border.all(
+                color: AppColors.onSurface,
+                width: borderWidth,
+              ),
             ),
             // テキストが空のリスニング中は、左端のドットの増減で処理中の気配を出す
             child: widget.isListening && widget.text.isEmpty
