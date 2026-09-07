@@ -311,6 +311,8 @@ class ListeningNotifier extends AsyncNotifier<ListeningState> {
 
   // ---------------------------------
   // アプリがフォアグラウンドに復帰したときの録音の再開
+  //   バックグラウンドの間に録音が黙って止まっていることがあるため、
+  //   止めていた場合の再開と、続けていた場合の生死の確認を ensureRunning にまとめる
   // ---------------------------------
   Future<void> _onAppResumed() async {
     debugPrint('[listening] フォアグラウンド復帰: 録音を再開します');
@@ -319,7 +321,7 @@ class ListeningNotifier extends AsyncNotifier<ListeningState> {
       unawaited(ListeningLiveActivity.show());
     }
     try {
-      await _pipeline?.start();
+      await _pipeline?.ensureRunning();
     } catch (error) {
       // バックグラウンド中の権限取り消しなどはログのみ。権限の取り直しは RootView が担う
       debugPrint('[listening] リスニングを再開できませんでした: $error');
