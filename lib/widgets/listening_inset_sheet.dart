@@ -93,7 +93,7 @@ const _statusLabelDisabled = 'このアプリを使ってる時だけ録音';
 
 // バックグラウンド録音の選択肢（無効側・有効側）
 const _optionTitleDisabled = 'このアプリを使ってる時だけ録音';
-const _optionDescriptionDisabled = 'ほかのアプリを使っている間やホーム画面では録音を止め、このアプリに戻ると再開します。';
+const _optionDescriptionDisabled = 'ほかのアプリを使っている間やホーム画面では録音を止めます。';
 const _optionTitleEnabled = 'ほかのアプリを使っていても録音';
 const _optionDescriptionEnabled = 'ほかのアプリを使っている間やホーム画面でも録音し続けます。';
 
