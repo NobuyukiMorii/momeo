@@ -12,12 +12,16 @@ import 'package:momeo/pages/listening/listening_view_mode.dart';
 import 'package:momeo/pages/listening/memo_card_view_data.dart';
 import 'package:momeo/pages/listening/memo_keyword_filter.dart';
 import 'package:momeo/providers/listening_providers.dart';
+import 'package:momeo/widgets/date_separator.dart';
 import 'package:momeo/widgets/listening_backdrop.dart';
 import 'package:momeo/widgets/listening_header.dart';
 import 'package:momeo/widgets/listening_inset_sheet.dart';
 import 'package:momeo/widgets/voice_card.dart';
 
 // ヘッダーに入力欄の代わりに出す文言
+
+// 日付区切りと上下のカードとの間隔（カード同士の間隔より広く取る）
+const _dateSeparatorSpacing = AppSpacing.xxl;
 
 // コピーの知らせを出しておく時間（カード1枚のコピーと、まとめてコピーで共通）
 const _copyNoticeDuration = Duration(milliseconds: 3600);
@@ -44,8 +48,8 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
   // ---------------------------------
   // 選択中のメモに関する状態
   // ---------------------------------
-  // 日時フォーマット
-  static final _dateFormat = DateFormat('y/M/d HH:mm');
+  // 時刻フォーマット（日付はカードの上の区切りが持つ）
+  static final _timeFormat = DateFormat('HH:mm');
   // 選択中のメモの id
   final Set<int> _selectedMemoIds = {};
 
@@ -393,11 +397,11 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
   // 確定済みメモカード1枚
   // ---------------------------------
   Widget _buildMemoCard(MemoCardViewData card, int? typeInMemoId) {
-    return VoiceCard(
+    final voiceCard = VoiceCard(
       key: ValueKey(card.memo.id),
       text: card.memo.content,
       dateTime: card.showDateTime
-          ? _dateFormat.format(card.memo.createdAt)
+          ? _timeFormat.format(card.memo.createdAt)
           : null,
       typeIn: card.memo.id == typeInMemoId,
       selected: _selectedMemoIds.contains(card.memo.id),
@@ -409,6 +413,18 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
         if (!mounted) return;
         ref.read(listeningProvider.notifier).onTypingComplete(card.memo.id);
       },
+    );
+
+    // --- 日付が変わる境目では、カードの上へ区切りを挟む
+    return Column(
+      children: [
+        if (card.dateSeparatorLabel != null) ...[
+          const SizedBox(height: _dateSeparatorSpacing - AppSpacing.xl),
+          DateSeparator(label: card.dateSeparatorLabel!),
+          const SizedBox(height: _dateSeparatorSpacing),
+        ],
+        voiceCard,
+      ],
     );
   }
 
@@ -429,8 +445,8 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
         // --- 新しいカードが下に来るよう、下から積む
         reverse: true,
         padding: EdgeInsets.only(
-          left: AppSpacing.l,
-          right: AppSpacing.l,
+          left: AppSpacing.xs,
+          right: AppSpacing.xs,
           top: AppSpacing.xl + safeAreaTop + listeningHeaderHeight,
           // キーボードの有無で余白を変えない（一覧を動かさない）
           bottom: AppSpacing.xl + safeAreaBottom + sheetHeight,
@@ -491,7 +507,7 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
     // ---------------------------------
     // ボイスカード一覧（日時の出し分けは絞り込んだ後の並びで決める）
     // ---------------------------------
-    final cards = buildMemoCardViewData(visibleMemos);
+    final cards = buildMemoCardViewData(visibleMemos, today: DateTime.now());
     _cancelHiddenTypeIn(listening.typeInMemoId, cards);
 
     // ---------------------------------

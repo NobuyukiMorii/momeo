@@ -58,6 +58,12 @@ class _VoiceCardState extends State<VoiceCard> {
   static const _borderWidth = 1.5;
   static const _selectedBorderWidth = 3.0;
 
+  // 本文の文字の大きさ
+  static const _textFontSize = 13.0;
+
+  // 日時の文字の大きさ
+  static const _dateTimeFontSize = 10.0;
+
   // コピーの知らせの文字の大きさ（日時よりわずかに大きい程度に留める）
   static const _copyNoticeFontSize = 10.0;
 
@@ -135,6 +141,7 @@ class _VoiceCardState extends State<VoiceCard> {
             child: widget.isListening && widget.text.isEmpty
                 ? DefaultTextStyle(
                     style: AppTextStyles.caption.copyWith(
+                      fontSize: _textFontSize,
                       color: AppColors.onSurfaceVariant,
                     ),
                     child: const ActivityDotsText('', maxDotCount: 10),
@@ -150,6 +157,7 @@ class _VoiceCardState extends State<VoiceCard> {
                           widget.text,
                           enabled: widget.typeIn,
                           style: AppTextStyles.caption.copyWith(
+                            fontSize: _textFontSize,
                             color: AppColors.onSurface,
                           ),
                           onFinished: _handleTypingFinished,
@@ -172,7 +180,10 @@ class _VoiceCardState extends State<VoiceCard> {
               duration: const Duration(milliseconds: 250),
               child: Text(
                 widget.dateTime ?? '',
-                style: AppTextStyles.micro.copyWith(color: AppColors.onSurface),
+                style: AppTextStyles.micro.copyWith(
+                  fontSize: _dateTimeFontSize,
+                  color: AppColors.onSurface,
+                ),
               ),
             ),
           ),
