@@ -14,11 +14,10 @@ import 'package:momeo/pages/listening/memo_keyword_filter.dart';
 import 'package:momeo/providers/listening_providers.dart';
 import 'package:momeo/widgets/date_separator.dart';
 import 'package:momeo/widgets/listening_backdrop.dart';
-import 'package:momeo/widgets/listening_header.dart';
 import 'package:momeo/widgets/listening_inset_sheet.dart';
+import 'package:momeo/widgets/listening_recording_settings_panel.dart';
+import 'package:momeo/widgets/listening_search_field.dart';
 import 'package:momeo/widgets/voice_card.dart';
-
-// ヘッダーに入力欄の代わりに出す文言
 
 // 日付区切りと上下のカードとの間隔（カード同士の間隔より広く取る）
 const _dateSeparatorSpacing = AppSpacing.xxl;
@@ -33,8 +32,9 @@ const _copyNoticeDuration = Duration(milliseconds: 3600);
 //   この画面は watch して描画する。
 //
 //   画面側で持つのは見せ方の状態だけ。どのモードか（ListeningViewMode）、
-//   どのメモを選んでいるか、下端のシートを開いているか、検索フィールドに
-//   入力中か、コピーの知らせを出しているか、の 5 つがそれにあたる。
+//   どのメモを選んでいるか、検索フィールドに入力中か、コピーの知らせを
+//   出しているか、の 4 つがそれにあたる。下端のシートを開いているかは
+//   モードから決まるので、別には持たない。
 // =====================================================================
 class ListeningPage extends ConsumerStatefulWidget {
   const ListeningPage({super.key});
@@ -76,8 +76,8 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
   // ---------------------------------
   // 下端のシートの高さ
   final ValueNotifier<double> _sheetHeight = ValueNotifier(0);
-  // 下端のシートを開いているか
-  bool _isSheetOpen = false;
+  // 下端のシートを開いているか（開いている間だけ選択中のメモへの操作モード）
+  bool get _isSheetOpen => _viewMode is OperatingSelectedMemos;
 
   // ---------------------------------
   // コピーの知らせに関する状態
@@ -183,7 +183,7 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
     // --- カーソルが当たっている間は下端のシートを畳んでおく
     setState(() {
       _isKeywordInputActive = isActive;
-      if (isActive) _isSheetOpen = false;
+      if (isActive) _setSheetOpen(false);
     });
     // --- カーソルが外れたら文字列を絞り込みへ取り込む
     if (!isActive) _applyKeywords();
@@ -262,51 +262,33 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
   }
 
   // ---------------------------------
-  // 今のモードに対応する、下端のシートのタブ
+  // シートの開閉にモードを合わせる
   // ---------------------------------
-  ListeningSheetTab get _sheetTab => switch (_viewMode) {
-    BrowsingMemos() => ListeningSheetTab.recordingOptions,
-    OperatingSelectedMemos() => ListeningSheetTab.selectionActions,
-  };
-
-  // ---------------------------------
-  // モードを移る（タブを移ったときだけ通る。シートの開閉では移らない）
-  // ---------------------------------
-  void _changeViewMode(ListeningSheetTab tab) {
-    switch (tab) {
-      // --- 選択中のメモへの操作へ
-      case ListeningSheetTab.selectionActions:
-        _viewMode = OperatingSelectedMemos(pinnedMemoIds: _selectedMemoIds);
-      // --- 通常の一覧へ（検索フィールドの文字列を絞り込みへ取り込み直す）
-      case ListeningSheetTab.recordingOptions:
-        _viewMode = _browsingFromKeywordField();
-        // 出しかけのコピーの知らせも引っ込める
-        _selectionCopyNoticeTimer?.cancel();
-        _isSelectionCopyNoticeVisible = false;
+  void _setSheetOpen(bool isOpen) {
+    // --- 開いた: 選択中のメモへの操作へ
+    if (isOpen) {
+      _viewMode = OperatingSelectedMemos(pinnedMemoIds: _selectedMemoIds);
+      return;
     }
+    // --- 閉じた: 通常の一覧へ（検索フィールドの文字列を絞り込みへ取り込み直す）
+    _viewMode = _browsingFromKeywordField();
+    // 出しかけのコピーの知らせも引っ込める
+    _selectionCopyNoticeTimer?.cancel();
+    _isSelectionCopyNoticeVisible = false;
   }
 
   // ---------------------------------
-  // シートのタブをタップしたとき（別のタブなら移って開き、同じタブなら開閉を切り替える）
+  // シートのタブをタップしたとき
   // ---------------------------------
   void _onSheetTabSelected(ListeningSheetTab tab) {
-    setState(() {
-      // --- 同じタブなら開閉だけを切り替える
-      if (tab == _sheetTab) {
-        _isSheetOpen = !_isSheetOpen;
-        return;
-      }
-      // --- 別のタブならモードを移って開く
-      _changeViewMode(tab);
-      _isSheetOpen = true;
-    });
+    setState(() => _setSheetOpen(!_isSheetOpen));
   }
 
   // ---------------------------------
   // シートをスワイプで開き閉じしたとき
   // ---------------------------------
   void _onSheetOpenChanged(bool isOpen) {
-    setState(() => _isSheetOpen = isOpen);
+    setState(() => _setSheetOpen(isOpen));
   }
 
   // ---------------------------------
@@ -436,35 +418,54 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
     required int? typeInMemoId,
     required bool hidesActiveCard,
     required double safeAreaTop,
+    required double recordingSettingsPanelHeight,
     required double safeAreaBottom,
   }) {
-    // --- シートの高さが動くたびに、下端余白を追従させる
-    return ValueListenableBuilder<double>(
-      valueListenable: _sheetHeight,
-      builder: (context, sheetHeight, _) => ListView.separated(
+    // ---------------------------------
+    // 並べるカード
+    // ---------------------------------
+    final memoCards = SliverList.separated(
+      // --- 確定済みメモ + 一番下のアクティブカードで1つ多い
+      itemCount: cards.length + 1,
+      // --- アクティブカードとの間隔はカード側が持つ（消えた時に余白を残さない）
+      separatorBuilder: (_, index) =>
+          SizedBox(height: index == 0 ? 0 : AppSpacing.xl),
+      itemBuilder: (context, index) {
+        if (index == 0) {
+          // --- 一番下はアクティブカード（出すかは呼び出し側が決める）
+          return hidesActiveCard ? const SizedBox.shrink() : _buildActiveCard();
+        }
+        return _buildMemoCard(cards[index - 1], typeInMemoId);
+      },
+    );
+
+    // ---------------------------------
+    // 余白を付けて下から積む
+    // ---------------------------------
+    return AnimatedBuilder(
+      animation: _sheetHeight,
+      child: memoCards,
+      builder: (context, memoCards) => CustomScrollView(
         // --- 新しいカードが下に来るよう、下から積む
         reverse: true,
-        padding: EdgeInsets.only(
-          left: AppSpacing.xs,
-          right: AppSpacing.xs,
-          top: AppSpacing.xl + safeAreaTop + listeningHeaderHeight,
-          // キーボードの有無で余白を変えない（一覧を動かさない）
-          bottom: AppSpacing.xl + safeAreaBottom + sheetHeight,
-        ),
-        // --- 確定済みメモ + 一番下のアクティブカードで1つ多い
-        itemCount: cards.length + 1,
-        // --- アクティブカードとの間隔はカード側が持つ（消えた時に余白を残さない）
-        separatorBuilder: (_, index) =>
-            SizedBox(height: index == 0 ? 0 : AppSpacing.xl),
-        itemBuilder: (context, index) {
-          if (index == 0) {
-            // --- 一番下はアクティブカード（出すかは呼び出し側が決める）
-            return hidesActiveCard
-                ? const SizedBox.shrink()
-                : _buildActiveCard();
-          }
-          return _buildMemoCard(cards[index - 1], typeInMemoId);
-        },
+        slivers: [
+          SliverPadding(
+            padding: EdgeInsets.only(
+              left: AppSpacing.xs,
+              right: AppSpacing.xs,
+              // 上端は、録音設定パネルの状態行と検索フィールドのぶん空ける。
+              // 録音設定パネルを開いても覆いかぶさるだけなので、ここは動かさない
+              top:
+                  AppSpacing.xl +
+                  safeAreaTop +
+                  recordingSettingsPanelHeight +
+                  listeningSearchFieldHeight,
+              // キーボードの有無で余白を変えない（一覧を動かさない）
+              bottom: AppSpacing.xl + safeAreaBottom + _sheetHeight.value,
+            ),
+            sliver: memoCards,
+          ),
+        ],
       ),
     );
   }
@@ -525,6 +526,12 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
     final safeAreaTop = MediaQuery.paddingOf(context).top;
     final safeAreaBottom = MediaQuery.viewPaddingOf(context).bottom;
 
+    // ---------------------------------
+    // 録音設定パネルが閉じているときの高さ
+    // ---------------------------------
+    final recordingSettingsPanelHeight =
+        listeningRecordingSettingsPanelCollapsedHeightOf(context);
+
     return Scaffold(
       backgroundColor: AppColors.surface,
       resizeToAvoidBottomInset: false,
@@ -553,16 +560,17 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
                     typeInMemoId: listening.typeInMemoId,
                     hidesActiveCard: hidesActiveCard,
                     safeAreaTop: safeAreaTop,
+                    recordingSettingsPanelHeight: recordingSettingsPanelHeight,
                     safeAreaBottom: safeAreaBottom,
                   ),
                   // ---------------------------------
-                  // 下端のシート（録音の設定と、選択中のメモへの操作）
+                  // 下端のシート（選択中のメモへの操作）
                   // ---------------------------------
                   Positioned.fill(
                     child: ListeningInsetSheet(
                       heightNotifier: _sheetHeight,
                       isForcedCollapsed: _isKeywordInputActive,
-                      tab: _sheetTab,
+                      tab: ListeningSheetTab.selectionActions,
                       isOpen: _isSheetOpen,
                       onTabSelected: _onSheetTabSelected,
                       onOpenChanged: _onSheetOpenChanged,
@@ -578,19 +586,27 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
             ),
           ),
           // ---------------------------------
-          // ヘッダー
+          // 検索フィールド
           // ---------------------------------
-          if (mode is BrowsingMemos)
-            Positioned(
-              top: 0,
-              left: 0,
-              right: 0,
-              child: ListeningHeader(
-                controller: _keywordController,
-                focusNode: _keywordFocusNode,
-                onCleared: _applyKeywords,
-              ),
+          Positioned(
+            top: safeAreaTop + recordingSettingsPanelHeight,
+            left: 0,
+            right: 0,
+            child: ListeningSearchField(
+              controller: _keywordController,
+              focusNode: _keywordFocusNode,
+              onCleared: _applyKeywords,
             ),
+          ),
+          // ---------------------------------
+          // 録音設定パネル
+          // ---------------------------------
+          Positioned.fill(
+            child: Listener(
+              onPointerDown: (_) => _exitKeywordInput(),
+              child: const ListeningRecordingSettingsPanel(),
+            ),
+          ),
         ],
       ),
     );

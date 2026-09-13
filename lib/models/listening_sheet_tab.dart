@@ -2,9 +2,6 @@
 // 下端シートに表示するタブ
 // ---------------------------------
 enum ListeningSheetTab {
-  // いつ録音するかの選択肢
-  recordingOptions,
-
   // 選択中のメモへの操作（0 件でも表示する）
   selectionActions;
 
@@ -13,7 +10,6 @@ enum ListeningSheetTab {
 
   // enum 名を変更しても保存済みの設定を壊さない、永続化専用の固定 ID
   String get storageId => switch (this) {
-    recordingOptions => 'recording_options',
     selectionActions => 'selection_actions',
   };
 
