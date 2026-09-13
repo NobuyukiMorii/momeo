@@ -20,7 +20,7 @@ import 'package:momeo/widgets/recording_option_cards.dart';
 //
 //   画面の上端とパネルの左右は常に線で囲む。開いている間は、
 //     ・下の線を開き具合に合わせて少しずつ濃くし、下の角も少しずつ丸める
-//     ・パネルの外を触ると閉じる（覆われた検索フィールドやボイスカードは反応しない）
+//     ・パネルの外を触ると閉じる（触り方はそのまま下のボイスカードや下端のバーへ届く）
 //
 //   パネルの外に受け皿を敷くため、画面全体に広げて置く（Positioned.fill）。
 //   閉じている間は状態行の外に何も置かないので、下の検索フィールドや一覧はそのまま触れる。
@@ -356,12 +356,10 @@ class _ListeningRecordingSettingsPanelState
 
   // ---------------------------------
   // 受け皿（開いている間、パネルの外を覆う）
-  //
-  //   触った時点で閉じ、その触り方は下の検索フィールドやボイスカードへ通さない
   // ---------------------------------
   Widget _buildBarrier() {
     return Listener(
-      behavior: HitTestBehavior.opaque,
+      behavior: HitTestBehavior.translucent,
       onPointerDown: (_) => _closePanel(),
     );
   }
