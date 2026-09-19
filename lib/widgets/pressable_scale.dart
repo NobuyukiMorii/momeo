@@ -11,7 +11,7 @@ import 'package:flutter/material.dart';
 // ============================================================
 
 // 押している間の縮み具合
-const _pressedScale = 0.99;
+const _defaultPressedScale = 0.99;
 
 // 縮むときは速く、戻るときはゆっくり（戻りが速いと押した手応えが目に残らない）
 const _pressInDuration = Duration(milliseconds: 60);
@@ -29,9 +29,13 @@ class PressableScale extends StatefulWidget {
     required this.child,
     this.onTap,
     this.onLongPress,
+    this.pressedScale = _defaultPressedScale,
   });
 
   final Widget child;
+
+  // 押している間の縮み具合（小さな部品は、既定値のままだと縮んだことが見えない）
+  final double pressedScale;
 
   // null なら押せない（縮みもしない）
   final VoidCallback? onTap;
@@ -136,7 +140,7 @@ class _PressableScaleState extends State<PressableScale> {
       onTapCancel: _endPress,
       onLongPress: widget.onLongPress == null ? null : _handleLongPress,
       child: AnimatedScale(
-        scale: _isPressed ? _pressedScale : 1.0,
+        scale: _isPressed ? widget.pressedScale : 1.0,
         duration: _isPressed ? _pressInDuration : _pressOutDuration,
         curve: Curves.easeOut,
         child: widget.child,

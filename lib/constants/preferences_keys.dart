@@ -29,9 +29,6 @@ abstract final class PreferencesKeys {
   static const backgroundRecordingEverEnabled =
       'background_recording_ever_enabled';
 
-  // 下端シートのタブの並び順
-  static const listeningSheetTabOrder = 'listening_sheet_tab_order';
-
   static const all = [
     // 初回起動かどうか
     PreferenceEntry(key: isFirstLaunch, type: PreferenceType.boolean),
@@ -44,11 +41,6 @@ abstract final class PreferencesKeys {
     PreferenceEntry(
       key: backgroundRecordingEverEnabled,
       type: PreferenceType.boolean,
-    ),
-    // 下端シートのタブの並び順
-    PreferenceEntry(
-      key: listeningSheetTabOrder,
-      type: PreferenceType.stringList,
     ),
   ];
 }

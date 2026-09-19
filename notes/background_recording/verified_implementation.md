@@ -195,7 +195,7 @@ import 'package:momeo/stt/listening_foreground_service.dart';
 | 要件 | 状態 |
 |---|---|
 | 設定での ON / OFF（初期値 OFF） | UI と永続化は実装済み（`backgroundRecordingProvider`）。**設定に応じたサービスの起動・停止の結線が未実装** |
-| ON にするタイミングの開示＋同意画面 | 実装済み（`lib/widgets/listening_inset_sheet.dart`） |
+| ON にするタイミングの開示＋同意画面 | 実装済み（`lib/widgets/background_recording_disclosure_dialog.dart`） |
 | 常駐通知への停止ボタン | 未実装（`FlutterForegroundTask.startService` の `notificationButtons`） |
 | 常駐通知の重要度の引き上げ | 未実装（`AndroidNotificationOptions` のチャンネル設定） |
 | iOS の録音中表示 | Live Activity で出すと決定・未実装（→ `impl/phase2/step06_recording_indicator_on_ios.md`） |

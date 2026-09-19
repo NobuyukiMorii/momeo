@@ -42,9 +42,9 @@
 
 | 対象 | 内容 |
 |---|---|
-| 設定の ON / OFF（初期値 OFF） | ボトムシート内の2択カード。`SharedPreferences` へ永続化（`lib/providers/settings_providers.dart`） |
-| 開示＋同意のダイアログ | 初めて ON にするときに表示。外側タップでは閉じず、ボタン操作で同意を取る（`lib/widgets/listening_inset_sheet.dart`） |
-| 録音状態の帯表示 | ON は赤・OFF は黄の点滅ドットと文言。UI 仕様は `notes/specs/listening_bottom_sheet.md` |
+| 設定の ON / OFF（初期値 OFF） | 録音設定パネル内の2択カード。`SharedPreferences` へ永続化（`lib/providers/settings_providers.dart`） |
+| 開示＋同意のダイアログ | 初めて ON にするときに表示。外側タップでは閉じず、ボタン操作で同意を取る（`lib/widgets/background_recording_disclosure_dialog.dart`） |
+| 録音状態の表示 | ON は赤・OFF は黄の点滅ドットと文言。UI 仕様は `notes/specs/listening_recording_settings_panel.md` |
 | 中断からの復帰設定 | `RecordConfig` の `pauseResume` ほか（→ `ios.md`）。独立した不具合修正として取り込み済み |
 
 ### 未実装
@@ -54,7 +54,7 @@
 | `ios/Runner/Info.plist` | `NSMicrophoneUsageDescription` のみ。`UIBackgroundModes` の宣言なし |
 | `android/app/src/main/AndroidManifest.xml` | `RECORD_AUDIO` のみ。フォアグラウンドサービス関連の宣言なし |
 | `flutter_foreground_task` | 未導入（`pubspec.yaml` に依存なし） |
-| 設定と録音挙動の結線 | 設定を読んでいるのはシートの UI だけ。パイプラインとライフサイクル処理は設定を見ていない |
+| 設定と録音挙動の結線 | 設定を読んでいるのは録音設定パネルの UI だけ。パイプラインとライフサイクル処理は設定を見ていない |
 | iOS のバックグラウンド中「録音中」表示 | 未実装。通知系パッケージ自体が未導入 |
 | 通知許可（`POST_NOTIFICATIONS`）の要求経路 | 未実装。権限フローはマイクのみ（`notes/specs/permission_flow.md`） |
 
@@ -135,7 +135,7 @@ iOS の `UIBackgroundModes` はアプリバイナリの性質で、**実行時�
 
 ## 関連ドキュメント
 
-- `notes/specs/listening_bottom_sheet.md` — 設定 UI（ボトムシート）の仕様
+- `notes/specs/listening_recording_settings_panel.md` — 設定 UI（録音設定パネル）の仕様
 - `notes/research/on_device_stt/continuous_listening_limitation.md` — 常時リスニングの限界（フォアグラウンド前提の調査）
 - `notes/research/microphone_permission_revocation.md` — マイク権限の取り消し
 - `notes/specs/listening_flow.md` — リスニングフローの仕様

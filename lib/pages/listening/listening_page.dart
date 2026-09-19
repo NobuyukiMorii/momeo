@@ -7,34 +7,30 @@ import 'package:intl/intl.dart';
 import 'package:momeo/database/app_database.dart';
 import 'package:momeo/foundation/app_colors.dart';
 import 'package:momeo/foundation/app_spacing.dart';
-import 'package:momeo/models/listening_sheet_tab.dart';
-import 'package:momeo/pages/listening/listening_view_mode.dart';
 import 'package:momeo/pages/listening/memo_card_view_data.dart';
 import 'package:momeo/pages/listening/memo_keyword_filter.dart';
 import 'package:momeo/providers/listening_providers.dart';
 import 'package:momeo/widgets/date_separator.dart';
 import 'package:momeo/widgets/listening_backdrop.dart';
-import 'package:momeo/widgets/listening_inset_sheet.dart';
 import 'package:momeo/widgets/listening_recording_settings_panel.dart';
 import 'package:momeo/widgets/listening_search_field.dart';
+import 'package:momeo/widgets/listening_selection_bar.dart';
 import 'package:momeo/widgets/voice_card.dart';
 
 // 日付区切りと上下のカードとの間隔（カード同士の間隔より広く取る）
 const _dateSeparatorSpacing = AppSpacing.xxl;
 
-// コピーの知らせを出しておく時間（カード1枚のコピーと、まとめてコピーで共通）
-const _copyNoticeDuration = Duration(milliseconds: 3600);
+// 通知を出しておく時間
+const _noticeDuration = Duration(milliseconds: 3600);
+
+// 選択バーがせり上がる・引っ込む時間
+const _selectionBarSlideDuration = Duration(milliseconds: 150);
+
+// 選択中のメモをまとめてコピーしたときに、選択バーへ出す一言
+const _selectionCopiedNotice = 'クリップボードにコピーしました';
 
 // =====================================================================
-// ListeningPage — リスニング画面
-//
-//   メモ一覧・発話中かどうか・演出の対象は listeningProvider が一元管理し、
-//   この画面は watch して描画する。
-//
-//   画面側で持つのは見せ方の状態だけ。どのモードか（ListeningViewMode）、
-//   どのメモを選んでいるか、検索フィールドに入力中か、コピーの知らせを
-//   出しているか、の 4 つがそれにあたる。下端のシートを開いているかは
-//   モードから決まるので、別には持たない。
+// リスニング画面
 // =====================================================================
 class ListeningPage extends ConsumerStatefulWidget {
   const ListeningPage({super.key});
@@ -44,20 +40,14 @@ class ListeningPage extends ConsumerStatefulWidget {
 }
 
 class _ListeningPageState extends ConsumerState<ListeningPage>
-    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
+    with TickerProviderStateMixin, WidgetsBindingObserver {
   // ---------------------------------
   // 選択中のメモに関する状態
   // ---------------------------------
   // 時刻フォーマット（日付はカードの上の区切りが持つ）
   static final _timeFormat = DateFormat('HH:mm');
-  // 選択中のメモの id
+  // 選択中のメモの id（検索で一覧から隠れても外さない）
   final Set<int> _selectedMemoIds = {};
-
-  // ---------------------------------
-  // 画面のモード
-  // ---------------------------------
-  // 今のモード（起動直後は通常の一覧）
-  ListeningViewMode _viewMode = const BrowsingMemos();
 
   // ---------------------------------
   // 検索フィールドに関する状態
@@ -66,18 +56,16 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
   final TextEditingController _keywordController = TextEditingController();
   // 検索フィールドにカーソルが当たっているか
   final FocusNode _keywordFocusNode = FocusNode();
-  // 検索フィールドに入力中か（入力に入った時点で下端のシートを畳む）
-  bool _isKeywordInputActive = false;
+  // 一覧の絞り込みに使う語（カーソルが外れた時点の文字列から作る）
+  List<String> _keywords = const [];
   // 前回このイベントが届いた時、キーボードが出ていたか
   bool _wasKeyboardOpen = false;
 
   // ---------------------------------
-  // 下端のシートに関する状態
+  // 選択バーに関する状態
   // ---------------------------------
-  // 下端のシートの高さ
-  final ValueNotifier<double> _sheetHeight = ValueNotifier(0);
-  // 下端のシートを開いているか（開いている間だけ選択中のメモへの操作モード）
-  bool get _isSheetOpen => _viewMode is OperatingSelectedMemos;
+  // 出具合（0 = 隠れきっている、1 = 出きっている）。バー自身と一覧の押し上げで共有する
+  late final AnimationController _selectionBarController;
 
   // ---------------------------------
   // コピーの知らせに関する状態
@@ -86,10 +74,10 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
   int? _copiedMemoId;
   // コピーの知らせのタイマー
   Timer? _copyNoticeTimer;
-  // 選択中のメモをまとめてコピーした知らせをヘッダーに出しているか
-  bool _isSelectionCopyNoticeVisible = false;
-  // まとめてコピーした知らせのタイマー
-  Timer? _selectionCopyNoticeTimer;
+  // 選択バーに出している一言（null なら出していない）
+  String? _selectionBarNotice;
+  // 選択バーの一言を引っ込めるタイマー
+  Timer? _selectionBarNoticeTimer;
 
   // ---------------------------------
   // アクティブカードに関する状態
@@ -114,19 +102,23 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
       parent: _activeCardController,
       curve: Curves.easeOut,
     );
+    _selectionBarController = AnimationController(
+      vsync: this,
+      duration: _selectionBarSlideDuration,
+    );
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _copyNoticeTimer?.cancel(); // コピーの知らせのタイマーを止める
-    _selectionCopyNoticeTimer?.cancel(); // まとめてコピーした知らせのタイマーを止める
+    _selectionBarNoticeTimer?.cancel(); // 選択バーの一言のタイマーを止める
     _keywordController.dispose(); // 検索フィールドのコントローラーを破棄
     _keywordFocusNode.removeListener(
       _onKeywordFocusChanged,
     ); // 検索フィールドのフォーカスの通知を受け取らないようにする
     _keywordFocusNode.dispose(); // 検索フィールドのフォーカスノードを破棄
-    _sheetHeight.dispose();
+    _selectionBarController.dispose();
     _activeCardAnimation.dispose();
     _activeCardController.dispose();
     super.dispose();
@@ -159,34 +151,18 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
   // 検索フィールドのキーワードを反映
   // ---------------------------------
   void _applyKeywords() {
-    // --- 選択済みのメモへの操作の間は、キーワードでの絞り込みを効かせない
-    if (_viewMode is! BrowsingMemos) return;
-    setState(() => _viewMode = _browsingFromKeywordField());
-  }
-
-  // ---------------------------------
-  // 検索フィールドに打たれている文字列から、通常の一覧のモードを作る
-  // ---------------------------------
-  BrowsingMemos _browsingFromKeywordField() {
     // --- 入力文字列を、照合に使う語の一覧へ分解
-    return BrowsingMemos(keywords: parseMemoKeywords(_keywordController.text));
+    setState(() => _keywords = parseMemoKeywords(_keywordController.text));
   }
 
   // ---------------------------------
   // 検索フィールドにカーソルが当たった・外れたとき
   // ---------------------------------
   void _onKeywordFocusChanged() {
-    // --- 今カーソルが当たっているか
-    final isActive = _keywordFocusNode.hasFocus;
-    // --- カーソルが当たっているまま、またカーソルが当たっている
-    if (isActive == _isKeywordInputActive) return; // 何もしない
-    // --- カーソルが当たっている間は下端のシートを畳んでおく
-    setState(() {
-      _isKeywordInputActive = isActive;
-      if (isActive) _setSheetOpen(false);
-    });
+    // --- 入力中は絞り込みを変えない
+    if (_keywordFocusNode.hasFocus) return;
     // --- カーソルが外れたら文字列を絞り込みへ取り込む
-    if (!isActive) _applyKeywords();
+    _applyKeywords();
   }
 
   // ---------------------------------
@@ -262,40 +238,46 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
   }
 
   // ---------------------------------
-  // シートの開閉にモードを合わせる
+  // 選択バーにメッセージを出す
   // ---------------------------------
-  void _setSheetOpen(bool isOpen) {
-    // --- 開いた: 選択中のメモへの操作へ
-    if (isOpen) {
-      _viewMode = OperatingSelectedMemos(pinnedMemoIds: _selectedMemoIds);
-      return;
+  void _showSelectionBarNotice(String notice) {
+    setState(() => _selectionBarNotice = notice);
+    _selectionBarNoticeTimer?.cancel();
+    _selectionBarNoticeTimer = Timer(_noticeDuration, () {
+      if (mounted) setState(_clearSelectionBarNotice);
+    });
+  }
+
+  // ---------------------------------
+  // 選択バーのメッセージを引っ込める
+  // ---------------------------------
+  void _clearSelectionBarNotice() {
+    _selectionBarNoticeTimer?.cancel();
+    _selectionBarNotice = null;
+  }
+
+  // ---------------------------------
+  // 選択を変え、選択バーの表示状態を切り替える
+  // ---------------------------------
+  void _changeSelection(VoidCallback change) {
+    setState(() {
+      change();
+      // 0 件になって選択バーを隠すときは、出していたメッセージも引っ込める
+      if (_selectedMemoIds.isEmpty) _clearSelectionBarNotice();
+    });
+    // --- 1 件以上なら表示、0 件なら隠す（すでにその状態なら何も起きない）
+    if (_selectedMemoIds.isEmpty) {
+      _selectionBarController.reverse();
+    } else {
+      _selectionBarController.forward();
     }
-    // --- 閉じた: 通常の一覧へ（検索フィールドの文字列を絞り込みへ取り込み直す）
-    _viewMode = _browsingFromKeywordField();
-    // 出しかけのコピーの知らせも引っ込める
-    _selectionCopyNoticeTimer?.cancel();
-    _isSelectionCopyNoticeVisible = false;
-  }
-
-  // ---------------------------------
-  // シートのタブをタップしたとき
-  // ---------------------------------
-  void _onSheetTabSelected(ListeningSheetTab tab) {
-    setState(() => _setSheetOpen(!_isSheetOpen));
-  }
-
-  // ---------------------------------
-  // シートをスワイプで開き閉じしたとき
-  // ---------------------------------
-  void _onSheetOpenChanged(bool isOpen) {
-    setState(() => _setSheetOpen(isOpen));
   }
 
   // ---------------------------------
   // カードの選択・非選択
   // ---------------------------------
   void _toggleMemoSelection(int memoId) {
-    setState(() {
+    _changeSelection(() {
       if (_selectedMemoIds.contains(memoId)) {
         // 選択中のメモを除外
         _selectedMemoIds.remove(memoId);
@@ -317,7 +299,7 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
     // --- 続けてコピーした場合、最後の通知を非表示とする
     _copyNoticeTimer?.cancel();
     // --- 通知を一定時間表示
-    _copyNoticeTimer = Timer(_copyNoticeDuration, () {
+    _copyNoticeTimer = Timer(_noticeDuration, () {
       if (mounted) setState(() => _copiedMemoId = null);
     });
   }
@@ -326,7 +308,7 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
   // 選択をすべて解除する（メモ自体は残る）
   // ---------------------------------
   void _clearMemoSelection() {
-    setState(_selectedMemoIds.clear);
+    _changeSelection(_selectedMemoIds.clear);
   }
 
   // ---------------------------------
@@ -336,7 +318,7 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
     final targetIds = Set<int>.from(_selectedMemoIds);
     await ref.read(listeningProvider.notifier).deleteMemos(targetIds);
     if (!mounted) return;
-    setState(() => _selectedMemoIds.removeAll(targetIds));
+    _changeSelection(() => _selectedMemoIds.removeAll(targetIds));
   }
 
   // ---------------------------------
@@ -348,13 +330,8 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
     // --- クリップボードにコピー
     final text = selectedMemos.map((memo) => memo.content).join(separator);
     Clipboard.setData(ClipboardData(text: text));
-    // --- コピーカードの上に知らせを出す
-    setState(() => _isSelectionCopyNoticeVisible = true);
-    // --- 続けてコピーした場合、最後の1回から数えて引っ込める
-    _selectionCopyNoticeTimer?.cancel();
-    _selectionCopyNoticeTimer = Timer(_copyNoticeDuration, () {
-      if (mounted) setState(() => _isSelectionCopyNoticeVisible = false);
-    });
+    // --- 選択バーに知らせを出す（選択はそのまま残す）
+    _showSelectionBarNotice(_selectionCopiedNotice);
   }
 
   // ---------------------------------
@@ -443,7 +420,7 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
     // 余白を付けて下から積む
     // ---------------------------------
     return AnimatedBuilder(
-      animation: _sheetHeight,
+      animation: _selectionBarController,
       child: memoCards,
       builder: (context, memoCards) => CustomScrollView(
         // --- 新しいカードが下に来るよう、下から積む
@@ -461,7 +438,14 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
                   recordingSettingsPanelHeight +
                   listeningSearchFieldHeight,
               // キーボードの有無で余白を変えない（一覧を動かさない）
-              bottom: AppSpacing.xl + safeAreaBottom + _sheetHeight.value,
+              // 下端は、選択バーの出入りと同じ動きで押し上げる
+              bottom:
+                  AppSpacing.xl +
+                  safeAreaBottom +
+                  listeningSelectionBarPushUpHeight(
+                    slideProgress: _selectionBarController.value,
+                    safeAreaBottom: safeAreaBottom,
+                  ),
             ),
             sliver: memoCards,
           ),
@@ -481,29 +465,14 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
         ref.watch(listeningProvider).value ?? const ListeningState();
 
     // ---------------------------------
-    // 一覧に出すメモ（モードで決まる）
-    //   固定したメモを全部削除したときは、一覧は空のままにする
+    // 検索フィールドの語で絞り込んだメモ
     // ---------------------------------
-    final mode = _viewMode;
-    final visibleMemos = switch (mode) {
-      OperatingSelectedMemos(:final pinnedMemoIds) => [
-        for (final memo in listening.memos)
-          if (pinnedMemoIds.contains(memo.id)) memo,
-      ],
-      BrowsingMemos(:final keywords) => filterMemosByKeywords(
-        listening.memos,
-        keywords,
-      ),
-    };
+    final visibleMemos = filterMemosByKeywords(listening.memos, _keywords);
 
     // ---------------------------------
     // アクティブカード（発話中のカード）
-    //   一覧に出すメモを選り分けている間は出さず、その結果に徹させる
     // ---------------------------------
-    final hidesActiveCard = switch (mode) {
-      OperatingSelectedMemos() => true,
-      BrowsingMemos(:final keywords) => keywords.isNotEmpty,
-    };
+    final hidesActiveCard = _keywords.isNotEmpty;
 
     // ---------------------------------
     // ボイスカード一覧（日時の出し分けは絞り込んだ後の並びで決める）
@@ -564,21 +533,16 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
                     safeAreaBottom: safeAreaBottom,
                   ),
                   // ---------------------------------
-                  // 下端のシート（選択中のメモへの操作）
+                  // 選択バー
                   // ---------------------------------
                   Positioned.fill(
-                    child: ListeningInsetSheet(
-                      heightNotifier: _sheetHeight,
-                      isForcedCollapsed: _isKeywordInputActive,
-                      tab: ListeningSheetTab.selectionActions,
-                      isOpen: _isSheetOpen,
-                      onTabSelected: _onSheetTabSelected,
-                      onOpenChanged: _onSheetOpenChanged,
+                    child: ListeningSelectionBar(
+                      slideAnimation: _selectionBarController,
                       selectedCount: selectedMemos.length,
-                      onClearSelection: _clearMemoSelection,
                       onDeleteSelection: _deleteSelectedMemos,
                       onCopySelection: () => _copySelectedMemos(selectedMemos),
-                      isCopyNoticeVisible: _isSelectionCopyNoticeVisible,
+                      onClearSelection: _clearMemoSelection,
+                      notice: _selectionBarNotice,
                     ),
                   ),
                 ],
