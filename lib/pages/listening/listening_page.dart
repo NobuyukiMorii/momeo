@@ -86,6 +86,8 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
   late final AnimationController _activeCardController;
   // 進み具合に緩急を付けた値（カードの高さに使う）
   late final CurvedAnimation _activeCardAnimation;
+  // アクティブカードに出す時刻
+  DateTime? _activeCardTime;
 
   @override
   void initState() {
@@ -98,6 +100,7 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
       vsync: this,
       duration: const Duration(milliseconds: 250),
     );
+    _activeCardController.addStatusListener(_onActiveCardStatusChanged);
     _activeCardAnimation = CurvedAnimation(
       parent: _activeCardController,
       curve: Curves.easeOut,
@@ -120,6 +123,7 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
     _keywordFocusNode.dispose(); // 検索フィールドのフォーカスノードを破棄
     _selectionBarController.dispose();
     _activeCardAnimation.dispose();
+    _activeCardController.removeStatusListener(_onActiveCardStatusChanged);
     _activeCardController.dispose();
     super.dispose();
   }
@@ -176,6 +180,18 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
   }
 
   // ---------------------------------
+  // アクティブカードのアニメーションが終わったとき
+  // ---------------------------------
+  void _onActiveCardStatusChanged(AnimationStatus status) {
+    // --- アニメーションが終わっていなければ何もしない
+    if (status != AnimationStatus.dismissed) return;
+    // --- 画面がマウントされていない、またはアクティブカードの時刻がなければ何もしない
+    if (!mounted || _activeCardTime == null) return;
+    // --- アクティブカードの時刻を null にする
+    setState(() => _activeCardTime = null);
+  }
+
+  // ---------------------------------
   // 状態の変化をアクティブカードのアニメーションに翻訳する
   // ---------------------------------
   void _onListeningChanged(
@@ -190,6 +206,7 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
     final wasActive = before?.speechActive ?? false;
     if (after.speechActive && !wasActive) {
       _activeCardController.forward();
+      setState(() => _activeCardTime = after.speechStartedAt); // 時刻を記録
     }
 
     // メモ確定（先頭の id が変わった）→ 即時に消し、同じ位置に確定カードを
@@ -199,7 +216,10 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
     final firstIdAfter = after.memos.firstOrNull?.id;
     if (firstIdAfter != null && firstIdAfter != firstIdBefore) {
       _activeCardController.value = 0.0;
-      if (after.speechActive) _activeCardController.forward();
+      if (after.speechActive) { // 発話中なら
+        _activeCardController.forward(); // アクティブカードが下から滑り込んで現れる/下へ引っ込むアニメーションを進める
+        setState(() => _activeCardTime = after.speechStartedAt); // 時刻を記録
+      }
     }
 
     // 空の認識結果（咳・物音の誤検知）→ 下へスライドアウト
@@ -228,9 +248,15 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
         return Align(
           alignment: Alignment.topCenter,
           heightFactor: _activeCardAnimation.value,
-          child: const Padding(
-            padding: EdgeInsets.only(top: AppSpacing.xl),
-            child: VoiceCard(text: '', isListening: true),
+          child: Padding(
+            padding: const EdgeInsets.only(top: AppSpacing.xl),
+            child: VoiceCard(
+              text: '',
+              isListening: true,
+              dateTime: _activeCardTime == null
+                  ? null
+                  : _timeFormat.format(_activeCardTime!),
+            ),
           ),
         );
       },
@@ -477,7 +503,12 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
     // ---------------------------------
     // ボイスカード一覧（日時の出し分けは絞り込んだ後の並びで決める）
     // ---------------------------------
-    final cards = buildMemoCardViewData(visibleMemos, today: DateTime.now());
+    final cards = buildMemoCardViewData(
+      visibleMemos,
+      today: DateTime.now(),
+      // 絞り込み中はアクティブカードを出さないので、時刻を譲る相手もいない
+      activeCardTime: hidesActiveCard ? null : _activeCardTime,
+    );
     _cancelHiddenTypeIn(listening.typeInMemoId, cards);
 
     // ---------------------------------

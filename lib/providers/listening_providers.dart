@@ -44,6 +44,7 @@ class ListeningState {
   const ListeningState({
     this.memos = const [],
     this.speechActive = false,
+    this.speechStartedAt,
     this.typeInMemoId,
     this.emptyResultCount = 0,
   });
@@ -53,6 +54,9 @@ class ListeningState {
 
   // 今ユーザーが発話中か（VAD の判定）
   final bool speechActive;
+
+  // 直近の発話が始まった時刻
+  final DateTime? speechStartedAt;
 
   // タイピング演出を付けるメモの id（直前に確定した1件。見せ切ったら null に戻る）
   final int? typeInMemoId;
@@ -66,10 +70,11 @@ class ListeningState {
   // ---------------------------------
 
   // 発話中かどうかが変わった
-  ListeningState withSpeechActive(bool isActive) {
+  ListeningState withSpeechActive(bool isActive, {DateTime? startedAt}) {
     return ListeningState(
       memos: memos,
       speechActive: isActive,
+      speechStartedAt: startedAt,
       typeInMemoId: typeInMemoId,
       emptyResultCount: emptyResultCount,
     );
@@ -80,6 +85,7 @@ class ListeningState {
     return ListeningState(
       memos: [memo, ...memos],
       speechActive: speechActive,
+      speechStartedAt: speechStartedAt,
       typeInMemoId: memo.id,
       emptyResultCount: emptyResultCount,
     );
@@ -90,6 +96,7 @@ class ListeningState {
     return ListeningState(
       memos: memos,
       speechActive: speechActive,
+      speechStartedAt: speechStartedAt,
       typeInMemoId: typeInMemoId,
       emptyResultCount: emptyResultCount + 1,
     );
@@ -103,6 +110,7 @@ class ListeningState {
           if (!removedIds.contains(memo.id)) memo,
       ],
       speechActive: speechActive,
+      speechStartedAt: speechStartedAt,
       // 演出の対象が消えていたら、対象ごと下ろす
       typeInMemoId: removedIds.contains(typeInMemoId) ? null : typeInMemoId,
       emptyResultCount: emptyResultCount,
@@ -114,6 +122,7 @@ class ListeningState {
     return ListeningState(
       memos: memos,
       speechActive: speechActive,
+      speechStartedAt: speechStartedAt,
       typeInMemoId: null,
       emptyResultCount: emptyResultCount,
     );
@@ -131,6 +140,9 @@ class ListeningNotifier extends AsyncNotifier<ListeningState> {
   // チャンク頻度で飛んでくるため state には載せず、ただのフィールド保持にする。
   double _latestLevel = 0;
   double get latestLevel => _latestLevel;
+
+  // 直近の発話が始まった時刻の一時的な記録
+  DateTime? _speechStartedAt;
 
   // 破棄後は state に触れないためのフラグ（DB への保存だけは続ける）
   bool _disposed = false;
@@ -330,10 +342,15 @@ class ListeningNotifier extends AsyncNotifier<ListeningState> {
 
   // VAD の発話開始・終了の通知を状態へ写す
   void _onSpeechActiveChanged(bool isActive) {
+    // アクティブなら開始時刻を記録
+    if (isActive) _speechStartedAt = DateTime.now();
+
     if (_disposed) return;
     final current = state.value;
     if (current == null) return;
-    state = AsyncData(current.withSpeechActive(isActive));
+    state = AsyncData(
+      current.withSpeechActive(isActive, startedAt: _speechStartedAt),
+    );
   }
 
   // ---------------------------------
@@ -353,7 +370,7 @@ class ListeningNotifier extends AsyncNotifier<ListeningState> {
       return;
     }
 
-    final createdAt = DateTime.now();
+    final createdAt = _speechStartedAt ?? DateTime.now();
     final id = await _repository.insert(content: content, createdAt: createdAt);
 
     // バックグラウンド録音中なら、iOS の Live Activity の件数を進める（表示していなければ何もしない）
