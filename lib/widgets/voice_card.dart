@@ -71,6 +71,9 @@ class VoiceCard extends StatelessWidget {
   // 日時の文字の大きさ
   static const _dateTimeFontSize = 10.0;
 
+  // 日時を画面の右端から離す幅
+  static const _dateTimeRightInset = 6.0;
+
   // コピーの知らせの文字の大きさ（日時よりわずかに大きい程度に留める）
   static const _copyNoticeFontSize = 10.0;
 
@@ -142,7 +145,10 @@ class VoiceCard extends StatelessWidget {
           size: const Size(double.infinity, 0),
           alignment: Alignment.topRight,
           child: Padding(
-            padding: const EdgeInsets.only(top: AppSpacing.xs),
+            padding: const EdgeInsets.only(
+              top: AppSpacing.xs,
+              right: _dateTimeRightInset,
+            ),
             // 日時の出入りはフェードで繋ぐ（話し始めてすぐ出るので、本文は待たない）
             child: AnimatedOpacity(
               opacity: dateTime != null ? 1.0 : 0.0,

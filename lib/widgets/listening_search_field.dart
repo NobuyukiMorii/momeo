@@ -163,33 +163,36 @@ class ListeningSearchField extends StatelessWidget {
   // ---------------------------------
   @override
   Widget build(BuildContext context) {
-    // 角の丸みの外側から一覧が透けないよう、背景を敷いてから枠を置く
-    return ColoredBox(
-      color: AppColors.surface,
-      child: GestureDetector(
-        // 検索フィールドのどこを触ってもカーソルを当てる
-        onTap: focusNode.requestFocus,
-        behavior: HitTestBehavior.opaque,
-        child: Stack(
-          children: [
-            _buildBox(),
-            // --- 上の角だけ、画面の端にも線を引く（録音設定パネルの左右の線とつながる）
-            const Positioned(
-              left: 0,
-              top: 0,
-              width: _borderWidth,
-              height: _cornerRadius,
-              child: ColoredBox(color: AppColors.onSurface),
-            ),
-            const Positioned(
-              right: 0,
-              top: 0,
-              width: _borderWidth,
-              height: _cornerRadius,
-              child: ColoredBox(color: AppColors.onSurface),
-            ),
-          ],
-        ),
+    return GestureDetector(
+      onTap: focusNode.requestFocus,
+      behavior: HitTestBehavior.opaque,
+      child: Stack(
+        children: [
+          // --- 上の角の外側だけ白で埋める
+          const Positioned(
+            left: 0,
+            right: 0,
+            top: 0,
+            height: _cornerRadius,
+            child: ColoredBox(color: AppColors.surface),
+          ),
+          _buildBox(),
+          // --- 上の角だけ、画面の端にも線を引く
+          const Positioned(
+            left: 0,
+            top: 0,
+            width: _borderWidth,
+            height: _cornerRadius,
+            child: ColoredBox(color: AppColors.onSurface),
+          ),
+          const Positioned(
+            right: 0,
+            top: 0,
+            width: _borderWidth,
+            height: _cornerRadius,
+            child: ColoredBox(color: AppColors.onSurface),
+          ),
+        ],
       ),
     );
   }

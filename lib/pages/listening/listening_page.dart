@@ -463,8 +463,6 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
         slivers: [
           SliverPadding(
             padding: EdgeInsets.only(
-              left: AppSpacing.xs,
-              right: AppSpacing.xs,
               // 上端は、録音設定パネルの状態行と検索フィールドのぶん空ける。
               // 録音設定パネルを開いても覆いかぶさるだけなので、ここは動かさない
               top:
