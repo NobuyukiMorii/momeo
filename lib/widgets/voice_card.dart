@@ -16,8 +16,10 @@ class VoiceCard extends StatelessWidget {
     super.key,
     required this.text,
     this.isListening = false,
+    this.expectsMore = false,
     this.dateTime,
     this.typeIn = false,
+    this.typeFrom = 0,
     this.onTypingComplete,
     this.selected = false,
     this.onTap,
@@ -27,6 +29,10 @@ class VoiceCard extends StatelessWidget {
 
   final String text;
   final bool isListening;
+
+  // このカードにまだ続きが入るか
+  final bool expectsMore;
+
   final String? dateTime;
 
   // 選択中はカードの枠線が太くなる
@@ -46,6 +52,9 @@ class VoiceCard extends StatelessWidget {
   // 確定演出: テキストを1文字ずつ素早くタイピング表示する
   final bool typeIn;
 
+  // タイピングを始める本文上の位置
+  final int typeFrom;
+
   // タイピング演出を使い切ったときの通知（演出の使い捨てに使う）
   final VoidCallback? onTypingComplete;
 
@@ -55,6 +64,9 @@ class VoiceCard extends StatelessWidget {
 
   // 本文の文字の大きさ
   static const _textFontSize = 13.0;
+
+  // 本文と、続きを待つドットとの間隔
+  static final _trailingDotsGap = _textFontSize * AppTextStyles.caption.height!;
 
   // 日時の文字の大きさ
   static const _dateTimeFontSize = 10.0;
@@ -112,30 +124,14 @@ class VoiceCard extends StatelessWidget {
             ),
             // テキストが空のリスニング中は、左端のドットの増減で処理中の気配を出す
             child: isListening && text.isEmpty
-                ? DefaultTextStyle(
-                    style: AppTextStyles.caption.copyWith(
-                      fontSize: _textFontSize,
-                      color: AppColors.onSurfaceVariant,
-                    ),
-                    child: const ActivityDotsText('', maxDotCount: 10),
-                  )
+                ? _buildListeningDots()
                 : Row(
                     children: [
                       if (isListening) ...[
                         const VoiceIcon(),
                         const SizedBox(width: AppSpacing.l),
                       ],
-                      Expanded(
-                        child: TypewriterText(
-                          text,
-                          enabled: typeIn,
-                          style: AppTextStyles.caption.copyWith(
-                            fontSize: _textFontSize,
-                            color: AppColors.onSurface,
-                          ),
-                          onFinished: onTypingComplete,
-                        ),
-                      ),
+                      Expanded(child: _buildBody()),
                     ],
                   ),
           ),
@@ -162,6 +158,48 @@ class VoiceCard extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+
+  // ---------------------------------
+  // 本文
+  // ---------------------------------
+  Widget _buildBody() {
+    final body = TypewriterText(
+      text,
+      enabled: typeIn,
+      typeFrom: typeFrom,
+      style: AppTextStyles.caption.copyWith(
+        fontSize: _textFontSize,
+        color: AppColors.onSurface,
+      ),
+      onFinished: onTypingComplete,
+    );
+
+    // 続きが入らないカードは本文だけで足りる
+    if (!expectsMore) return body;
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        body,
+        SizedBox(height: _trailingDotsGap),
+        _buildListeningDots(),
+      ],
+    );
+  }
+
+  // ---------------------------------
+  // 聞いている気配を出すドットのアニメーション
+  // ---------------------------------
+  Widget _buildListeningDots() {
+    return DefaultTextStyle(
+      style: AppTextStyles.caption.copyWith(
+        fontSize: _textFontSize,
+        color: AppColors.onSurfaceVariant,
+      ),
+      child: const ActivityDotsText('', maxDotCount: 10),
     );
   }
 }

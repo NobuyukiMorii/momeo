@@ -32,6 +32,12 @@ import 'package:momeo/stt/stt_model_provisioner.dart';
 //   DB への保存だけは行う（state には触れない）。
 // ============================================================
 
+// 発話と発話のつなぎ目（カードの本文にそのまま入る）
+const _utteranceSeparator = '\n\n';
+
+// 今のカードへの追記を終了するまでの、発話が途切れている時間
+const _appendIdleLimit = Duration(minutes: 1);
+
 final listeningProvider =
     AsyncNotifierProvider.autoDispose<ListeningNotifier, ListeningState>(
   ListeningNotifier.new,
@@ -45,7 +51,9 @@ class ListeningState {
     this.memos = const [],
     this.speechActive = false,
     this.speechStartedAt,
+    this.appendTargetId,
     this.typeInMemoId,
+    this.typeInFrom = 0,
     this.emptyResultCount = 0,
   });
 
@@ -58,8 +66,14 @@ class ListeningState {
   // 直近の発話が始まった時刻
   final DateTime? speechStartedAt;
 
+  // 次の発話を書き足すメモの id
+  final int? appendTargetId;
+
   // タイピング演出を付けるメモの id（直前に確定した1件。見せ切ったら null に戻る）
   final int? typeInMemoId;
+
+  // タイピング演出を始める文字数
+  final int typeInFrom;
 
   // 空の認識結果（咳・物音の誤検知）で終わった回数の通し番号。
   // ページはこの増加を「アクティブカードをスライドアウトさせる合図」として使う
@@ -75,18 +89,49 @@ class ListeningState {
       memos: memos,
       speechActive: isActive,
       speechStartedAt: startedAt,
+      appendTargetId: appendTargetId,
       typeInMemoId: typeInMemoId,
+      typeInFrom: typeInFrom,
       emptyResultCount: emptyResultCount,
     );
   }
 
-  // メモが1件確定した（先頭に差し、タイピング演出の対象にする）
+  // メモが1件確定した（先頭に差し、タイピング演出の対象にする）。
+  // このメモを次の追記先にする
   ListeningState withMemoAdded(VoiceMemo memo) {
     return ListeningState(
       memos: [memo, ...memos],
       speechActive: speechActive,
       speechStartedAt: speechStartedAt,
+      appendTargetId: memo.id,
       typeInMemoId: memo.id,
+      typeInFrom: 0,
+      emptyResultCount: emptyResultCount,
+    );
+  }
+
+  // 追記先の末尾に書き足した（先頭を差し替え、書き足した分だけを打ち出す）
+  ListeningState withMemoAppended(VoiceMemo memo, {required int typeInFrom}) {
+    return ListeningState(
+      memos: [memo, ...memos.skip(1)],
+      speechActive: speechActive,
+      speechStartedAt: speechStartedAt,
+      appendTargetId: memo.id,
+      typeInMemoId: memo.id,
+      typeInFrom: typeInFrom,
+      emptyResultCount: emptyResultCount,
+    );
+  }
+
+  // 今のカードへの追記を終了した（次の発話は新しいカードになる）
+  ListeningState withCurrentCardEnded() {
+    return ListeningState(
+      memos: memos,
+      speechActive: speechActive,
+      speechStartedAt: speechStartedAt,
+      appendTargetId: null,
+      typeInMemoId: typeInMemoId,
+      typeInFrom: typeInFrom,
       emptyResultCount: emptyResultCount,
     );
   }
@@ -97,7 +142,9 @@ class ListeningState {
       memos: memos,
       speechActive: speechActive,
       speechStartedAt: speechStartedAt,
+      appendTargetId: appendTargetId,
       typeInMemoId: typeInMemoId,
+      typeInFrom: typeInFrom,
       emptyResultCount: emptyResultCount + 1,
     );
   }
@@ -111,8 +158,11 @@ class ListeningState {
       ],
       speechActive: speechActive,
       speechStartedAt: speechStartedAt,
+      // 追記先が消えていたら、追記先も手放す
+      appendTargetId: removedIds.contains(appendTargetId) ? null : appendTargetId,
       // 演出の対象が消えていたら、対象ごと下ろす
       typeInMemoId: removedIds.contains(typeInMemoId) ? null : typeInMemoId,
+      typeInFrom: typeInFrom,
       emptyResultCount: emptyResultCount,
     );
   }
@@ -123,7 +173,9 @@ class ListeningState {
       memos: memos,
       speechActive: speechActive,
       speechStartedAt: speechStartedAt,
+      appendTargetId: appendTargetId,
       typeInMemoId: null,
+      typeInFrom: typeInFrom,
       emptyResultCount: emptyResultCount,
     );
   }
@@ -143,6 +195,12 @@ class ListeningNotifier extends AsyncNotifier<ListeningState> {
 
   // 直近の発話が始まった時刻の一時的な記録
   DateTime? _speechStartedAt;
+
+  // 次の発話の追記先
+  VoiceMemo? _appendTarget;
+
+  // 追記先へ最後に書き足した時刻
+  DateTime? _lastAppendedAt;
 
   // 破棄後は state に触れないためのフラグ（DB への保存だけは続ける）
   bool _disposed = false;
@@ -304,7 +362,7 @@ class ListeningNotifier extends AsyncNotifier<ListeningState> {
     if (WidgetsBinding.instance.lifecycleState == AppLifecycleState.paused) {
       // 録音を停止
       debugPrint('[listening] 通知の停止ボタン: 録音を停止します');
-      unawaited(_pipeline?.stop());
+      unawaited(_stopRecordingAndEndCard());
     }
   }
 
@@ -313,12 +371,22 @@ class ListeningNotifier extends AsyncNotifier<ListeningState> {
   // ---------------------------------
   void _onAppPaused() {
     if (_keepsRecordingInBackground) { // バックグラウンドでも録音を続けられる状態なら
-      // 録音を止めずにそのまま続ける
+      // 録音を止めずにそのまま続ける（追記先もそのまま保つ）
       debugPrint('[listening] バックグラウンド遷移: 録音を続けます');
       return;
     }
     debugPrint('[listening] バックグラウンド遷移: 録音を停止します');
-    unawaited(_pipeline?.stop());
+    unawaited(_stopRecordingAndEndCard());
+  }
+
+  // ---------------------------------
+  // 録音を止め、新しいカードで次の発話を始める
+  // ---------------------------------
+  Future<void> _stopRecordingAndEndCard() async {
+    // 録音を停止
+    await _pipeline?.stop();
+    // 今のカードを終わりにする（次の発話は新しいカードになる）
+    _endCurrentCard();
   }
 
   // ---------------------------------
@@ -342,8 +410,13 @@ class ListeningNotifier extends AsyncNotifier<ListeningState> {
 
   // VAD の発話開始・終了の通知を状態へ写す
   void _onSpeechActiveChanged(bool isActive) {
-    // アクティブなら開始時刻を記録
-    if (isActive) _speechStartedAt = DateTime.now();
+    // 発話が始まった
+    if (isActive) {
+      _speechStartedAt = DateTime.now(); // 開始時刻を記録
+      if (_shouldEndCurrentCard()) {
+        _endCurrentCard(); // 今のカードへの追記を終了（次の発話は新しいカードになる）
+      }
+    }
 
     if (_disposed) return;
     final current = state.value;
@@ -354,9 +427,55 @@ class ListeningNotifier extends AsyncNotifier<ListeningState> {
   }
 
   // ---------------------------------
+  // 今のカードへの追記を終了すべきか
+  // ---------------------------------
+  bool _shouldEndCurrentCard() {
+
+    // 今の追記先
+    final appendTarget = _appendTarget;
+
+    // 追記先が無ければ、追記続行
+    if (appendTarget == null) return false;
+
+    // 最後に書き足した時刻
+    final lastAppendedAt = _lastAppendedAt;
+
+    // 書き足した記録が無ければ判断できないので、終了（新カード追加）
+    if (lastAppendedAt == null) return true;
+
+    // 現在時刻
+    final now = DateTime.now();
+
+    // 最後のメモから基準となる時間が経過したら終了（新カード追加）
+    if (now.difference(lastAppendedAt) >= _appendIdleLimit) return true;
+
+    // 日付をまたいだら終了（新カード追加） or 追記続行
+    return !_isSameDay(now, appendTarget.createdAt);
+  }
+
+  // ---------------------------------
+  // 今のカードへの追記を終了
+  // ---------------------------------
+  void _endCurrentCard() {
+    // 追記先を削除
+    _appendTarget = null;
+    // 最後に書き足した時刻を削除
+    _lastAppendedAt = null;
+    // 画面を離れた後は state に触れない
+    if (_disposed) return;
+    // 今の状態
+    final current = state.value;
+    // 読み込み中でまだ状態が無ければ、表示の更新はしない
+    if (current == null) return;
+    // 追記先が無くなったことを画面へ伝える（次の発話はアクティブカードから始まる）
+    state = AsyncData(current.withCurrentCardEnded());
+  }
+
+  // ---------------------------------
   // 1発話の確定テキストの受け取り
-  //   空: 誤検知として通し番号だけ進める（ページが退場の合図に使う）
-  //   あり: DB へ保存して先頭に差し、タイピング演出の対象にする
+  //   空: 誤検知として通し番号だけ進める（ページが退場の合図に使う）。
+  //       追記先には触れず、終了までの起点も動かさない
+  //   あり: 追記先があればその末尾へ書き足し、無ければ新しく起こす
   //   ※ 画面を離れた後に届く末尾の発話も、DB への保存だけは行う
   // ---------------------------------
   Future<void> _onTranscribed(SttTranscribed result) async {
@@ -369,18 +488,64 @@ class ListeningNotifier extends AsyncNotifier<ListeningState> {
       state = AsyncData(current.withEmptyResult());
       return;
     }
+    final appendTarget = _appendTarget; // 今の追記先
+    if (appendTarget == null) { // 追記先が無い
+      await _startNewMemo(content); // 新しいカードを作成
+    } else { // 追記先がある
+      await _appendToTarget(appendTarget, content); // そのカードの末尾に追記
+    }
 
+    // 次の発話を同じカードに入れるかどうかの起点にする
+    _lastAppendedAt = DateTime.now();
+  }
+
+  // ---------------------------------
+  // 新しいカードを起こす（以後の発話は、このカードへ追記していく）
+  // ---------------------------------
+  Future<void> _startNewMemo(String content) async {
     final createdAt = _speechStartedAt ?? DateTime.now();
     final id = await _repository.insert(content: content, createdAt: createdAt);
+    final memo = VoiceMemo(id: id, content: content, createdAt: createdAt);
+    // 次の追記先にする
+    _appendTarget = memo;
 
-    // バックグラウンド録音中なら、iOS の Live Activity の件数を進める（表示していなければ何もしない）
+    // カードが1枚増えたので、iOS の Live Activity の件数を進める（表示していなければ何もしない）
     unawaited(ListeningLiveActivity.incrementMemoCount());
 
     if (_disposed) return;
     final current = state.value;
     if (current == null) return;
-    state = AsyncData(current.withMemoAdded(
-      VoiceMemo(id: id, content: content, createdAt: createdAt),
+    state = AsyncData(current.withMemoAdded(memo));
+  }
+
+  // ---------------------------------
+  // カードの末尾に追記
+  // ---------------------------------
+  Future<void> _appendToTarget(VoiceMemo appendTarget, String content) async {
+    // 発話と発話の間は空行1つで区切る
+    final appended = '${appendTarget.content}$_utteranceSeparator$content';
+    // 追記先の内容を更新
+    await _repository.updateContent(id: appendTarget.id, content: appended);
+    // state 用にメモを作り直す
+    final memo = VoiceMemo(
+      id: appendTarget.id,
+      content: appended,
+      createdAt: appendTarget.createdAt,
+    );
+    // 次の追記先として持ち直す
+    _appendTarget = memo;
+
+    // 画面を離れた後は state に触れない（DB への保存はここまでで済んでいる）
+    if (_disposed) return;
+    // 今の状態
+    final current = state.value;
+    // 読み込み中でまだ状態が無ければ、表示の更新はしない
+    if (current == null) return;
+    // 最新のメモを、書き足した後の内容に差し替える
+    state = AsyncData(current.withMemoAppended(
+      memo,
+      // 新しく足した分だけ1文字ずつ表示する（前からある本文はそのまま）
+      typeInFrom: appended.length - content.length,
     ));
   }
 
@@ -390,6 +555,9 @@ class ListeningNotifier extends AsyncNotifier<ListeningState> {
   Future<void> deleteMemos(Set<int> memoIds) async {
     if (memoIds.isEmpty) return;
     await _repository.deleteByIds(memoIds.toList());
+
+    // 追記先ごと消えたら終了
+    if (memoIds.contains(_appendTarget?.id)) _endCurrentCard();
 
     if (_disposed) return;
     final current = state.value;
@@ -404,4 +572,9 @@ class ListeningNotifier extends AsyncNotifier<ListeningState> {
     if (current == null || current.typeInMemoId != memoId) return;
     state = AsyncData(current.withTypeInConsumed());
   }
+}
+
+// 2つの日時が同じ日か
+bool _isSameDay(DateTime a, DateTime b) {
+  return a.year == b.year && a.month == b.month && a.day == b.day;
 }

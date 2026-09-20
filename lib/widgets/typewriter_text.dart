@@ -9,12 +9,16 @@ import 'package:flutter/material.dart';
 //   enabled が false のときは全文を即表示する。長文でも一定時間内に
 //   打ち終わるよう、1回に進める文字数の方を増やす。絵文字なども
 //   見た目の1文字単位で扱う。
+//
+//   typeFrom を渡すと、その位置までは即表示して続きだけを打ち出す。
+//   本文への書き足しで、既に読めている部分を打ち直さないために使う。
 // ============================================================
 class TypewriterText extends StatefulWidget {
   const TypewriterText(
     this.text, {
     super.key,
     this.enabled = true,
+    this.typeFrom = 0,
     this.style,
     this.onFinished,
   });
@@ -23,6 +27,9 @@ class TypewriterText extends StatefulWidget {
 
   // 演出を再生するか（false なら全文を即表示）
   final bool enabled;
+
+  // タイピングのアニメーションを始める text 上の位置
+  final int typeFrom;
 
   final TextStyle? style;
 
@@ -57,14 +64,26 @@ class _TypewriterTextState extends State<TypewriterText> {
   // タイピングを開始する（enabled でなければ全文を即表示）
   void _start() {
     _graphemes = widget.text.characters.toList();
-    if (!widget.enabled || _graphemes.isEmpty) {
+
+    // 即表示する頭の部分（範囲の外を渡されても本文に収める）
+    final head = widget.text.substring(
+      0,
+      widget.typeFrom.clamp(0, widget.text.length),
+    );
+
+    // 見た目の1文字単位で数え直す（typeFrom はコード上の位置なので単位が違う）
+    final headCount = head.characters.length;
+
+    // 演出が無効、または打ち出すものが残っていなければ全文を即表示する
+    if (!widget.enabled || headCount >= _graphemes.length) {
       _visibleCount = _graphemes.length;
       return;
     }
 
-    _visibleCount = 0;
-    final maxTicks = _maxDuration.inMilliseconds ~/ _tick.inMilliseconds;
-    final charsPerTick = max(1, (_graphemes.length / maxTicks).ceil());
+    _visibleCount = headCount; // 頭の部分は最初から出しておく
+    final typedCount = _graphemes.length - headCount; // これから打ち出す文字数
+    final maxTicks = _maxDuration.inMilliseconds ~/ _tick.inMilliseconds; // 打ち終わるまでの回数
+    final charsPerTick = max(1, (typedCount / maxTicks).ceil()); // 1回に進める文字数
 
     _timer = Timer.periodic(_tick, (timer) {
       setState(() {
@@ -80,7 +99,10 @@ class _TypewriterTextState extends State<TypewriterText> {
   @override
   void didUpdateWidget(TypewriterText oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.text == widget.text && oldWidget.enabled == widget.enabled) {
+    // 打ち出しに関わる値が何も変わっていなければ、今の再生をそのまま続ける
+    if (oldWidget.text == widget.text &&
+        oldWidget.enabled == widget.enabled &&
+        oldWidget.typeFrom == widget.typeFrom) {
       return;
     }
     _timer?.cancel();

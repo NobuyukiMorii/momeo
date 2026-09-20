@@ -209,13 +209,12 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
       setState(() => _activeCardTime = after.speechStartedAt); // 時刻を記録
     }
 
-    // メモ確定（先頭の id が変わった）→ 即時に消し、同じ位置に確定カードを
-    // 見せる（ドットが文字に置き換わったように見えるモーフ）。まだ発話が
-    // 続いていれば（30秒上限の強制区切り）、新しいカードを出し直す
-    final firstIdBefore = before?.memos.firstOrNull?.id;
-    final firstIdAfter = after.memos.firstOrNull?.id;
-    if (firstIdAfter != null && firstIdAfter != firstIdBefore) {
-      _activeCardController.value = 0.0;
+    // 直前の最新カード
+    final newestBefore = before?.memos.firstOrNull;
+    // 今最新のカード
+    final newestAfter = after.memos.firstOrNull;
+    if (newestAfter != null && newestAfter != newestBefore) { // 今最新のカードと直前の最新カードが違う
+      _activeCardController.value = 0.0; // 発話中の...を消す
       if (after.speechActive) { // 発話中なら
         _activeCardController.forward(); // アクティブカードが下から滑り込んで現れる/下へ引っ込むアニメーションを進める
         setState(() => _activeCardTime = after.speechStartedAt); // 時刻を記録
@@ -381,14 +380,24 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
   // ---------------------------------
   // 確定済みメモカード1枚
   // ---------------------------------
-  Widget _buildMemoCard(MemoCardViewData card, int? typeInMemoId) {
+  Widget _buildMemoCard(MemoCardViewData card, ListeningState listening) {
+
+    // このカードへの追記を聞き取っている最中
+    final expectsMore = card.memo.id == listening.appendTargetId && // 追記先のカードか
+        !_activeCardController.isDismissed; // 発話の...が出ている間かどうか
+
+    // 今まさに1文字ずつ打ち出されて現れるアニメーションが表示されているかどうか
+    final typeIn = card.memo.id == listening.typeInMemoId;
+
     final voiceCard = VoiceCard(
       key: ValueKey(card.memo.id),
       text: card.memo.content,
+      expectsMore: expectsMore, // 追記中のドットを出すかどうか
       dateTime: card.showDateTime
           ? _timeFormat.format(card.memo.createdAt)
           : null,
-      typeIn: card.memo.id == typeInMemoId,
+      typeIn: typeIn,
+      typeFrom: typeIn ? listening.typeInFrom : 0,
       selected: _selectedMemoIds.contains(card.memo.id),
       onTap: () => _toggleMemoSelection(card.memo.id),
       onLongPress: () => _copyMemo(card.memo.id, card.memo.content),
@@ -418,7 +427,7 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
   // ---------------------------------
   Widget _buildMemoList({
     required List<MemoCardViewData> cards,
-    required int? typeInMemoId,
+    required ListeningState listening,
     required bool hidesActiveCard,
     required double safeAreaTop,
     required double recordingSettingsPanelHeight,
@@ -438,7 +447,7 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
           // --- 一番下はアクティブカード（出すかは呼び出し側が決める）
           return hidesActiveCard ? const SizedBox.shrink() : _buildActiveCard();
         }
-        return _buildMemoCard(cards[index - 1], typeInMemoId);
+        return _buildMemoCard(cards[index - 1], listening);
       },
     );
 
@@ -496,9 +505,10 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
     final visibleMemos = filterMemosByKeywords(listening.memos, _keywords);
 
     // ---------------------------------
-    // アクティブカード（発話中のカード）
+    // アクティブカードを出さない場面
     // ---------------------------------
-    final hidesActiveCard = _keywords.isNotEmpty;
+    final hidesActiveCard =
+        _keywords.isNotEmpty || listening.appendTargetId != null;
 
     // ---------------------------------
     // ボイスカード一覧（日時の出し分けは絞り込んだ後の並びで決める）
@@ -557,7 +567,7 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
                   // ---------------------------------
                   _buildMemoList(
                     cards: cards,
-                    typeInMemoId: listening.typeInMemoId,
+                    listening: listening,
                     hidesActiveCard: hidesActiveCard,
                     safeAreaTop: safeAreaTop,
                     recordingSettingsPanelHeight: recordingSettingsPanelHeight,

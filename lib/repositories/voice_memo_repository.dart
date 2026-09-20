@@ -31,6 +31,14 @@ class VoiceMemoRepository {
   }
 
   // ---------------------------------
+  // 指定した id の本文を書き換える
+  // ---------------------------------
+  Future<void> updateContent({required int id, required String content}) {
+    return (_db.update(_db.voiceMemos)..where((memo) => memo.id.equals(id)))
+        .write(VoiceMemosCompanion(content: Value(content)));
+  }
+
+  // ---------------------------------
   // 指定した id の1件を削除する
   // ---------------------------------
   Future<void> delete(int id) {
