@@ -44,6 +44,8 @@
 ## 3. 開始条件と依存
 
 - ブランチ: **`spike/voice_recognition_performance_tuning/current-baseline`（`96cf384`）から枝を切る。** 名前は `spike/voice_recognition_performance_tuning/capture-audit`
+- **計画書は `main` の最新版を読む。** 枝元のコピーは古い可能性がある。枝を切った直後に `git checkout main -- notes/voice_recognition_performance_tuning/plan` で取り直す（`master.md` §1）
+- **記録は spike が終わったら `main` に写す。** ファイルを1つずつ指定して写し、ブランチごとマージしない（`master.md` §1）
 - **依存: S3 `current-baseline` が完了していること**（足場のコードと記録）
 - 前提: **Android 実機**で録音でき、`scripts/pull_android_spike_audio.sh` が通ること
 - **この spike は Android で行う**（`master.md` §1）

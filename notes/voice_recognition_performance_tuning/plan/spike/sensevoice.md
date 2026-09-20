@@ -32,6 +32,8 @@
 ## 3. 開始条件と依存
 
 - ブランチ: **S4 `lib-update` のブランチから枝を切る**（足場と 1.13.8 が揃っているため）。名前は `spike/voice_recognition_performance_tuning/sensevoice`。**足場を作り直さない**（`master.md` §1）
+- **計画書は `main` の最新版を読む。** 枝元のコピーは古い可能性がある。枝を切った直後に `git checkout main -- notes/voice_recognition_performance_tuning/plan` で取り直す（`master.md` §1）
+- **記録は spike が終わったら `main` に写す。** ファイルを1つずつ指定して写し、ブランチごとマージしない（`master.md` §1）
 - **依存**
   - `spike/current-baseline.md` と、**端末内の音声・`answers.tsv`**（比較の基準。正本は端末。`.dev_models/spike_audio/` はバックアップで、消えていれば `scripts/place_android_spike_audio.sh` で戻す）
   - `spike/lib-update.md`（土台の版を揃えるため）

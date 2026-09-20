@@ -29,6 +29,8 @@
 ## 3. 開始条件と依存
 
 - ブランチ: **S4 `lib-update` のブランチから枝を切る**（足場と 1.13.8 が揃っているため）。名前は `spike/voice_recognition_performance_tuning/notation-dict`。**足場を作り直さない**（`master.md` §1）
+- **計画書は `main` の最新版を読む。** 枝元のコピーは古い可能性がある。枝を切った直後に `git checkout main -- notes/voice_recognition_performance_tuning/plan` で取り直す（`master.md` §1）
+- **記録は spike が終わったら `main` に写す。** ファイルを1つずつ指定して写し、ブランチごとマージしない（`master.md` §1）
 - **依存**: `spike/current-baseline.md` と、**端末内の音声・`answers.tsv`**（正本は端末。`.dev_models/spike_audio/` はバックアップ）
 - 前提: **Android 実機**（`master.md` §1）
 - **着手条件**: 課題①②の他の spike が片付いていること。片付いていなければ実施しない

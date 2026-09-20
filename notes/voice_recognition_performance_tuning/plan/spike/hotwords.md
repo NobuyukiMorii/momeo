@@ -31,6 +31,8 @@
 ## 3. 開始条件と依存
 
 - ブランチ: **S7 `qwen3` のブランチから枝を切る**（同じモデル・同じ設定を土台にするため）。名前は `spike/voice_recognition_performance_tuning/hotwords`
+- **計画書は `main` の最新版を読む。** 枝元のコピーは古い可能性がある。枝を切った直後に `git checkout main -- notes/voice_recognition_performance_tuning/plan` で取り直す（`master.md` §1）
+- **記録は spike が終わったら `main` に写す。** ファイルを1つずつ指定して写し、ブランチごとマージしない（`master.md` §1）
 - **依存**: `spike/qwen3.md` があり、**条件外で落ちていないこと**
   - 落ちていたら、このセッションは**実施しない**
   - 記録が無ければ止める
