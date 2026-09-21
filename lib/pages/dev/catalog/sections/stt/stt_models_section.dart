@@ -7,7 +7,7 @@ import 'package:momeo/stt/stt_model_provisioner.dart';
 
 // ============================================================
 // STT モデルの配置状態を確認するセクション
-//   SttModelProvisioner().provision() を呼び、3ファイル（NeMo本体・tokens・silero）の
+//   SttModelProvisioner().provision() を呼び、3ファイル（認識モデル本体・tokens・silero）の
 //   「住所（パス）・サイズ・壊れていないか」を一覧表示する。
 //   ここは「ちゃんと置けて、住所から読める状態か」を目で確かめるための画面。
 // ============================================================
@@ -200,7 +200,7 @@ class _ModelDownloadCardState extends State<_ModelDownloadCard> {
             children: [
               Expanded(
                 child: Text(
-                  'NeMo 自動DL（fast-follow）',
+                  '認識モデルの自動DL（fast-follow）',
                   style: theme.textTheme.titleSmall,
                 ),
               ),

@@ -23,6 +23,7 @@ const int _kBytesPerSample = 2; // PCM16 = 1サンプル2バイト
 const int _kInt16Amplitude = 32768; // PCM16 の正規化基準（2^15）
 const int _kVadWindow = 512; // VAD に1回で渡すサンプル数（16kHz の Silero 用）
 const double _kVadBufferSeconds = 60; // VAD 内部バッファ（秒）。maxSpeechDuration(最大30秒)を余裕で収める
+const double _kVadThreshold = 0.35; // 声とみなす強さ。本番（stt_audio_worker.dart）と同じ値にする
 
 // 区切られた1発話の記録
 class _Segment {
@@ -103,6 +104,7 @@ class _SttVadSectionState extends State<SttVadSection> {
       config: sherpa.VadModelConfig(
         sileroVad: sherpa.SileroVadModelConfig(
           model: path,
+          threshold: _kVadThreshold,
           minSilenceDuration: _minSilenceDuration,
           minSpeechDuration: _minSpeechDuration,
           maxSpeechDuration: _maxSpeechDuration,

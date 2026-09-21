@@ -21,8 +21,8 @@ android {
     ndkVersion = flutter.ndkVersion
 
     // NeMo（625MB）を運ぶ fast-follow アセットパックを、このアプリのビルドに紐づける。
-    // 実体は :nemo_models モジュール（android/nemo_models/）。これで AAB に同梱される。
-    assetPacks += ":nemo_models"
+    // 実体は :stt_models モジュール（android/stt_models/）。これで AAB に同梱される。
+    assetPacks += ":stt_models"
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17

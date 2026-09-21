@@ -6,7 +6,7 @@ import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:sherpa_onnx/sherpa_onnx.dart' as sherpa;
 
 // ============================================================
-// 音声処理（VAD の区切り・NeMo の文字化）を専用 isolate に閉じ込める窓口
+// 音声処理（VAD の区切り・認識モデルの文字化）を専用 isolate に閉じ込める窓口
 //
 //   認識器も VAD もこの isolate の中だけに存在するため、UI 側から
 //   触れるのは Future を返すメソッドと通知イベントだけになる。
@@ -23,6 +23,12 @@ const double _kVadBufferSeconds = 60; // VAD 内部バッファ（秒）。maxSp
 const double _kMinSilenceDuration = 1.5;
 const double _kMinSpeechDuration = 0.25;
 const double _kMaxSpeechDuration = 30.0;
+
+// どれくらいの音を「声」とみなすか。既定の 0.5 では語頭を取りこぼす
+const double _kVadThreshold = 0.35;
+
+// 認識する言語。空文字は自動判定。日本語に固定すると普通話が崩れ、日本語側の利得も無い
+const String _kRecognitionLanguage = '';
 
 // ============================================================
 // 音声 isolate から届く通知
@@ -363,14 +369,18 @@ class _AudioEngine {
 
   bool _speechActive = false;
 
-  // NeMo は CTC 方式。この枠にモデル本体のパスを入れることで読み方が決まる
+  // SenseVoice の枠にモデル本体のパスを入れることで読み方が決まる
   static sherpa.OfflineRecognizer _createRecognizer({
     required String modelPath,
     required String tokensPath,
   }) {
     final config = sherpa.OfflineRecognizerConfig(
       model: sherpa.OfflineModelConfig(
-        nemoCtc: sherpa.OfflineNemoEncDecCtcModelConfig(model: modelPath),
+        senseVoice: sherpa.OfflineSenseVoiceModelConfig(
+          model: modelPath,
+          language: _kRecognitionLanguage,
+          useInverseTextNormalization: true, // 数字や句読点を読みやすい形にする
+        ),
         tokens: tokensPath,
         numThreads: 1,
         debug: kDebugMode,
@@ -384,6 +394,7 @@ class _AudioEngine {
       config: sherpa.VadModelConfig(
         sileroVad: sherpa.SileroVadModelConfig(
           model: sileroPath,
+          threshold: _kVadThreshold,
           minSilenceDuration: _kMinSilenceDuration,
           minSpeechDuration: _kMinSpeechDuration,
           maxSpeechDuration: _kMaxSpeechDuration,

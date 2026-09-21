@@ -27,4 +27,4 @@ plugins {
 
 include(":app")
 // fast-follow アセットパックの入れ物（NeMo モデルを格納）
-include(":nemo_models")
+include(":stt_models")

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# NeMo モデルを iOS の所定フォルダ（ios/Runner/Models/）へ配置するスクリプト
+# STT モデルを iOS の所定フォルダ（ios/Runner/Models/）へ配置するスクリプト
 # （無ければコピーする）。ここに置いたファイルを Xcode の「バンドルリソース」
 # として同梱する（Xcode への登録は済んでいる前提）。
 #
@@ -10,7 +10,7 @@
 #       デバイスIDが adb devices に見える = Android なので iOS 配置は不要、
 #       見えない = iOS 端末とみなして配置する（place_android_device_models.sh の鏡像）
 #
-#   前提: .dev_models/ にモデルがあること（scripts/download_nemo_model.sh で取得）
+#   前提: .dev_models/ にモデルがあること（scripts/download_stt_model.sh で取得）
 
 set -euo pipefail
 
@@ -22,8 +22,10 @@ readonly IOS_MODELS_DIR="$PROJECT_ROOT/ios/Runner/Models"
 # adb 端末まわりの共通ヘルパー（list_android_devices / resolve_adb_serial）
 source "$SCRIPT_DIR/lib/adb_devices.sh"
 
-# ファイル名の共通定数（MODEL_FILE / TOKENS_FILE）
-source "$SCRIPT_DIR/lib/nemo_model_constants.sh"
+# 置き場所・ファイル名の共通定数（MODEL_SUB_DIR / MODEL_FILE / TOKENS_FILE）
+source "$SCRIPT_DIR/lib/stt_model_constants.sh"
+
+readonly MODEL_SRC_DIR="$DEV_MODELS_DIR/$MODEL_SUB_DIR"
 
 # 引数のデバイスID（Flutter devices が表示する ID。省略可）
 FLUTTER_DEVICE_ID="${1:-}"
@@ -52,12 +54,12 @@ fi
 mkdir -p "$IOS_MODELS_DIR"
 
 for file_name in "$MODEL_FILE" "$TOKENS_FILE"; do
-  src="$DEV_MODELS_DIR/$file_name"
+  src="$MODEL_SRC_DIR/$file_name"
   dst="$IOS_MODELS_DIR/$file_name"
 
   if [ ! -f "$src" ]; then
     echo "✗ $src がありません。" >&2
-    echo "  先に bash scripts/download_nemo_model.sh を実行してください。" >&2
+    echo "  先に bash scripts/download_stt_model.sh を実行してください。" >&2
     exit 1
   fi
 

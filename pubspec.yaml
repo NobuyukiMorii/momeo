@@ -47,7 +47,8 @@ dependencies:
   record: ^6.1.2
 
   # 音声 AI モデル（音声認識・VAD）をオンデバイスで動かす実行エンジン
-  sherpa_onnx: ^1.13.2
+  # 版を固定する。認識の比較はすべて 1.13.8 の上で行ったため、勝手に上がると土台が変わる
+  sherpa_onnx: 1.13.8
 
   # バックグラウンドでも録音を続けるためのフォアグラウンドサービス（Android）
   flutter_foreground_task: ^10.0.0

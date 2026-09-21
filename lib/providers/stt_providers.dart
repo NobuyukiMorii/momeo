@@ -65,26 +65,26 @@ class SttEngineNotifier extends AsyncNotifier<SttAudioWorker> {
     // ① モデル3ファイルのパス・整合性を取得（silero の端末コピーもこの中で済む）
     var models = await provisioner.provision();
 
-    // ② NeMo が未到着なら、DL中に限り完了を待ってからパスを取り直す
-    if (!_isNemoReady(models)) {
+    // ② 認識モデルが未到着なら、DL中に限り完了を待ってからパスを取り直す
+    if (!_isModelReady(models)) {
       await _waitForModelDownload(provisioner);
       models = await provisioner.provision();
     }
 
     // 待った後も揃わなければ失敗として公開する
-    if (!_isNemoReady(models)) {
+    if (!_isModelReady(models)) {
       throw StateError(
-        'NeMo モデルが読める状態になっていません'
-        '（model: ${models.nemoModel.isValid ? 'OK' : 'NG'}'
-        ' / tokens: ${models.nemoTokens.isValid ? 'OK' : 'NG'}）',
+        '認識モデルが読める状態になっていません'
+        '（model: ${models.sttModel.isValid ? 'OK' : 'NG'}'
+        ' / tokens: ${models.sttTokens.isValid ? 'OK' : 'NG'}）',
       );
     }
 
     // ③ 音声 isolate を立ち上げる。認識器の生成（数秒）もこの中で済む
     final stopwatch = Stopwatch()..start();
     final worker = await SttAudioWorker.spawn(
-      modelPath: models.nemoModel.path,
-      tokensPath: models.nemoTokens.path,
+      modelPath: models.sttModel.path,
+      tokensPath: models.sttTokens.path,
     );
     stopwatch.stop();
     ref.onDispose(worker.dispose);
@@ -98,9 +98,9 @@ class SttEngineNotifier extends AsyncNotifier<SttAudioWorker> {
     return worker;
   }
 
-  // NeMo（本体・tokens）の2ファイルが正しく置いてあるか
-  bool _isNemoReady(SttModels models) {
-    return models.nemoModel.isValid && models.nemoTokens.isValid;
+  // 認識モデル（本体・tokens）の2ファイルが正しく置いてあるか
+  bool _isModelReady(SttModels models) {
+    return models.sttModel.isValid && models.sttTokens.isValid;
   }
 
   // ---------------------------------
@@ -113,7 +113,7 @@ class SttEngineNotifier extends AsyncNotifier<SttAudioWorker> {
     // 待たずに失敗として公開し、永久待ちを防ぐ
     if (current.phase != AssetPackPhase.downloading) {
       throw StateError(
-        'NeMo モデルが未配置です（DL状態: ${current.rawStatus ?? current.phase.name}）',
+        '認識モデルが未配置です（DL状態: ${current.rawStatus ?? current.phase.name}）',
       );
     }
 
@@ -124,7 +124,7 @@ class SttEngineNotifier extends AsyncNotifier<SttAudioWorker> {
         );
     if (finished.phase == AssetPackPhase.failed) {
       throw StateError(
-        'NeMo モデルのダウンロードに失敗しました（errorCode: ${finished.errorCode}）',
+        '認識モデルのダウンロードに失敗しました（errorCode: ${finished.errorCode}）',
       );
     }
   }
@@ -208,7 +208,7 @@ class SttRestartSuggestionNotifier extends Notifier<bool> {
 }
 
 // ============================================================
-// sttModelDownloadStateProvider — NeMo 自動DL（fast-follow）の進捗
+// sttModelDownloadStateProvider — 認識モデルの自動DL（fast-follow）の進捗
 //
 //   sttEngineProvider の「準備中」だけでは DL中か読み込み中か分からないため、
 //   待ち画面が併読する。iOS など自動DLが無い環境では常に ready が流れる。

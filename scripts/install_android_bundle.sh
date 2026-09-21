@@ -75,7 +75,7 @@ echo "→ 既存のアプリを消します …"
 adb -s "$ADB_SERIAL" uninstall "$APP_ID" > /dev/null 2>&1 || true
 
 # 始まりを伝える
-echo "→ 端末へインストールします（625MB を含みます）…"
+echo "→ 端末へインストールします（239MB を含みます）…"
 
 # 結果を受け取る入れ物
 install_status=0

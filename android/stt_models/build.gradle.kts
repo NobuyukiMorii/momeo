@@ -1,5 +1,5 @@
 // ============================================================
-// NeMo（音声認識モデル・約625MB）を fast-follow で配るための「入れ物」
+// 音声認識モデル（SenseVoice Small int8・約239MB）を fast-follow で配るための「入れ物」
 //
 //   - これは :app とは別の小さな Android モジュール（アセットパック専用）。
 //   - 中身（model.int8.onnx / tokens.txt）は src/main/assets/models/ に置く。
@@ -9,7 +9,7 @@
 //   - delivery = fast-follow … インストール直後に Play が自動DLする配り方。
 //     本体インストールには含めないので初回インストールは軽い。
 //
-//   ※ パック名「nemo_models」は Dart 側（ダウンロード操作・モデルのパス解決）から
+//   ※ パック名「stt_models」は Dart 側（ダウンロード操作・モデルのパス解決）から
 //     この名前で参照する。変更するときは参照側も必ず揃えること。
 // ============================================================
 
@@ -18,7 +18,7 @@ plugins {
 }
 
 assetPack {
-    packName.set("nemo_models")
+    packName.set("stt_models")
     dynamicDelivery {
         deliveryType.set("fast-follow")
     }

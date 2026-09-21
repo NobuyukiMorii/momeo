@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 #
-# 開発機の Android 端末に NeMo モデルを手置きする（無ければ入れる）。
+# 開発機の Android 端末に STT モデルを手置きする（無ければ入れる）。
 #
 #   使い方:
 #     bash scripts/place_android_device_models.sh [デバイスID]
 #       デバイスID省略時: adb に見えている Android 端末が1台ならそれを使う
 #
-#   前提: .dev_models/ にモデルがあること（scripts/download_nemo_model.sh で取得）
+#   前提: .dev_models/ にモデルがあること（scripts/download_stt_model.sh で取得）
 
 set -euo pipefail
 
@@ -19,8 +19,10 @@ readonly DEV_MODELS_DIR="$PROJECT_ROOT/.dev_models"
 # adb 端末まわりの共通ヘルパー（list_android_devices / resolve_adb_serial）
 source "$SCRIPT_DIR/lib/adb_devices.sh"
 
-# ファイル名と正しいバイト数の共通定数（MODEL_FILE / MODEL_EXPECTED_BYTES など）
-source "$SCRIPT_DIR/lib/nemo_model_constants.sh"
+# 置き場所・ファイル名・正しいバイト数の共通定数（MODEL_SUB_DIR / MODEL_FILE など）
+source "$SCRIPT_DIR/lib/stt_model_constants.sh"
+
+readonly MODEL_SRC_DIR="$DEV_MODELS_DIR/$MODEL_SUB_DIR"
 
 # 引数のデバイスID（Flutter devices が表示する ID。省略可）
 FLUTTER_DEVICE_ID="${1:-}"
@@ -86,9 +88,9 @@ echo "対象の Android 端末: $ADB_SERIAL"
 # ---------------------------------
 
 for file_name in "$MODEL_FILE" "$TOKENS_FILE"; do
-  if [ ! -f "$DEV_MODELS_DIR/$file_name" ]; then
-    echo "✗ $DEV_MODELS_DIR/$file_name がありません。" >&2
-    echo "  先に bash scripts/download_nemo_model.sh を実行してください。" >&2
+  if [ ! -f "$MODEL_SRC_DIR/$file_name" ]; then
+    echo "✗ $MODEL_SRC_DIR/$file_name がありません。" >&2
+    echo "  先に bash scripts/download_stt_model.sh を実行してください。" >&2
     exit 1
   fi
 done
@@ -138,9 +140,9 @@ if [ "$model_ok" = true ]; then
 fi
 
 # 内部ストレージには直接 push できないので、/data/local/tmp を中継する
-echo "→ モデルを端末へ push します（625MB）…"
-run_adb push "$DEV_MODELS_DIR/$MODEL_FILE" /data/local/tmp/
-run_adb push "$DEV_MODELS_DIR/$TOKENS_FILE" /data/local/tmp/
+echo "→ モデルを端末へ push します（239MB）…"
+run_adb push "$MODEL_SRC_DIR/$MODEL_FILE" /data/local/tmp/
+run_adb push "$MODEL_SRC_DIR/$TOKENS_FILE" /data/local/tmp/
 run_adb shell chmod 644 "/data/local/tmp/$MODEL_FILE" "/data/local/tmp/$TOKENS_FILE"
 
 echo "→ アプリの内部ストレージへコピーします …"
@@ -148,7 +150,7 @@ run_adb shell run-as "$APP_ID" mkdir -p files/models
 run_adb shell run-as "$APP_ID" cp "/data/local/tmp/$MODEL_FILE" files/models/
 run_adb shell run-as "$APP_ID" cp "/data/local/tmp/$TOKENS_FILE" files/models/
 
-# 中継地点の 625MB を残さない
+# 中継地点の 239MB を残さない
 run_adb shell rm -f "/data/local/tmp/$MODEL_FILE" "/data/local/tmp/$TOKENS_FILE"
 
 # コピー後にもう一度バイト数を確かめる

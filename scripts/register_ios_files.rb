@@ -14,7 +14,7 @@
 #     手で Xcode の GUI を操作する代わりに、xcodeproj（CocoaPods 同梱）で安全・確実に行う。
 #
 #   前提: モデルは先に scripts/place_ios_models.sh で ios/Runner/Models/ に置いてあること
-#         （ダウンロード自体は scripts/download_nemo_model.sh）。
+#         （ダウンロード自体は scripts/download_stt_model.sh）。
 #   使い方: ruby scripts/register_ios_files.rb
 #
 #   ※ 何度実行しても安全（すでに登録済みなら二重登録しない＝idempotent）。
