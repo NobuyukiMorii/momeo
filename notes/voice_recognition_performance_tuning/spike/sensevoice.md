@@ -196,7 +196,8 @@ S6枝のAndroid MainActivityに、intent extra `spike_show_when_locked=true` の
 ### この spike から後続への申し送り
 
 - **S3 の残タスクのうち、英語・普通話の正解確定は難度が下がった。** 録り直さなくても、SenseVoice の出力を叩き台にできる。`最終判定用` の収録は依然として残る
-- **`answers.tsv` の `category` を振り直す。** `noise` 11 件のうち複数は英語の発話である
+  - **2026-09-21 に両方とも完了。** ただし**この叩き台を SenseVoice 自身の採点には使えない**（循環する）。逐語の採点には台本コーパスを使う（[current-baseline.md](current-baseline.md) §8）
+- ~~**`answers.tsv` の `category` を振り直す。** `noise` 11 件のうち複数は英語の発話である~~ → **2026-09-21 に完了。** `noise` 2件が本人の英語と確定し `en` へ移った（[current-baseline.md](current-baseline.md) §3）
 - **RAM 778 MB を S7 `qwen3` の比較基準にする**
 - **言語指定は `auto`。** `ja` 固定は普通話を壊し、日本語側の利得も無い（18/25 行で差が出るが、日本語行では改善していない）
 - **採用は決めない。** 上の3点を人が判断するまで、SenseVoice は「有力候補」までである
