@@ -1,6 +1,7 @@
 # これから何を、どの順番でやるか
 
-> **状態（2026-09-21）**: **洗い出しの文書である。まだ何も実装していない。**
+> **状態（2026-09-21）**: **第0段から第2段まで実装し、実機で確認した。**
+> Android は dev（手置き）と release（fast-follow パック）の両方、iPhone は dev と release の両方で動作。
 > 採用の決定そのものは [adopt-sensevoice.md](adopt-sensevoice.md) にある。本書はその先の段取りを並べる。
 > 本書を書くにあたって、`main` の実装を実際に読んで確かめた。**記録からの引き写しではない箇所には「コード確認」と書く。**
 
@@ -33,25 +34,24 @@
 | 出力を受け取る側               | **依存しない。が、出力が変わる** | この計画では加工せず、そのまま出す               |
 
 
-### 1-2. NeMo 専用になっている箇所（コード確認）
+### 1-2. NeMo 専用だった箇所と、実際にやったこと
 
-`main` で NeMo に触れているのは **18ファイル**である。大半は名前と文言で、設計を変える必要はない。
+`main` で NeMo に触れていたのは **18ファイル**だった。大半は名前と文言で、設計は変えずに済んだ。
 
+| 場所 | 元の状態 | やったこと |
+|---|---|---|
+| `lib/stt/stt_audio_worker.dart` | `nemoCtc:` の枠にパスを入れていた | `senseVoice:` の枠へ。言語は自動判定、ITN 有効 |
+| `lib/stt/stt_model_provisioner.dart` | `nemoModel` / `nemoTokens` / `_resolveNemoPaths` | `sttModel` / `sttTokens` / `_resolveModelPaths` へ改名。**構造は変えていない** |
+| `scripts/lib/nemo_model_constants.sh` | `655542604` | **`scripts/lib/stt_model_constants.sh` へ改名**し、`239233841` へ |
+| `lib/providers/stt_providers.dart` | `_isNemoReady` と文言 | `_isModelReady` へ |
+| `scripts/download_nemo_model.sh` | Hugging Face から2ファイルを個別に取得 | **`download_stt_model.sh` へ改名**。SenseVoice は書庫配布なので、**SHA256 照合 → 2ファイルだけ取り出す**形に |
+| `scripts/place_*.sh` / `Makefile` | NeMo を配る | 参照先を `.dev_models/sensevoice-2024-07-17/` へ |
+| `.gitignore` | NeMo の実体を除外 | パック名の変更に追随 |
+| dev カタログの表示 | 「NeMo 本体」等 | 「認識モデル本体」等へ |
 
-| 場所                                                   | いまの状態                                            | やること                                              | 重さ      |
-| ---------------------------------------------------- | ------------------------------------------------ | ------------------------------------------------- | ------- |
-| `lib/stt/stt_audio_worker.dart`                      | `nemoCtc:` の枠にパスを入れている                           | `senseVoice:` の枠へ。言語 `auto`、ITN 有効                | **15行** |
-| `lib/stt/stt_model_provisioner.dart`                 | `nemoModel` / `nemoTokens` / `_resolveNemoPaths` | 名前を汎用化。構造は変えない                                    | 小       |
-| `scripts/lib/nemo_model_constants.sh`                | `655542604`                                      | `239233841` **へ。1か所に寄せる**                         | 小       |
-| `lib/providers/stt_providers.dart`                   | `_isNemoReady` と文言                               | 同上                                                | 小       |
-| `scripts/download_nemo_model.sh`                     | NeMo の URL と SHA                                 | SenseVoice へ。`setup_sensevoice.sh` **に検証済みの値がある** | 小       |
-| `scripts/place_ios_models.sh` / `place_android_*.sh` | NeMo を配る                                         | 参照するファイルを替える                                      | 小       |
-| `Makefile`                                           | `make models` が NeMo を取る                         | 同上                                                | 小       |
-| `.gitignore`                                         | NeMo の実体を除外                                      | パスが同じなら変更不要                                       | なし      |
-| dev カタログの表示                                          | 「NeMo 本体」等                                       | 文言                                                | 小       |
+**置き場所を版ごとのフォルダに分けた。** `.dev_models/` 直下ではなく `.dev_models/sensevoice-2024-07-17/` に置くため、**前のモデルを消さずに残せる**。
 
-
-**バイト数が二重管理になっている。** `scripts/lib/nemo_model_constants.sh` と `lib/stt/stt_model_provisioner.dart` の両方に同じ数字がある。コメントに「更新時は両方直すこと」と書いてあるが、**差し替えのついでに片方へ寄せる**ほうが安全である。
+**バイト数の二重管理は残っている。** `scripts/lib/stt_model_constants.sh` と `lib/stt/stt_model_provisioner.dart` の両方に同じ数字がある。**1か所に寄せていない。**
 
 ### 1-3. 配布 — ここが本丸。ただし軽くなる
 
@@ -61,8 +61,8 @@
 |             | いまの状態                                  | やること                                                                                 |
 | ----------- | -------------------------------------- | ------------------------------------------------------------------------------------ |
 | **iOS**     | アプリ同梱（`SttModelChannel.swift` が固定名で参照） | **変更不要。** SenseVoice のファイル名が NeMo と同じなので、同梱の枠にそのまま入る（2026-09-21 に実機で確認）              |
-| **Android** | fast-follow パック `nemo_models`          | **パック名を決める。** Dart・`settings.gradle.kts`・`app/build.gradle.kts` の**3箇所で一致**している必要がある |
-| **取得**      | `download_nemo_model.sh`               | URL と SHA256 を差し替える                                                                  |
+| **Android** | fast-follow パック | **`nemo_models` → `stt_models` へ改名した**（未リリースのため改名は無償）。Dart・`settings.gradle.kts`・`app/build.gradle.kts` の**3箇所で一致**している必要がある |
+| **取得** | `download_stt_model.sh`（改名） | 書庫を SHA256 で照合し、2ファイルだけ取り出す |
 
 
 **iOS の release アプリは 287.3MB になった**（NeMo 同梱なら 790MB 相当）。
@@ -198,25 +198,30 @@
 
 ### 第0段 — 土台（モデルと独立）
 
+**実施済み（2026-09-21）。**
+
 `sherpa_onnx` **1.13.8 ＋ VAD** `threshold = 0.35`**。**
 
 **なぜ先か**: モデル差し替えと独立していて、**単独で戻せる**。`threshold` の1行だけ戻す、という対処ができる状態を先に作る。
 
 ### 第1段 — モデルの差し替え
 
+**実施済み（2026-09-21）。**
+
 **認識器・住所を返す窓口・取得スクリプト・定数。**
 
-認識器の枠を `nemoCtc` から `senseVoice` へ替え、`nemoModel` / `_resolveNemoPaths` などの名前を汎用化し、バイト数の二重管理を1か所へ寄せる。
+認識器の枠を `nemoCtc` から `senseVoice` へ替え、`nemoModel` / `_resolveNemoPaths` などの名前を汎用化した。**バイト数の二重管理は寄せていない。**
 
 ### 第2段 — 配布
+
+**実施済み（2026-09-21）。実機で確認した。**
 
 **Android の fast-follow パック、iOS の同梱、スクリプトと Makefile。**
 
 **fast-follow は残す。** パックは「決まった名前の2ファイルを入れる箱」でしかなく、SenseVoice もファイル名が同じなので**箱も配置スクリプトもそのまま使える**。替えるのは取得元（URL と SHA256）とバイト数だけである。
 
-- **パック名** `nemo_models` **は替えなくても動く。** ただし名前が実態と合わなくなる
-- **替えるならリリース前にする。** 出したあとでパック名を変えると、既存インストールの扱いが別物になる
-- **ベースに同梱できるかは測っていない。** 見積もりでは 198.6 MiB で、200 の解釈次第という境界線上だった（[fast-follow が要るか](#補足-fast-follow-をやめられる可能性)）
+- **パック名を `stt_models` に替えた。** `version: 1.0.0+1`（未リリース）なので、替えるなら今しかなかった
+- **実機で確認済み。** `bundletool build-apks --local-testing` で入れた release ビルドが、`stt_models-master.apk`（239,559,155 バイト）からモデルを読んで動いた。**手置きの `files/models/` は空のまま**である
 
 
 
@@ -238,18 +243,20 @@
 
 > もし軽量モデルに替えてアプリ全体が200MB以下に収まれば、Android も普通のアセット同梱で済み、**PAD は不要になる**。そのとき iOS/Android の実装差はほぼ消える。
 
-**測った見積もり**（2026-09-21）。
+**実測した**（2026-09-21・`bundletool get-size total`）。
 
 
-|                                | サイズ                          |
-| ------------------------------ | ---------------------------- |
-| SenseVoice モデル（gzip -6）        | 152.7 MiB                    |
-| アプリ本体（arm64 release APK・モデル抜き） | 45.9 MiB                     |
-| **合計**                         | **198.6 MiB ／ 208.3 MB（十進）** |
+| | サイズ |
+|---|---|
+| 初回ダウンロード（arm64-v8a・パック抜き） | **20.0MB** |
+| SenseVoice モデル（gzip -6） | 152.7 MiB |
+| **ベースに同梱したときの見込み** | **約 173MB** |
 
 
-**200 MiB なら 1.4 MiB の余裕で入り、200 MB（十進）なら 8.3 MB 超える。** 見積もりでは判定できない。
+**200MB に 27MB ほどの余裕を持って収まる。** 当初「198.6 MiB で境界線上」と見積もったのは、**APK のファイルサイズを配信量と取り違えていた**ためである。実際の配信量はその半分以下だった。
 
-**やめられた場合に消えるもの**: `android/nemo_models/` の gradle モジュール、`AssetPackDelivery`、準備ゲートの `downloading` / `almostThere` フェーズ、DL完了待ちとその再試行。**iOS と Android が同じ配布方式になる。**
+**やめられた場合に消えるもの**: `android/stt_models/` の gradle モジュール、`AssetPackDelivery`、準備ゲートの `downloading` / `almostThere` フェーズ、DL完了待ちとその再試行。**iOS と Android が同じ配布方式になる。**
 
-**判定したくなったときは** `bundletool get-size total` で AAB を1本測れば分かる。**いまはやらない。**
+**やめると初回インストールが 20MB → 173MB に増える。** 後から落とすか、最初にまとめて落とすかの違いでしかない。**いま動いているものを変える理由が薄いので、fast-follow のままにする。**
+
+**測り直したくなったときは** `bundletool get-size total` で AAB を1本測れば分かる。

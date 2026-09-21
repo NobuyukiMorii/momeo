@@ -1,5 +1,9 @@
 # モデル配布の詳細（同梱方式の実装と申請）
 
+> **2026-09-21 追記**: 認識モデルを **NeMo CTC 0.6B（625MB）から SenseVoice Small int8（239MB）へ差し替えた**。
+> 本書の「NeMo」「625MB」という記述は差し替え前のものである。 Android のアセットパック名も `nemo_models` → **`stt_models`** に変わっている。
+> 経緯は [decision/adopt-sensevoice.md](../voice_recognition_performance_tuning/decision/adopt-sensevoice.md)。
+
 ## この文書について
 
 - **目的**: 625MB のオンデバイス STT モデルを、ユーザーの端末にどう届けるか（配布方式）を詳しく説明する。実装計画の全体像は `outline.md` にあり、本書はそのうち「モデル配布」だけを深掘りした補足資料。

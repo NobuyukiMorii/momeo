@@ -1,5 +1,9 @@
 # Step 5: 録音した音を「発話ごと」に区切る（VAD）
 
+> **2026-09-21 追記**: 認識モデルを **NeMo CTC 0.6B（625MB）から SenseVoice Small int8（239MB）へ差し替えた**。
+> 本書の「NeMo」「625MB」という記述は差し替え前のものである。
+> 経緯は [decision/adopt-sensevoice.md](../voice_recognition_performance_tuning/decision/adopt-sensevoice.md)。
+
 ## ひとことで言うと
 
 Step 3 で取れるようになった「マイクの音（PCM）」を sherpa 内蔵の VAD に流し込み、

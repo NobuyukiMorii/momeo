@@ -1,5 +1,9 @@
 # Step 8: Android で大きなモデルを「あとから自動ダウンロード」で届ける
 
+> **2026-09-21 追記**: 認識モデルを **NeMo CTC 0.6B（625MB）から SenseVoice Small int8（239MB）へ差し替えた**。
+> 本書の「NeMo」「625MB」という記述は差し替え前のものである。 Android のアセットパック名も `nemo_models` → **`stt_models`** に変わっている。
+> 経緯は [decision/adopt-sensevoice.md](../voice_recognition_performance_tuning/decision/adopt-sensevoice.md)。
+
 ## このステップを一言で
 
 Android で、625MB の文字化モデル（NeMo）を**ユーザーの端末に本番で届ける**ステップ。

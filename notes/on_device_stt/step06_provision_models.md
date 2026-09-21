@@ -1,5 +1,9 @@
 # Step 6: モデルを「読める置き場所」に用意する（配置とパス契約の土台）
 
+> **2026-09-21 追記**: 認識モデルを **NeMo CTC 0.6B（625MB）から SenseVoice Small int8（239MB）へ差し替えた**。
+> 本書の「NeMo」「625MB」という記述は差し替え前のものである。 取得スクリプトも `download_nemo_model.sh` → **`download_stt_model.sh`** に変わっている。
+> 経緯は [decision/adopt-sensevoice.md](../voice_recognition_performance_tuning/decision/adopt-sensevoice.md)。
+
 ## ひとことで言うと
 
 音声を文字にするには、2つのモデルファイルを**端末の中に置いておく**必要がある。このステップは、その**置き場所を用意する**作業。

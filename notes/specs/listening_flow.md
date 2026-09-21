@@ -3,7 +3,7 @@
 ## 概要
 権限許可後、アプリは自動的にリスニング状態で開始されます。ユーザーは録音ボタンを探すことなく話し始めることができます。
 
-音声認識はオンデバイス STT（`sherpa_onnx` + NeMo CTC）で行います。OS の音声認識サービスには依存せず、モデルが端末にあれば実行は完全オフラインです。
+音声認識はオンデバイス STT（`sherpa_onnx` + SenseVoice Small）で行います。OS の音声認識サービスには依存せず、モデルが端末にあれば実行は完全オフラインです。
 
 > リスニング画面に入る前提として、文字化エンジンの準備完了を待つ「準備ゲート」があります（`notes/specs/preparation_gate.md`）。リスニング画面に到達した時点でエンジンは常に使用可能です。
 
@@ -48,7 +48,7 @@
   ↓ Float32 に変換し、512サンプル窓ごとに供給
 sherpa 内蔵 Silero VAD（発話の開始〜終了を検出）
   ↓ 1発話ぶんの音声チャンク
-sherpa-onnx OfflineRecognizer（NeMo CTC）でバッチ文字化
+sherpa-onnx OfflineRecognizer（SenseVoice Small）でバッチ文字化
   ↓
 確定テキスト → メモとして保存・表示
 ```
@@ -118,7 +118,7 @@ Silero VAD の区切り設定（`stt_listening_pipeline.dart` の定数）:
 【 確定条件 】
  └─ 無音が 1.5秒 続き、VAD が発話終了を検出する
 ↓
-1発話ぶんの音声チャンクを sherpa-onnx（NeMo CTC）で文字化する（実測 100〜300ms）
+1発話ぶんの音声チャンクを sherpa-onnx（SenseVoice Small）で文字化する（実測 100〜300ms）
 ↓
 確定テキストをメモとして保存し、「確定済みメモカード」として一覧の末尾（画面の一番下）に表示する
 ↓

@@ -41,7 +41,7 @@ ipa としての最終確認は Phase 2 の TestFlight 内部テストで兼ね�
 「Try restarting」画面（モデル無しでエンジン起動に5回失敗した表示）で止まる。これは想定内
 
 確認は bundletool の local-testing で行う。本番と同じ AAB を、
-アセットパック（NeMo モデル）の配信ごと端末にインストールできる。
+アセットパック（認識モデル）の配信ごと端末にインストールできる。
 
 ```bash
 make run d=<デバイスID> mode=release

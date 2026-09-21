@@ -1,5 +1,9 @@
 # オンデバイス STT 実装計画
 
+> **2026-09-21 追記**: 認識モデルを **NeMo CTC 0.6B（625MB）から SenseVoice Small int8（239MB）へ差し替えた**。
+> 本書の「NeMo」「625MB」という記述は差し替え前のものである。 Android のアセットパック名も `nemo_models` → **`stt_models`** に変わっている。取得スクリプトも `download_nemo_model.sh` → **`download_stt_model.sh`** に変わっている。
+> 経緯は [decision/adopt-sensevoice.md](../voice_recognition_performance_tuning/decision/adopt-sensevoice.md)。
+
 ## この文書について
 
 - **目的**: 調査（`notes/research/on_device_stt/`）と検証（`notes/on_device_stt/verification/`）で固まった方針を、本番実装へ落とし込むための作業計画をまとめる。

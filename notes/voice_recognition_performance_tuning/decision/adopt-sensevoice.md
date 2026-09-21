@@ -3,6 +3,9 @@
 > **状態（2026-09-21）**: **SenseVoice Small int8（2024-07-17）を採ると決めた。**
 > 決め手は**実アプリに入れて本人が使った感触**である。逐語の採点ではない。
 > 実験コードはブランチ `spike/voice_recognition_performance_tuning/sensevoice` にある。**`main` にはマージしない。**
+>
+> **同日追記**: この判断のあと、**`main` に差し替えを実装した**（段取りと結果は [next-steps.md](next-steps.md)）。
+> 本書 §4「まだ決まっていないこと」のうち、**Android の本番配信は実装済み**である。
 
 ## 結論
 
@@ -87,8 +90,8 @@
 | **長時間・常時録音** | 全 spike が固定 wav か短時間の試用。待ち行列と画面OFFは未評価 |
 | **台本コーパスでの逐語採点** | SenseVoice だけ採点がない。Nemotron は 75.0% / 現行 70.2% まで出ている |
 | **iOS の RAM** | 691MB は Android の数字。iOS はメモリの打ち切りが機種依存で厳しい |
-| **句読点と空白の後処理** | SenseVoice は句読点を出し、`徳川 家康だっ たりとか。` のような空白も入れる |
-| **Android の本番配信** | fast-follow パックは NeMo 向けのまま。差し替えていない |
+| **句読点と空白の後処理** | SenseVoice は句読点を出し、`徳川 家康だっ たりとか。` のような空白も入れる。**入れないと決めた**（[next-steps.md](next-steps.md) §2-3） |
+| ~~**Android の本番配信**~~ | **2026-09-21 に実装・実機で確認済み**（パック名は `stt_models`） |
 
 **ここで落ちたら、この判断に戻る。**
 
@@ -114,9 +117,11 @@
 
 ### 実装へ渡すこと
 
-- **モデルの住所を返す窓口が NeMo 専用の名前のままである。** `nemoModel` / `nemoTokens` / `_resolveNemoPaths` など。構造は「2ファイルのパス＋バイト数検証」で汎用なので、名前と定数の付け替えで足りる
-- **バイト数が二重管理になっている。** `scripts/lib/nemo_model_constants.sh` と `lib/stt/stt_model_provisioner.dart` の両方。差し替えのついでに1か所へ寄せる
-- **Android のパック名 `nemo_models` は Dart・`settings.gradle.kts`・`app/build.gradle.kts` の3箇所で一致している必要がある**
+**この3点は 2026-09-21 に実装済みである。** 記録として残す。
+
+- **モデルの住所を返す窓口が NeMo 専用の名前のままだった。** `nemoModel` / `nemoTokens` / `_resolveNemoPaths` など。構造は「2ファイルのパス＋バイト数検証」で汎用だったため、名前と定数の付け替えで足りた
+- **バイト数が二重管理になっていた。** `scripts/lib/stt_model_constants.sh`（旧 `nemo_model_constants.sh`）と `lib/stt/stt_model_provisioner.dart` の両方。**まだ寄せていない**
+- **Android のパック名は Dart・`settings.gradle.kts`・`app/build.gradle.kts` の3箇所で一致している必要がある**（2026-09-21 に `nemo_models` → `stt_models` へ改名済み）
 
 ### 成果物
 
@@ -124,5 +129,5 @@
 |---|---|
 | 実験コード | ブランチ `spike/voice_recognition_performance_tuning/sensevoice`（S6 `145046b` の上） |
 | 変更したファイル | `lib/stt/stt_model_provisioner.dart`・`lib/providers/stt_providers.dart`・`ios/Podfile.lock` |
-| モデルの取得 | `scripts/setup_sensevoice.sh`（SHA256 検証つき） |
+| モデルの取得 | `scripts/download_stt_model.sh`（SHA256 検証つき。spike 版は `setup_sensevoice.sh`） |
 | S6 の測定 | [spike/sensevoice.md](../spike/sensevoice.md) |

@@ -1,5 +1,9 @@
 # Step 7: 区切った音声を日本語テキストに変換する（文字化の核）
 
+> **2026-09-21 追記**: 認識モデルを **NeMo CTC 0.6B（625MB）から SenseVoice Small int8（239MB）へ差し替えた**。
+> 本書の「NeMo」「625MB」という記述は差し替え前のものである。 sherpa の設定も `nemoCtc` → **`senseVoice`** に変わっている。
+> 経緯は [decision/adopt-sensevoice.md](../voice_recognition_performance_tuning/decision/adopt-sensevoice.md)。
+
 ## ひとことで言うと
 
 Step 5 で「話し始め〜話し終わり」を区切れるようになり、Step 6 でモデルファイルを端末に置けるようになった。
