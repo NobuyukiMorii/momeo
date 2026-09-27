@@ -5,7 +5,7 @@
 - 1 step = 1 commit = 1つの目的
 - お手本は常に `spike/diary-memo` のコード
 - 実装中の調整で spike と違ってよい。ただし、やり残し・検討漏れは無くす
-- 各 step は `phaseN/stepNN_名前/` に置く（計画は `plan.md`、説明資料は HTML）
+- 各 step は `phaseN/stepNN_名前/` に置く（計画は `plan.md`。説明資料の HTML は、頼んだときだけ作る）
 
 ---
 
