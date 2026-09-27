@@ -86,6 +86,14 @@ flutter:
   assets:
     - assets/models/silero_vad.onnx
 
+  # Android で使う本文の書体（SIL Open Font License。著作権とライセンスの表記はフォントファイル内にある）
+  fonts:
+    - family: Noto Sans JP
+      fonts:
+        - asset: assets/fonts/NotoSansJP-Regular.otf
+        - asset: assets/fonts/NotoSansJP-Bold.otf
+          weight: 700
+
   # To add assets to your application, add an assets section, like this:
   # assets:
   #   - images/a_dot_burr.jpeg

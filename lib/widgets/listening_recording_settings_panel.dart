@@ -82,7 +82,7 @@ const _closeFlingVelocity = 400.0;
 // ---------------------------------
 double listeningRecordingSettingsPanelCollapsedHeightOf(BuildContext context) {
   // --- 文字サイズの設定を反映した、文言1行の高さ
-  const textStyle = AppTextStyles.caption;
+  final textStyle = AppTextStyles.caption;
   final scaledFontSize = MediaQuery.textScalerOf(
     context,
   ).scale(textStyle.fontSize!);
