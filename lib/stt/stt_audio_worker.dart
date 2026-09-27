@@ -21,7 +21,7 @@ const double _kVadBufferSeconds = 60; // VAD 内部バッファ（秒）。maxSp
 
 // VAD の区切り設定。無音 3秒 = メモの確定条件
 const double _kMinSilenceDuration = 3.0;
-const double _kMinSpeechDuration = 0.25;
+const double _kMinSpeechDuration = 1.0; // 声が途切れず1秒続くまで発話と見なさない（物音から出る「Yeah.」などを減らす試し）
 const double _kMaxSpeechDuration = 30.0;
 
 // どれくらいの音を「声」とみなすか。既定の 0.5 では語頭を取りこぼす
