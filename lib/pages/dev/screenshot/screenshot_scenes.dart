@@ -17,7 +17,7 @@ class ScreenshotScene {
   // リスニング画面に表示する確定済みメモ（新しい順）
   final List<VoiceMemo> memos;
 
-  // 発話中（アクティブカードあり）の画面にするか
+  // 発話中（「.」が出ている）の画面にするか
   final bool speechActive;
 }
 
@@ -53,7 +53,7 @@ List<ScreenshotScene> buildScreenshotScenes() {
     const ScreenshotScene(name: 'listening_idle'),
 
     // ---------------------------------
-    // リスニング: 発話中＋確定1枚
+    // リスニング: 発話中＋確定1件
     // ---------------------------------
     ScreenshotScene(
       name: 'listening_first_memo',
@@ -62,7 +62,7 @@ List<ScreenshotScene> buildScreenshotScenes() {
     ),
 
     // ---------------------------------
-    // リスニング: 発話中＋確定3枚
+    // リスニング: 発話中＋確定3件
     // ---------------------------------
     ScreenshotScene(
       name: 'listening_growing_memos',
@@ -71,7 +71,7 @@ List<ScreenshotScene> buildScreenshotScenes() {
     ),
 
     // ---------------------------------
-    // リスニング: 発話中＋確定5枚
+    // リスニング: 発話中＋確定5件
     // ---------------------------------
     ScreenshotScene(
       name: 'listening_many_memos',
@@ -80,7 +80,7 @@ List<ScreenshotScene> buildScreenshotScenes() {
     ),
 
     // ---------------------------------
-    // リスニング: 確定メモの一覧9枚（発話なし）
+    // リスニング: 確定メモの一覧9件（発話なし）
     // ---------------------------------
     ScreenshotScene(name: 'listening_memo_list', memos: newestFirst(9)),
   ];

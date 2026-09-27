@@ -3,22 +3,14 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart';
 import 'package:momeo/database/app_database.dart';
 import 'package:momeo/foundation/app_colors.dart';
-import 'package:momeo/foundation/app_spacing.dart';
-import 'package:momeo/pages/listening/memo_card_view_data.dart';
-import 'package:momeo/pages/listening/memo_keyword_filter.dart';
 import 'package:momeo/providers/listening_providers.dart';
-import 'package:momeo/widgets/date_separator.dart';
 import 'package:momeo/widgets/listening_backdrop.dart';
+import 'package:momeo/widgets/listening_memo_date_backdrop.dart';
 import 'package:momeo/widgets/listening_recording_settings_panel.dart';
-import 'package:momeo/widgets/listening_search_field.dart';
 import 'package:momeo/widgets/listening_selection_bar.dart';
-import 'package:momeo/widgets/voice_card.dart';
-
-// 日付区切りと上下のカードとの間隔（カード同士の間隔より広く取る）
-const _dateSeparatorSpacing = AppSpacing.xxl;
+import 'package:momeo/widgets/native_memo_list.dart';
 
 // 通知を出しておく時間
 const _noticeDuration = Duration(milliseconds: 3600);
@@ -28,6 +20,15 @@ const _selectionBarSlideDuration = Duration(milliseconds: 150);
 
 // 選択中のメモをまとめてコピーしたときに、選択バーへ出す一言
 const _selectionCopiedNotice = 'クリップボードにコピーしました';
+
+// スクロールが止まってから、つまみの横の日付を消し始めるまでの時間
+const _thumbDateHideDelay = Duration(milliseconds: 600);
+
+// つまみの横の日付が現れる・消える時間
+const _thumbDateFadeDuration = Duration(milliseconds: 200);
+
+// スクロールつまみの横棒の太さ（ネイティブ側の描画とそろえる）
+const _thumbThickness = 1.5;
 
 // =====================================================================
 // リスニング画面
@@ -40,26 +41,29 @@ class ListeningPage extends ConsumerStatefulWidget {
 }
 
 class _ListeningPageState extends ConsumerState<ListeningPage>
-    with TickerProviderStateMixin, WidgetsBindingObserver {
+    with SingleTickerProviderStateMixin {
   // ---------------------------------
   // 選択中のメモに関する状態
   // ---------------------------------
-  // 時刻フォーマット（日付はカードの上の区切りが持つ）
-  static final _timeFormat = DateFormat('HH:mm');
-  // 選択中のメモの id（検索で一覧から隠れても外さない）
+  // 選択中のメモの id
   final Set<int> _selectedMemoIds = {};
 
   // ---------------------------------
-  // 検索フィールドに関する状態
+  // 文字選択に関する状態
   // ---------------------------------
-  // 検索フィールドに打たれている文字列
-  final TextEditingController _keywordController = TextEditingController();
-  // 検索フィールドにカーソルが当たっているか
-  final FocusNode _keywordFocusNode = FocusNode();
-  // 一覧の絞り込みに使う語（カーソルが外れた時点の文字列から作る）
-  List<String> _keywords = const [];
-  // 前回このイベントが届いた時、キーボードが出ていたか
-  bool _wasKeyboardOpen = false;
+  // 文字選択は丸による選択と独立して、OS 側（ネイティブの一覧）が持つ
+  final NativeMemoListController _nativeMemoListController =
+      NativeMemoListController();
+
+  // ---------------------------------
+  // つまみの横の日付に関する状態
+  // ---------------------------------
+  // スクロールつまみの高さと、その高さにあるメモ（つまみの横の背景に、そのメモの日付を出す）
+  // スクロールのたびに変わるので、画面全体を組み直さずに日付の層だけを動かす
+  final ValueNotifier<MemoListThumb?> _thumb = ValueNotifier(null);
+  // 日付はスクロールしている間だけ出し、止まってしばらくしたら消す
+  final ValueNotifier<bool> _showsThumbDate = ValueNotifier(false);
+  Timer? _thumbDateHideTimer;
 
   // ---------------------------------
   // 選択バーに関する状態
@@ -70,41 +74,14 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
   // ---------------------------------
   // コピーの知らせに関する状態
   // ---------------------------------
-  // コピーの知らせを出すカードの id
-  int? _copiedMemoId;
-  // コピーの知らせのタイマー
-  Timer? _copyNoticeTimer;
   // 選択バーに出している一言（null なら出していない）
   String? _selectionBarNotice;
   // 選択バーの一言を引っ込めるタイマー
   Timer? _selectionBarNoticeTimer;
 
-  // ---------------------------------
-  // アクティブカードに関する状態
-  // ---------------------------------
-  // 出入りの進み具合（0 = 隠れきっている、1 = 出きっている）
-  late final AnimationController _activeCardController;
-  // 進み具合に緩急を付けた値（カードの高さに使う）
-  late final CurvedAnimation _activeCardAnimation;
-  // アクティブカードに出す時刻
-  DateTime? _activeCardTime;
-
   @override
   void initState() {
     super.initState();
-    // キーボードが閉じた瞬間を検知
-    WidgetsBinding.instance.addObserver(this);
-    // 検索フィールドのフォーカスの通知を受け取る
-    _keywordFocusNode.addListener(_onKeywordFocusChanged);
-    _activeCardController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 250),
-    );
-    _activeCardController.addStatusListener(_onActiveCardStatusChanged);
-    _activeCardAnimation = CurvedAnimation(
-      parent: _activeCardController,
-      curve: Curves.easeOut,
-    );
     _selectionBarController = AnimationController(
       vsync: this,
       duration: _selectionBarSlideDuration,
@@ -113,153 +90,17 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
 
   @override
   void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    _copyNoticeTimer?.cancel(); // コピーの知らせのタイマーを止める
     _selectionBarNoticeTimer?.cancel(); // 選択バーの一言のタイマーを止める
-    _keywordController.dispose(); // 検索フィールドのコントローラーを破棄
-    _keywordFocusNode.removeListener(
-      _onKeywordFocusChanged,
-    ); // 検索フィールドのフォーカスの通知を受け取らないようにする
-    _keywordFocusNode.dispose(); // 検索フィールドのフォーカスノードを破棄
     _selectionBarController.dispose();
-    _activeCardAnimation.dispose();
-    _activeCardController.removeStatusListener(_onActiveCardStatusChanged);
-    _activeCardController.dispose();
+    _thumb.dispose();
+    _thumbDateHideTimer?.cancel();
+    _showsThumbDate.dispose();
+    _nativeMemoListController.dispose();
     super.dispose();
   }
 
-  // ---------------------------------
-  // Flutterのウィジェットツリーの寸法が変わったときに呼ばれる
-  // ---------------------------------
-  @override
-  void didChangeMetrics() {
-    // ---------------------------------
-    // キーボードが閉じた瞬間を検知
-    // ---------------------------------
-
-    // --- マウントされていない場合は何もしない
-    if (!mounted) return;
-    // --- 今キーボードが開いているか
-    final isOpen = View.of(context).viewInsets.bottom > 0;
-    // --- 前回と同じなら、キーボード開閉は起きていない
-    if (isOpen == _wasKeyboardOpen) return;
-    // --- 次のキーボード開閉で比較するために値を記録
-    _wasKeyboardOpen = isOpen;
-    if (!isOpen) {
-      // --- キーボードを閉じた
-      _exitKeywordInput(); // 検索フィールドからカーソルを外す
-    }
-  }
-
-  // ---------------------------------
-  // 検索フィールドのキーワードを反映
-  // ---------------------------------
-  void _applyKeywords() {
-    // --- 入力文字列を、照合に使う語の一覧へ分解
-    setState(() => _keywords = parseMemoKeywords(_keywordController.text));
-  }
-
-  // ---------------------------------
-  // 検索フィールドにカーソルが当たった・外れたとき
-  // ---------------------------------
-  void _onKeywordFocusChanged() {
-    // --- 入力中は絞り込みを変えない
-    if (_keywordFocusNode.hasFocus) return;
-    // --- カーソルが外れたら文字列を絞り込みへ取り込む
-    _applyKeywords();
-  }
-
-  // ---------------------------------
-  // 検索フィールドからカーソルを外す
-  // ---------------------------------
-  void _exitKeywordInput() {
-    // --- すでにカーソルが外れていれば何もしない
-    if (!_keywordFocusNode.hasFocus) return;
-    // --- カーソルを外す
-    _keywordFocusNode.unfocus();
-  }
-
-  // ---------------------------------
-  // アクティブカードのアニメーションが終わったとき
-  // ---------------------------------
-  void _onActiveCardStatusChanged(AnimationStatus status) {
-    // --- アニメーションが終わっていなければ何もしない
-    if (status != AnimationStatus.dismissed) return;
-    // --- 画面がマウントされていない、またはアクティブカードの時刻がなければ何もしない
-    if (!mounted || _activeCardTime == null) return;
-    // --- アクティブカードの時刻を null にする
-    setState(() => _activeCardTime = null);
-  }
-
-  // ---------------------------------
-  // 状態の変化をアクティブカードのアニメーションに翻訳する
-  // ---------------------------------
-  void _onListeningChanged(
-    AsyncValue<ListeningState>? previous,
-    AsyncValue<ListeningState> next,
-  ) {
-    final before = previous?.value;
-    final after = next.value;
-    if (after == null) return;
-
-    // 発話開始 → スライドアップで登場
-    final wasActive = before?.speechActive ?? false;
-    if (after.speechActive && !wasActive) {
-      _activeCardController.forward();
-      setState(() => _activeCardTime = after.speechStartedAt); // 時刻を記録
-    }
-
-    // 直前の最新カード
-    final newestBefore = before?.memos.firstOrNull;
-    // 今最新のカード
-    final newestAfter = after.memos.firstOrNull;
-    if (newestAfter != null && newestAfter != newestBefore) { // 今最新のカードと直前の最新カードが違う
-      _activeCardController.value = 0.0; // 発話中の...を消す
-      if (after.speechActive) { // 発話中なら
-        _activeCardController.forward(); // アクティブカードが下から滑り込んで現れる/下へ引っ込むアニメーションを進める
-        setState(() => _activeCardTime = after.speechStartedAt); // 時刻を記録
-      }
-    }
-
-    // 空の認識結果（咳・物音の誤検知）→ 下へスライドアウト
-    if (before != null &&
-        after.emptyResultCount > before.emptyResultCount &&
-        !after.speechActive) {
-      _activeCardController.reverse();
-    }
-  }
-
-  // ---------------------------------
-  // アクティブカード（リスニング中インジケーター）
-  // ---------------------------------
-  // 発話中だけ下から滑り込んで現れる。完全に隠れている間は
-  // 中身ごとツリーから外し、ドット増減のタイマーも止めて常時負荷を避ける
-  Widget _buildActiveCard() {
-    return AnimatedBuilder(
-      animation: _activeCardController,
-      builder: (context, _) {
-        if (_activeCardController.isDismissed) {
-          return const SizedBox.shrink();
-        }
-        // 一覧に占める高さが上のカードを押し上げる量になるので、カード自身は
-        // その箱の上辺に貼り付けて下へはみ出させ、押し上げと同じ速さで昇らせる。
-        // クリップしないので、はみ出した下辺は画面の外に隠れるだけで切れない
-        return Align(
-          alignment: Alignment.topCenter,
-          heightFactor: _activeCardAnimation.value,
-          child: Padding(
-            padding: const EdgeInsets.only(top: AppSpacing.xl),
-            child: VoiceCard(
-              text: '',
-              isListening: true,
-              dateTime: _activeCardTime == null
-                  ? null
-                  : _timeFormat.format(_activeCardTime!),
-            ),
-          ),
-        );
-      },
-    );
+  void _clearTextSelection() {
+    _nativeMemoListController.clearSelection();
   }
 
   // ---------------------------------
@@ -299,7 +140,7 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
   }
 
   // ---------------------------------
-  // カードの選択・非選択
+  // メモの選択・非選択
   // ---------------------------------
   void _toggleMemoSelection(int memoId) {
     _changeSelection(() {
@@ -310,22 +151,6 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
         // 選択中のメモを追加
         _selectedMemoIds.add(memoId);
       }
-    });
-  }
-
-  // ---------------------------------
-  // カード長押しでコピー
-  // ---------------------------------
-  void _copyMemo(int memoId, String text) {
-    // --- クリップボードにコピー
-    Clipboard.setData(ClipboardData(text: text));
-    // --- カード左上に通知を表示
-    setState(() => _copiedMemoId = memoId);
-    // --- 続けてコピーした場合、最後の通知を非表示とする
-    _copyNoticeTimer?.cancel();
-    // --- 通知を一定時間表示
-    _copyNoticeTimer = Timer(_noticeDuration, () {
-      if (mounted) setState(() => _copiedMemoId = null);
     });
   }
 
@@ -360,137 +185,105 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
   }
 
   // ---------------------------------
-  // 絞り込みで隠れたカードのタイピング演出を取り消す
-  // ---------------------------------
-  void _cancelHiddenTypeIn(int? typeInMemoId, List<MemoCardViewData> cards) {
-    // --- 演出の対象がいない
-    if (typeInMemoId == null) return;
-    // --- 対象が一覧に出ている。演出が終わったらカード自身が知らせる
-    if (cards.any((card) => card.memo.id == typeInMemoId)) return;
-
-    // --- カードの代わりに終わったと知らせる
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      // --- 待つ間に画面を離れていたら何もしない
-      if (!mounted) return;
-      // --- Notifier に終わったと知らせる
-      ref.read(listeningProvider.notifier).onTypingComplete(typeInMemoId);
-    });
-  }
-
-  // ---------------------------------
-  // 確定済みメモカード1枚
-  // ---------------------------------
-  Widget _buildMemoCard(MemoCardViewData card, ListeningState listening) {
-
-    // このカードへの追記を聞き取っている最中
-    final expectsMore = card.memo.id == listening.appendTargetId && // 追記先のカードか
-        !_activeCardController.isDismissed; // 発話の...が出ている間かどうか
-
-    // 今まさに1文字ずつ打ち出されて現れるアニメーションが表示されているかどうか
-    final typeIn = card.memo.id == listening.typeInMemoId;
-
-    final voiceCard = VoiceCard(
-      key: ValueKey(card.memo.id),
-      text: card.memo.content,
-      expectsMore: expectsMore, // 追記中のドットを出すかどうか
-      dateTime: card.showDateTime
-          ? _timeFormat.format(card.memo.createdAt)
-          : null,
-      typeIn: typeIn,
-      typeFrom: typeIn ? listening.typeInFrom : 0,
-      selected: _selectedMemoIds.contains(card.memo.id),
-      onTap: () => _toggleMemoSelection(card.memo.id),
-      onLongPress: () => _copyMemo(card.memo.id, card.memo.content),
-      showCopyNotice: _copiedMemoId == card.memo.id,
-      // 演出が終わったと Notifier に返す（スクロールで戻っても再生し直さない）
-      onTypingComplete: () {
-        if (!mounted) return;
-        ref.read(listeningProvider.notifier).onTypingComplete(card.memo.id);
-      },
-    );
-
-    // --- 日付が変わる境目では、カードの上へ区切りを挟む
-    return Column(
-      children: [
-        if (card.dateSeparatorLabel != null) ...[
-          const SizedBox(height: _dateSeparatorSpacing - AppSpacing.xl),
-          DateSeparator(label: card.dateSeparatorLabel!),
-          const SizedBox(height: _dateSeparatorSpacing),
-        ],
-        voiceCard,
-      ],
-    );
-  }
-
-  // ---------------------------------
-  // ボイスカード一覧
+  // メモ一覧
   // ---------------------------------
   Widget _buildMemoList({
-    required List<MemoCardViewData> cards,
     required ListeningState listening,
-    required bool hidesActiveCard,
     required double safeAreaTop,
     required double recordingSettingsPanelHeight,
     required double safeAreaBottom,
   }) {
-    // ---------------------------------
-    // 並べるカード
-    // ---------------------------------
-    final memoCards = SliverList.separated(
-      // --- 確定済みメモ + 一番下のアクティブカードで1つ多い
-      itemCount: cards.length + 1,
-      // --- アクティブカードとの間隔はカード側が持つ（消えた時に余白を残さない）
-      separatorBuilder: (_, index) =>
-          SizedBox(height: index == 0 ? 0 : AppSpacing.xl),
-      itemBuilder: (context, index) {
-        if (index == 0) {
-          // --- 一番下はアクティブカード（出すかは呼び出し側が決める）
-          return hidesActiveCard ? const SizedBox.shrink() : _buildActiveCard();
-        }
-        return _buildMemoCard(cards[index - 1], listening);
-      },
-    );
-
-    // ---------------------------------
-    // 余白を付けて下から積む
-    // ---------------------------------
     return AnimatedBuilder(
       animation: _selectionBarController,
-      child: memoCards,
-      builder: (context, memoCards) => CustomScrollView(
-        // --- 新しいカードが下に来るよう、下から積む
-        reverse: true,
-        slivers: [
-          SliverPadding(
-            padding: EdgeInsets.only(
-              // 上端は、録音設定パネルの状態行と検索フィールドのぶん空ける。
-              // 録音設定パネルを開いても覆いかぶさるだけなので、ここは動かさない
-              top:
-                  AppSpacing.xl +
-                  safeAreaTop +
-                  recordingSettingsPanelHeight +
-                  listeningSearchFieldHeight,
-              // キーボードの有無で余白を変えない（一覧を動かさない）
-              // 下端は、選択バーの出入りと同じ動きで押し上げる
-              bottom:
-                  AppSpacing.xl +
-                  safeAreaBottom +
-                  listeningSelectionBarPushUpHeight(
-                    slideProgress: _selectionBarController.value,
-                    safeAreaBottom: safeAreaBottom,
-                  ),
-            ),
-            sliver: memoCards,
+      builder: (context, child) => Padding(
+        padding: EdgeInsets.only(
+          top: safeAreaTop + recordingSettingsPanelHeight,
+          bottom: listeningSelectionBarVisibleHeight(
+            slideProgress: _selectionBarController.value,
+            safeAreaBottom: safeAreaBottom,
           ),
-        ],
+        ),
+        child: child,
       ),
+      child: NativeMemoList(
+        memos: listening.memos,
+        selectedIds: Set.of(_selectedMemoIds),
+        controller: _nativeMemoListController,
+        typingMemoId: listening.typeInMemoId,
+        typeFrom: listening.typeInFrom,
+        speakingDots: _speakingDots(listening),
+        onToggleSelection: _toggleMemoSelection,
+        onThumbChanged: _onThumbChanged,
+        onTypingComplete: _onTypingComplete,
+      ),
+    );
+  }
+
+  // 打ち出しの演出を使い切ったら、再表示で打ち直さないように知らせる
+  void _onTypingComplete(int memoId) {
+    if (!mounted) return;
+    ref.read(listeningProvider.notifier).onTypingComplete(memoId);
+  }
+
+  // ---------------------------------
+  // 発話中の「.」を出す場所
+  // ---------------------------------
+  // 発話が始まってから結果が届くまで出す。前の発話を打ち出している間は、打ち終わってから出す
+  MemoSpeakingDots _speakingDots(ListeningState listening) {
+    final waitingForText =
+        listening.speechActive || listening.awaitingTranscription;
+    if (!waitingForText || listening.typeInMemoId != null) {
+      return MemoSpeakingDots.hidden;
+    }
+    // 追記先は発話の始まりで決まるので、出す場所も発話の途中では動かない
+    return listening.appendTargetId != null
+        ? MemoSpeakingDots.append
+        : MemoSpeakingDots.newBlock;
+  }
+
+  // ---------------------------------
+  // スクロールつまみの横に出す日付（本文の後ろの背景）
+  // ---------------------------------
+  void _onThumbChanged(MemoListThumb thumb) {
+    _thumb.value = thumb;
+    if (!thumb.scrolling) return;
+    _showsThumbDate.value = true;
+    _thumbDateHideTimer?.cancel();
+    _thumbDateHideTimer = Timer(_thumbDateHideDelay, () {
+      _showsThumbDate.value = false;
+    });
+  }
+
+  // 一覧に無くなったメモの日付は出さない
+  Widget _buildThumbDate({
+    required List<VoiceMemo> memos,
+    required double listTop,
+  }) {
+    return ListenableBuilder(
+      listenable: Listenable.merge([_thumb, _showsThumbDate]),
+      builder: (context, _) {
+        final thumb = _thumb.value;
+        final memo = memos
+            .where((memo) => memo.id == thumb?.memoId)
+            .firstOrNull;
+        if (thumb == null || memo == null) return const SizedBox.shrink();
+        return Positioned(
+          left: 0,
+          right: 0,
+          // つまみの横棒の上端に、数字の上端をそろえる
+          top: listTop + thumb.y - _thumbThickness / 2,
+          child: AnimatedOpacity(
+            opacity: _showsThumbDate.value ? 1 : 0,
+            duration: _thumbDateFadeDuration,
+            child: ListeningMemoDateBackdrop(dateTime: memo.createdAt),
+          ),
+        );
+      },
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    ref.listen(listeningProvider, _onListeningChanged);
-
     // ---------------------------------
     // リスニング状態
     // ---------------------------------
@@ -498,30 +291,7 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
         ref.watch(listeningProvider).value ?? const ListeningState();
 
     // ---------------------------------
-    // 検索フィールドの語で絞り込んだメモ
-    // ---------------------------------
-    final visibleMemos = filterMemosByKeywords(listening.memos, _keywords);
-
-    // ---------------------------------
-    // アクティブカードを出さない場面
-    // ---------------------------------
-    final hidesActiveCard =
-        _keywords.isNotEmpty || listening.appendTargetId != null;
-
-    // ---------------------------------
-    // ボイスカード一覧（日時の出し分けは絞り込んだ後の並びで決める）
-    // ---------------------------------
-    final cards = buildMemoCardViewData(
-      visibleMemos,
-      today: DateTime.now(),
-      // 絞り込み中はアクティブカードを出さないので、時刻を譲る相手もいない
-      activeCardTime: hidesActiveCard ? null : _activeCardTime,
-    );
-    _cancelHiddenTypeIn(listening.typeInMemoId, cards);
-
-    // ---------------------------------
     // 選択中のメモ（memos は新しい順なので、時系列順に並べ替える）
-    //   絞り込みで隠れているメモも選択は保つので、絞り込む前の一覧から拾う
     // ---------------------------------
     final selectedMemos = [
       for (final memo in listening.memos.reversed)
@@ -542,63 +312,41 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
 
     return Scaffold(
       backgroundColor: AppColors.surface,
-      resizeToAvoidBottomInset: false,
       body: Stack(
         children: [
+          // ---------------------------------
+          // 背景レイヤー
+          // ---------------------------------
           Positioned.fill(
-            child: Listener(
-              behavior: HitTestBehavior.translucent,
-              onPointerDown: (_) => _exitKeywordInput(),
-              child: Stack(
-                children: [
-                  // ---------------------------------
-                  // 背景レイヤー
-                  // ---------------------------------
-                  Positioned.fill(
-                    child: ListeningBackdrop(
-                      levelReader: () =>
-                          ref.read(listeningProvider.notifier).latestLevel,
-                    ),
-                  ),
-                  // ---------------------------------
-                  // ボイスカード一覧
-                  // ---------------------------------
-                  _buildMemoList(
-                    cards: cards,
-                    listening: listening,
-                    hidesActiveCard: hidesActiveCard,
-                    safeAreaTop: safeAreaTop,
-                    recordingSettingsPanelHeight: recordingSettingsPanelHeight,
-                    safeAreaBottom: safeAreaBottom,
-                  ),
-                  // ---------------------------------
-                  // 選択バー
-                  // ---------------------------------
-                  Positioned.fill(
-                    child: ListeningSelectionBar(
-                      slideAnimation: _selectionBarController,
-                      selectedCount: selectedMemos.length,
-                      onDeleteSelection: _deleteSelectedMemos,
-                      onCopySelection: () => _copySelectedMemos(selectedMemos),
-                      onClearSelection: _clearMemoSelection,
-                      notice: _selectionBarNotice,
-                    ),
-                  ),
-                ],
-              ),
+            child: ListeningBackdrop(
+              levelReader: () =>
+                  ref.read(listeningProvider.notifier).latestLevel,
             ),
           ),
+          _buildThumbDate(
+            memos: listening.memos,
+            listTop: safeAreaTop + recordingSettingsPanelHeight,
+          ),
           // ---------------------------------
-          // 検索フィールド
+          // メモ一覧
           // ---------------------------------
-          Positioned(
-            top: safeAreaTop + recordingSettingsPanelHeight,
-            left: 0,
-            right: 0,
-            child: ListeningSearchField(
-              controller: _keywordController,
-              focusNode: _keywordFocusNode,
-              onCleared: _applyKeywords,
+          _buildMemoList(
+            listening: listening,
+            safeAreaTop: safeAreaTop,
+            recordingSettingsPanelHeight: recordingSettingsPanelHeight,
+            safeAreaBottom: safeAreaBottom,
+          ),
+          // ---------------------------------
+          // 選択バー
+          // ---------------------------------
+          Positioned.fill(
+            child: ListeningSelectionBar(
+              slideAnimation: _selectionBarController,
+              selectedCount: selectedMemos.length,
+              onDeleteSelection: _deleteSelectedMemos,
+              onCopySelection: () => _copySelectedMemos(selectedMemos),
+              onClearSelection: _clearMemoSelection,
+              notice: _selectionBarNotice,
             ),
           ),
           // ---------------------------------
@@ -606,7 +354,7 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
           // ---------------------------------
           Positioned.fill(
             child: Listener(
-              onPointerDown: (_) => _exitKeywordInput(),
+              onPointerDown: (_) => _clearTextSelection(),
               child: const ListeningRecordingSettingsPanel(),
             ),
           ),

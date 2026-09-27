@@ -86,6 +86,12 @@ flutter:
   assets:
     - assets/models/silero_vad.onnx
 
+  # リスニング画面の背景に出す日付の書体（SIL Open Font License。著作権とライセンスの表記はフォントファイル内にある）
+  fonts:
+    - family: Dancing Script
+      fonts:
+        - asset: assets/fonts/DancingScript-Regular.ttf
+
   # To add assets to your application, add an assets section, like this:
   # assets:
   #   - images/a_dot_burr.jpeg

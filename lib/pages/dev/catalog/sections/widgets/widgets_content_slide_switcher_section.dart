@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:momeo/foundation/app_colors.dart';
 import 'package:momeo/foundation/app_text_styles.dart';
 import 'package:momeo/pages/preparation_gate_page.dart';
+import 'package:momeo/pages/splash_page.dart';
 import 'package:momeo/widgets/activity_dots_text.dart';
 import 'package:momeo/widgets/downloading_progress_text.dart';
 import 'package:momeo/widgets/content_slide_switcher.dart';
@@ -22,7 +23,7 @@ class WidgetsContentSlideSwitcherSection extends StatefulWidget {
 
 class _WidgetsContentSlideSwitcherSectionState
     extends State<WidgetsContentSlideSwitcherSection> {
-  PreparationPhase _phase = PreparationPhase.gettingReady;
+  PreparationPhase _phase = PreparationPhase.loading;
   int _percent = 0;
 
   // ---------------------------------
@@ -35,12 +36,10 @@ class _WidgetsContentSlideSwitcherSectionState
   // ---------------------------------
   Widget get _content {
     switch (_phase) {
-      case PreparationPhase.gettingReady:
-        return const ActivityDotsText('準備しています');
+      case PreparationPhase.loading:
+        return const Text(splashAppName);
       case PreparationPhase.downloading:
         return DownloadingProgressText(percent: _percent);
-      case PreparationPhase.almostThere:
-        return const ActivityDotsText('もうすぐ完了します');
       case PreparationPhase.retrying:
         return const ActivityDotsText('再試行しています');
       case PreparationPhase.tryRestarting:

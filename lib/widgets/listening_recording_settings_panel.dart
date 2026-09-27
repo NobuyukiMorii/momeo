@@ -15,26 +15,33 @@ import 'package:momeo/widgets/recording_option_cards.dart';
 // ListeningRecordingSettingsPanel — 画面の上端から下りてくる、録音設定パネル
 //
 //   閉じている間は、いつ録音するかを示す状態行1行だけが見えている。
-//   状態行を押すと選択肢のカードが下へ滑り出し、検索フィールドやボイスカードの
-//   上に覆いかぶさる（下にあるものは押し下げない）。
+//   状態行を押すと選択肢のカードが下へ滑り出し、メモ一覧の上に覆いかぶさる
+//   （下にあるものは押し下げない）。
 //
-//   画面の上端とパネルの左右は常に線で囲む。開いている間は、
-//     ・下の線を開き具合に合わせて少しずつ濃くし、下の角も少しずつ丸める
-//     ・パネルの外を触ると閉じる（触り方はそのまま下のボイスカードや下端のバーへ届く）
+//   開き閉じに関わらず、画面の上端・パネルの左右・下を線で囲み、下の角を丸める。
+//   開いている間は、パネルの外を触ると閉じる（触り方はそのまま下の一覧や下端のバーへ届く）。
 //
 //   パネルの外に受け皿を敷くため、画面全体に広げて置く（Positioned.fill）。
-//   閉じている間は状態行の外に何も置かないので、下の検索フィールドや一覧はそのまま触れる。
+//   閉じている間は状態行の外に何も置かないので、下の一覧はそのまま触れる。
 // ============================================================
 
 // ---------------------------------
 // 定数: 高さ
 // ---------------------------------
 
-// 状態行の高さの下限（ふつうの文字サイズで、caption の行の高さ 18 がぎりぎり収まる）
-const _stateRowMinHeight = 28.0;
+// 状態行の文言の上と下に取る余白（上は安全領域との間、下はパネルの下の線との間）
+const _stateRowPaddingTop = 0.0;
+const _stateRowPaddingBottom = 9.0;
 
-// 状態行の文言の上下に取る余白の合計（ふつうの文字サイズでは 18 + 10 = 28）
-const _stateRowVerticalSpace = 10.0;
+// 状態行の文言の文字（行の高さを文字サイズと同じにして、状態行を低く抑える）
+final _stateTextStyle = AppTextStyles.caption.copyWith(
+  color: AppColors.onSurface,
+  fontWeight: FontWeight.w700,
+  height: 1,
+);
+
+// 状態行の高さの下限（ふつうの文字サイズで、文言の行の高さ 12 と上下の余白がぎりぎり収まる）
+const _stateRowMinHeight = 12.0 + _stateRowPaddingTop + _stateRowPaddingBottom;
 
 // 選択肢の面の上下の余白（上は状態行との間、下はパネルの下の線との間）
 const _optionsPaddingTop = AppSpacing.s;
@@ -44,11 +51,11 @@ const _optionsPaddingBottom = AppSpacing.l;
 // 定数: 見た目
 // ---------------------------------
 
-// パネルを囲む線の太さと、開いたときの下の角の丸み（検索フィールドの枠に揃える）
+// パネルを囲む線の太さと、下の角の丸み
 const _frameBorderWidth = 3.0;
 const _frameCornerRadius = AppRadius.l;
 
-// 中身の左右の余白（線の内側に余白を取る。検索フィールドの中身とも左端が揃う）
+// 中身の左右の余白（線の内側に余白を取る）
 const _contentPadding = AppSpacing.l + _frameBorderWidth;
 
 // パネルを囲む線
@@ -61,6 +68,15 @@ const _frameSide = BorderSide(
 const _safeAreaDecoration = BoxDecoration(
   color: AppColors.surface,
   border: Border(left: _frameSide, top: _frameSide, right: _frameSide),
+);
+
+// 状態行と選択肢の面を囲む枠（左右と下に線を引き、下の角を丸める）
+const _frameDecoration = BoxDecoration(
+  color: AppColors.surface,
+  border: Border(left: _frameSide, right: _frameSide, bottom: _frameSide),
+  borderRadius: BorderRadius.vertical(
+    bottom: Radius.circular(_frameCornerRadius),
+  ),
 );
 
 // 開いているかを示す山形の大きさ
@@ -77,18 +93,27 @@ const _panelDuration = Duration(milliseconds: 250);
 const _closeFlingVelocity = 400.0;
 
 // ---------------------------------
-// 閉じているときのパネルの高さ（安全領域は含まない。状態行1行ぶん）
-//   文字サイズの設定で文言の行が高くなったら、切れないようにその分だけ伸ばす
+// 閉じているときのパネルの高さ（安全領域は含まない。状態行1行と下の線のぶん）
 // ---------------------------------
 double listeningRecordingSettingsPanelCollapsedHeightOf(BuildContext context) {
+  return _stateRowHeightOf(context) + _frameBorderWidth;
+}
+
+// ---------------------------------
+// 状態行の高さ
+//   文字サイズの設定で文言の行が高くなったら、切れないようにその分だけ伸ばす
+// ---------------------------------
+double _stateRowHeightOf(BuildContext context) {
   // --- 文字サイズの設定を反映した、文言1行の高さ
-  const textStyle = AppTextStyles.caption;
   final scaledFontSize = MediaQuery.textScalerOf(
     context,
-  ).scale(textStyle.fontSize!);
-  final lineHeight = scaledFontSize * textStyle.height!;
+  ).scale(_stateTextStyle.fontSize!);
+  final lineHeight = scaledFontSize * _stateTextStyle.height!;
   // --- 上下の余白を足す（ふつうの文字サイズより低くはしない）
-  return max(_stateRowMinHeight, lineHeight + _stateRowVerticalSpace);
+  return max(
+    _stateRowMinHeight,
+    lineHeight + _stateRowPaddingTop + _stateRowPaddingBottom,
+  );
 }
 
 // ---------------------------------
@@ -184,12 +209,19 @@ class _ListeningRecordingSettingsPanelState
   // 開いているかを示す山形（開くと半回転して上を向く）
   // ---------------------------------
   Widget _buildChevron() {
-    return RotationTransition(
-      turns: _panelAnimation.drive(Tween(begin: 0.0, end: 0.5)),
-      child: const Icon(
-        Icons.keyboard_arrow_down,
-        size: _chevronSize,
-        color: AppColors.onSurface,
+    // 文言の行（12）より大きいので、行の上下中央を軸にしてはみ出させる（行に押し込むと下にずれる）
+    return SizedBox(
+      width: _chevronSize,
+      child: OverflowBox(
+        maxHeight: _chevronSize,
+        child: RotationTransition(
+          turns: _panelAnimation.drive(Tween(begin: 0.0, end: 0.5)),
+          child: const Icon(
+            Icons.keyboard_arrow_down,
+            size: _chevronSize,
+            color: AppColors.onSurface,
+          ),
+        ),
       ),
     );
   }
@@ -208,8 +240,13 @@ class _ListeningRecordingSettingsPanelState
       onTap: _togglePanel,
       behavior: HitTestBehavior.opaque,
       child: Container(
-        height: listeningRecordingSettingsPanelCollapsedHeightOf(context),
-        padding: const EdgeInsets.symmetric(horizontal: _contentPadding),
+        height: _stateRowHeightOf(context),
+        padding: const EdgeInsets.fromLTRB(
+          _contentPadding,
+          _stateRowPaddingTop,
+          _contentPadding,
+          _stateRowPaddingBottom,
+        ),
         child: Row(
           children: [
             // --- ドット（どちらの範囲でも録音は続くので点滅させる）
@@ -221,10 +258,7 @@ class _ListeningRecordingSettingsPanelState
                 scope.title,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: AppTextStyles.caption.copyWith(
-                  color: AppColors.onSurface,
-                  fontWeight: FontWeight.w700,
-                ),
+                style: _stateTextStyle,
               ),
             ),
             // --- 山形（押せる場所だと伝える役目も兼ねる）
@@ -274,50 +308,15 @@ class _ListeningRecordingSettingsPanelState
 
   // ---------------------------------
   // 状態行と選択肢の面を囲む枠
-  //
-  //   左右の線はいつも濃いまま。下の線は開き具合に合わせて少しずつ濃くし、
-  //   下の角も少しずつ丸める（閉じた形から開いた形へ一気に切り替えない）
   // ---------------------------------
-  Widget _buildFrame(Widget body, {required double openProgress}) {
-    // --- 開き具合に合わせた、下の角の丸み
-    final bottomCorners = BorderRadius.vertical(
-      bottom: Radius.circular(_frameCornerRadius * openProgress),
-    );
-    // --- 開き具合に合わせて濃くなる線
-    final fadingSide = BorderSide(
-      color: AppColors.onSurface.withValues(alpha: openProgress),
-      width: _frameBorderWidth,
-    );
-
-    return Stack(
-      children: [
-        // --- 白い面と、いつも濃い左右の線
-        DecoratedBox(
-          decoration: BoxDecoration(
-            color: AppColors.surface,
-            border: const Border(left: _frameSide, right: _frameSide),
-            borderRadius: bottomCorners,
-          ),
-          child: body,
-        ),
-        // --- 左右と下の線を、開き具合のぶんだけ濃く重ねる（閉じきっている間は重ねない）
-        if (openProgress > 0)
-          Positioned.fill(
-            // 線を重ねるだけなので、触った反応は下の中身へ通す
-            child: IgnorePointer(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  border: Border(
-                    left: fadingSide,
-                    right: fadingSide,
-                    bottom: fadingSide,
-                  ),
-                  borderRadius: bottomCorners,
-                ),
-              ),
-            ),
-          ),
-      ],
+  Widget _buildFrame(Widget body) {
+    return DecoratedBox(
+      decoration: _frameDecoration,
+      // 下の線が中身に重ならないよう、線の太さぶんだけ内側に余白を取る
+      child: Padding(
+        padding: const EdgeInsets.only(bottom: _frameBorderWidth),
+        child: body,
+      ),
     );
   }
 
@@ -338,16 +337,12 @@ class _ListeningRecordingSettingsPanelState
             child: SizedBox(height: safeAreaTop),
           ),
           // --- 状態行と選択肢の面（開くと選択肢の面のぶんだけ背が伸びる）
-          //     線が付いても中身の位置が動かないよう、余白は中身の側で持つ
-          AnimatedBuilder(
-            animation: _panelAnimation,
-            child: Column(
+          _buildFrame(
+            Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [_buildStateRow(), _buildOptions()],
             ),
-            builder: (context, body) =>
-                _buildFrame(body!, openProgress: _panelAnimation.value),
           ),
         ],
       ),

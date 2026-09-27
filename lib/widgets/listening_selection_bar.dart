@@ -16,8 +16,16 @@ import 'package:momeo/widgets/pressable_scale.dart';
 // 定数: 線の太さ
 // ---------------------------------
 
-// 上の線
-const _topBorderWidth = 1.5;
+// 枠の線（左・上・右）。録音設定パネルの枠の線とそろえる
+const _frameBorderWidth = 3.0;
+
+// 枠の上の角の丸み（録音設定パネルの下の角とそろえる）
+const _frameCornerRadius = AppRadius.l;
+
+const _frameSide = BorderSide(
+  color: AppColors.onSurface,
+  width: _frameBorderWidth,
+);
 
 // 削除・コピーのボタンの枠線
 const _buttonBorderWidth = 1.0;
@@ -51,7 +59,7 @@ const _contentBottomGap = 0.0;
 
 // 全体の高さ
 const _barHeight =
-    _topBorderWidth +
+    _frameBorderWidth +
     _noticeGap +
     _noticeFontSize +
     _noticeGap +
@@ -71,7 +79,7 @@ const _countLabelReservedDigits = 2;
 // 定数: 見た目
 // ---------------------------------
 
-// 削除・コピーのボタンを押している間の縮み具合（小さいので、カードより大きく縮める）
+// 削除・コピーのボタンを押している間の縮み具合（ボタンが小さいので、既定より大きく縮める）
 const _buttonPressedScale = 0.9;
 
 // ---------------------------------
@@ -92,15 +100,13 @@ const _deleteDialogConfirmLabel = '削除する';
 final _selectionCountFormat = NumberFormat('#,###');
 
 // ---------------------------------
-// 一覧を押し上げる高さ（バーのうち、安全領域より上に出ているぶん）
-//   一覧は安全領域のぶんを自分で空けているので、それより上に出た高さだけを返す
+// バーが画面内に出ている高さ（安全領域を含む）
 // ---------------------------------
-double listeningSelectionBarPushUpHeight({
+double listeningSelectionBarVisibleHeight({
   required double slideProgress,
   required double safeAreaBottom,
 }) {
-  final visibleHeight = (_barHeight + safeAreaBottom) * slideProgress;
-  return max(0.0, visibleHeight - safeAreaBottom);
+  return (_barHeight + safeAreaBottom) * slideProgress;
 }
 
 // ---------------------------------
@@ -375,8 +381,9 @@ class _ListeningSelectionBarState extends State<ListeningSelectionBar> {
     return Container(
       decoration: const BoxDecoration(
         color: AppColors.surface,
-        border: Border(
-          top: BorderSide(color: AppColors.onSurface, width: _topBorderWidth),
+        border: Border(left: _frameSide, top: _frameSide, right: _frameSide),
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(_frameCornerRadius),
         ),
       ),
       // 線のぶんは Container が自分で空けるので、ここでは数えない
@@ -405,7 +412,7 @@ class _ListeningSelectionBarState extends State<ListeningSelectionBar> {
   // ---------------------------------
   @override
   Widget build(BuildContext context) {
-    // --- キーボードが出ても変わらない値を使い、入力中も一覧を動かさない
+    // --- 画面下端の安全領域（ホームバーなど）の高さ
     final safeAreaBottom = MediaQuery.viewPaddingOf(context).bottom;
 
     return Align(

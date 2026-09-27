@@ -14,6 +14,12 @@ import UIKit
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
 
+    // リスニング画面のメモ一覧（OS の文字選択を使う UITextView）を、Flutter の画面に埋め込めるようにする
+    if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "NativeMemoList") {
+      registrar.register(NativeMemoListFactory(messenger: registrar.messenger()),
+                         withId: NativeMemoListFactory.viewType)
+    }
+
     // STT モデルの実パスを Dart に返すネイティブブリッジを登録
     if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "SttModelChannel") {
       SttModelChannel.register(with: registrar.messenger())

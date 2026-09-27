@@ -13,6 +13,11 @@ class MainActivity : FlutterActivity() {
     // Flutter エンジンの準備ができたタイミングで、橋渡しを有効化する。
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        // リスニング画面のメモ一覧（OS の文字選択を使う TextView）を、Flutter の画面に埋め込めるようにする。
+        flutterEngine.platformViewsController.registry.registerViewFactory(
+            NativeMemoListFactory.VIEW_TYPE,
+            NativeMemoListFactory(flutterEngine.dartExecutor.binaryMessenger),
+        )
         // applicationContext を渡す（アプリ全体で1つの AssetPackManager を使うため）。
         assetPackDelivery = AssetPackDeliveryChannel(
             applicationContext,

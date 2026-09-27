@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:momeo/foundation/app_colors.dart';
 import 'package:momeo/foundation/app_text_styles.dart';
 import 'package:momeo/platform/asset_pack_delivery.dart';
+import 'package:momeo/pages/splash_page.dart';
 import 'package:momeo/providers/stt_providers.dart';
 import 'package:momeo/stt/stt_audio_worker.dart';
 import 'package:momeo/widgets/activity_dots_text.dart';
@@ -11,17 +12,14 @@ import 'package:momeo/widgets/intro_setting_layout.dart';
 import 'package:momeo/widgets/content_slide_switcher.dart';
 
 // ---------------------------------
-// 待ち画面の5フェーズ
+// 待ち画面の4フェーズ
 // ---------------------------------
 enum PreparationPhase {
-  /// DL開始前・DL状態未取得。準備を始めた直後の状態
-  gettingReady,
+  /// DL状態の取得前・DL開始前・エンジンのメモリ読み込み中。スプラッシュのアプリ名のまま待つ
+  loading,
 
   /// モデルDLが進行中。DL%を表示する
   downloading,
-
-  /// DLは完了、エンジンの初期化を待っている状態
-  almostThere,
 
   /// エンジン初期化に失敗し、自動再試行を待っている状態
   retrying,
@@ -79,7 +77,7 @@ class PreparationGatePage extends ConsumerWidget {
     // ---------------------------------
     final download = downloadState.value;
     if (download == null) {
-      return PreparationPhase.gettingReady;
+      return PreparationPhase.loading;
     }
 
     // ---------------------------------
@@ -88,11 +86,11 @@ class PreparationGatePage extends ConsumerWidget {
     // ---------------------------------
     switch (download.phase) {
       case AssetPackPhase.notStarted:
-        return PreparationPhase.gettingReady;
+        return PreparationPhase.loading;
       case AssetPackPhase.downloading:
         return PreparationPhase.downloading;
       case AssetPackPhase.completed:
-        return PreparationPhase.almostThere;
+        return PreparationPhase.loading;
       case AssetPackPhase.failed:
         // エンジン側の失敗確定を待つ間もフェーズを揺らさないよう、同じ判定で出す
         return restartSuggested
@@ -109,14 +107,13 @@ class PreparationGatePage extends ConsumerWidget {
     AsyncValue<AssetPackState> downloadState,
   ) {
     switch (phase) {
-      case PreparationPhase.gettingReady:
-        return const ActivityDotsText('準備しています');
+      case PreparationPhase.loading:
+        // 読み込みは数秒で終わるため、スプラッシュの続きに見えるよう動きは付けない
+        return const Text(splashAppName);
       case PreparationPhase.downloading:
         // DL% は数字だけその場更新（フェーズが同じなのでスライドは起きない）
         final percent = ((downloadState.value?.progress ?? 0.0) * 100).round();
         return DownloadingProgressText(percent: percent);
-      case PreparationPhase.almostThere:
-        return const ActivityDotsText('もうすぐ完了します');
       case PreparationPhase.retrying:
         return const ActivityDotsText('再試行しています');
       case PreparationPhase.tryRestarting:

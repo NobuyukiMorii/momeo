@@ -93,9 +93,9 @@ class RecordingListeningSimulator extends ListeningNotifier {
     if (current == null) return;
 
     _speakingStartedAt = null;
-    // 収録の台本は1発話=1カードなので、確定のたびに次を新しいカードにする
+    // 収録の台本は1発話=1ブロックなので、確定のたびに次を新しいブロックにする
     state = AsyncData(
-      current.withSpeechActive(false).withMemoAdded(memo).withCurrentCardEnded(),
+      current.withSpeechActive(false).withMemoAdded(memo).withCurrentBlockEnded(),
     );
   }
 

@@ -10,8 +10,6 @@ import 'package:momeo/pages/dev/catalog/sections/foundation/foundation_app_theme
 import 'package:momeo/pages/dev/catalog/sections/widgets/widgets_animated_text_sequence_section.dart';
 import 'package:momeo/pages/dev/catalog/sections/widgets/widgets_content_slide_switcher_section.dart';
 import 'package:momeo/pages/dev/catalog/sections/widgets/widgets_intro_setting_layout_section.dart';
-import 'package:momeo/pages/dev/catalog/sections/widgets/widgets_voice_icon_section.dart';
-import 'package:momeo/pages/dev/catalog/sections/widgets/widgets_voice_card_section.dart';
 import 'package:momeo/pages/dev/catalog/sections/packages/packages_record_section.dart';
 import 'package:momeo/pages/dev/catalog/sections/packages/packages_sherpa_onnx_section.dart';
 import 'package:momeo/pages/dev/catalog/sections/stt/stt_vad_section.dart';
@@ -50,8 +48,6 @@ const _sections = [
   ]),
   _Section(title: 'Widgets', items: [
     _Item(title: 'IntroSettingLayout', body: WidgetsIntroSettingLayoutSection()),
-    _Item(title: 'VoiceIcon', body: WidgetsVoiceIconSection()),
-    _Item(title: 'VoiceCard', body: WidgetsVoiceCardSection()),
     _Item(title: 'AnimatedTextSequence', body: WidgetsAnimatedTextSequenceSection()),
     _Item(title: 'ContentSlideSwitcher', body: WidgetsContentSlideSwitcherSection()),
   ]),
