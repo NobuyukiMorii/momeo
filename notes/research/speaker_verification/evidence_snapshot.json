@@ -1,0 +1,240 @@
+{
+  "research_date": "2026-09-27",
+  "scope": "Read-only source and documentation research; no inference or device benchmark",
+  "app": {
+    "git_head": "b7cc1881e989d40dcd1c7d0e97a19b554e5b4393",
+    "sherpa_onnx_version": "1.13.8"
+  },
+  "upstream": {
+    "repository": "https://github.com/k2-fsa/sherpa-onnx",
+    "tag": "v1.13.8",
+    "commit": "11afbd009a7f8c08f4bcf2fc1b265d0df4670fbf"
+  },
+  "third_party": {
+    "repository": "https://github.com/qqlzfmn/sherpa-diarize",
+    "commit": "e7aae9c5d88511b5fea8a5b48aa418bf626a36b2",
+    "files": [
+      {
+        "path": "sherpa_diarize/clustering.py",
+        "git_blob_sha": "8e2a7142ff72897768ec35e323b50d5d990a19f9"
+      },
+      {
+        "path": "sherpa_diarize/pipeline.py",
+        "git_blob_sha": "146b308309a06ef8d3763e9c52e8ff7ac1cbf3b4"
+      }
+    ]
+  },
+  "model_inventory_source": "https://api.github.com/repos/k2-fsa/sherpa-onnx/releases/tags/speaker-recongition-models",
+  "models": [
+    {
+      "filename": "3dspeaker_speech_campplus_sv_en_voxceleb_16k.onnx",
+      "bytes": 29596978,
+      "download_url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/3dspeaker_speech_campplus_sv_en_voxceleb_16k.onnx",
+      "updated_at": "2024-10-14T03:41:21Z"
+    },
+    {
+      "filename": "3dspeaker_speech_campplus_sv_zh-cn_16k-common.onnx",
+      "bytes": 28281138,
+      "download_url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/3dspeaker_speech_campplus_sv_zh-cn_16k-common.onnx",
+      "updated_at": "2024-10-14T03:41:20Z"
+    },
+    {
+      "filename": "3dspeaker_speech_campplus_sv_zh_en_16k-common_advanced.onnx",
+      "bytes": 28281164,
+      "download_url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/3dspeaker_speech_campplus_sv_zh_en_16k-common_advanced.onnx",
+      "updated_at": "2024-10-14T03:41:19Z"
+    },
+    {
+      "filename": "3dspeaker_speech_eres2netv2_sv_zh-cn_16k-common.onnx",
+      "bytes": 71441526,
+      "download_url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/3dspeaker_speech_eres2netv2_sv_zh-cn_16k-common.onnx",
+      "updated_at": "2024-10-14T03:41:08Z"
+    },
+    {
+      "filename": "3dspeaker_speech_eres2net_base_200k_sv_zh-cn_16k-common.onnx",
+      "bytes": 39593765,
+      "download_url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/3dspeaker_speech_eres2net_base_200k_sv_zh-cn_16k-common.onnx",
+      "updated_at": "2024-10-14T03:41:18Z"
+    },
+    {
+      "filename": "3dspeaker_speech_eres2net_base_sv_zh-cn_3dspeaker_16k.onnx",
+      "bytes": 39593761,
+      "download_url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/3dspeaker_speech_eres2net_base_sv_zh-cn_3dspeaker_16k.onnx",
+      "updated_at": "2024-10-14T03:41:16Z"
+    },
+    {
+      "filename": "3dspeaker_speech_eres2net_large_sv_zh-cn_3dspeaker_16k.onnx",
+      "bytes": 116058710,
+      "download_url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/3dspeaker_speech_eres2net_large_sv_zh-cn_3dspeaker_16k.onnx",
+      "updated_at": "2024-10-14T03:41:15Z"
+    },
+    {
+      "filename": "3dspeaker_speech_eres2net_sv_en_voxceleb_16k.onnx",
+      "bytes": 26485263,
+      "download_url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/3dspeaker_speech_eres2net_sv_en_voxceleb_16k.onnx",
+      "updated_at": "2024-10-14T03:41:13Z"
+    },
+    {
+      "filename": "3dspeaker_speech_eres2net_sv_zh-cn_16k-common.onnx",
+      "bytes": 220623485,
+      "download_url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/3dspeaker_speech_eres2net_sv_zh-cn_16k-common.onnx",
+      "updated_at": "2024-10-14T03:41:12Z"
+    },
+    {
+      "filename": "nemo_en_speakerverification_speakernet.onnx",
+      "bytes": 23411863,
+      "download_url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/nemo_en_speakerverification_speakernet.onnx",
+      "updated_at": "2024-10-14T07:03:10Z"
+    },
+    {
+      "filename": "nemo_en_titanet_large.onnx",
+      "bytes": 101405493,
+      "download_url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/nemo_en_titanet_large.onnx",
+      "updated_at": "2024-10-14T07:03:08Z"
+    },
+    {
+      "filename": "nemo_en_titanet_small.onnx",
+      "bytes": 40257283,
+      "download_url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/nemo_en_titanet_small.onnx",
+      "updated_at": "2024-10-14T07:03:03Z"
+    },
+    {
+      "filename": "wespeaker_en_voxceleb_CAM++.onnx",
+      "bytes": 29292684,
+      "download_url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/wespeaker_en_voxceleb_CAM%2B%2B.onnx",
+      "updated_at": "2024-10-14T02:33:09Z"
+    },
+    {
+      "filename": "wespeaker_en_voxceleb_CAM++_LM.onnx",
+      "bytes": 29292687,
+      "download_url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/wespeaker_en_voxceleb_CAM%2B%2B_LM.onnx",
+      "updated_at": "2024-10-14T02:33:08Z"
+    },
+    {
+      "filename": "wespeaker_en_voxceleb_resnet152_LM.onnx",
+      "bytes": 79158470,
+      "download_url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/wespeaker_en_voxceleb_resnet152_LM.onnx",
+      "updated_at": "2024-10-14T02:33:06Z"
+    },
+    {
+      "filename": "wespeaker_en_voxceleb_resnet221_LM.onnx",
+      "bytes": 95037599,
+      "download_url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/wespeaker_en_voxceleb_resnet221_LM.onnx",
+      "updated_at": "2024-10-14T02:33:03Z"
+    },
+    {
+      "filename": "wespeaker_en_voxceleb_resnet293_LM.onnx",
+      "bytes": 114336527,
+      "download_url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/wespeaker_en_voxceleb_resnet293_LM.onnx",
+      "updated_at": "2024-10-14T02:32:59Z"
+    },
+    {
+      "filename": "wespeaker_en_voxceleb_resnet34.onnx",
+      "bytes": 26534365,
+      "download_url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/wespeaker_en_voxceleb_resnet34.onnx",
+      "updated_at": "2024-10-14T02:32:55Z"
+    },
+    {
+      "filename": "wespeaker_en_voxceleb_resnet34_LM.onnx",
+      "bytes": 26530550,
+      "download_url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/wespeaker_en_voxceleb_resnet34_LM.onnx",
+      "updated_at": "2024-10-14T02:32:53Z"
+    },
+    {
+      "filename": "wespeaker_zh_cnceleb_resnet34.onnx",
+      "bytes": 26534363,
+      "download_url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/wespeaker_zh_cnceleb_resnet34.onnx",
+      "updated_at": "2024-10-14T02:32:51Z"
+    },
+    {
+      "filename": "wespeaker_zh_cnceleb_resnet34_LM.onnx",
+      "bytes": 26530548,
+      "download_url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/wespeaker_zh_cnceleb_resnet34_LM.onnx",
+      "updated_at": "2024-10-14T02:32:49Z"
+    }
+  ],
+  "enrollment_wav_observations": {
+    "method": "Python wave: nframes/framerate, rounded to 3 decimals. Includes silence. Not an inference or accuracy measurement.",
+    "sample_rate": 16000,
+    "channels": 1,
+    "files": [
+      {
+        "filename": "fangjun-sr-1.wav",
+        "duration_seconds_rounded": 2.299,
+        "download_url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/fangjun-sr-1.wav"
+      },
+      {
+        "filename": "fangjun-sr-2.wav",
+        "duration_seconds_rounded": 5.166,
+        "download_url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/fangjun-sr-2.wav"
+      },
+      {
+        "filename": "fangjun-sr-3.wav",
+        "duration_seconds_rounded": 2.821,
+        "download_url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/fangjun-sr-3.wav"
+      },
+      {
+        "filename": "leijun-sr-1.wav",
+        "duration_seconds_rounded": 4.201,
+        "download_url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/leijun-sr-1.wav"
+      },
+      {
+        "filename": "leijun-sr-2.wav",
+        "duration_seconds_rounded": 4.76,
+        "download_url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/leijun-sr-2.wav"
+      },
+      {
+        "filename": "liudehua-sr-1.wav",
+        "duration_seconds_rounded": 2.98,
+        "download_url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/liudehua-sr-1.wav"
+      },
+      {
+        "filename": "liudehua-sr-2.wav",
+        "duration_seconds_rounded": 3.949,
+        "download_url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/liudehua-sr-2.wav"
+      }
+    ]
+  },
+  "source_checks": [
+    {
+      "path": "sherpa-onnx/c-api/c-api.h",
+      "git_blob_sha": "5fe0813c603dac768bce00fadd2e15b0a23b7b73",
+      "matches_version_tree": true
+    },
+    {
+      "path": "sherpa-onnx/csrc/fast-clustering.cc",
+      "git_blob_sha": "d9600c5e775a258ee5e7aed91f3eeb1394437bdb",
+      "matches_version_tree": true
+    },
+    {
+      "path": "sherpa-onnx/csrc/offline-speaker-diarization-impl.h",
+      "git_blob_sha": "d2cbdebd268a7718d6d2d39880960dcf6ce015a8",
+      "matches_version_tree": true
+    },
+    {
+      "path": "sherpa-onnx/csrc/offline-speaker-diarization-pyannote-impl.h",
+      "git_blob_sha": "eb1c250a8ae3f91c8e57ad6c34069ac5a0295025",
+      "matches_version_tree": true
+    },
+    {
+      "path": "sherpa-onnx/csrc/session.cc",
+      "git_blob_sha": "e5c220c799ca0417a2646b42f87f01f9e79bc9ec",
+      "matches_version_tree": true
+    },
+    {
+      "path": "sherpa-onnx/csrc/speaker-embedding-extractor-general-impl.h",
+      "git_blob_sha": "19a8321213c6de51cb2cbc46654ac678e5fd0121",
+      "matches_version_tree": true
+    },
+    {
+      "path": "sherpa-onnx/csrc/speaker-embedding-extractor-nemo-impl.h",
+      "git_blob_sha": "95a3f34425b2b5aa5c9e927ff673aa9ce7530973",
+      "matches_version_tree": true
+    },
+    {
+      "path": "sherpa-onnx/csrc/speaker-embedding-manager.cc",
+      "git_blob_sha": "c61597c55beb62d2b8bf8132581d622c579f4128",
+      "matches_version_tree": true
+    }
+  ]
+}
