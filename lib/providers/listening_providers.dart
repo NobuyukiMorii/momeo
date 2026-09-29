@@ -443,11 +443,8 @@ class ListeningNotifier extends AsyncNotifier<ListeningState> {
     // 現在時刻
     final now = DateTime.now();
 
-    // 最後のメモから基準となる時間が経過したら終了（新カード追加）
-    if (now.difference(lastAppendedAt) >= _appendIdleLimit) return true;
-
-    // 日付をまたいだら終了（新カード追加） or 追記続行
-    return !_isSameDay(now, appendTarget.createdAt);
+    // 最後のメモから基準となる時間が経過したら新カード追加 or 経過していなければ追記
+    return now.difference(lastAppendedAt) >= _appendIdleLimit;
   }
 
   // ---------------------------------
@@ -569,9 +566,4 @@ class ListeningNotifier extends AsyncNotifier<ListeningState> {
     if (current == null || current.typeInMemoId != memoId) return;
     state = AsyncData(current.withTypeInConsumed());
   }
-}
-
-// 2つの日時が同じ日か
-bool _isSameDay(DateTime a, DateTime b) {
-  return a.year == b.year && a.month == b.month && a.day == b.day;
 }
