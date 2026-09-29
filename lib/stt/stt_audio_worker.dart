@@ -19,8 +19,7 @@ const int _kInt16Amplitude = 32768; // PCM16 の正規化基準（2^15）
 const int _kVadWindow = 512; // VAD に1回で渡すサンプル数（16kHz の Silero 用）
 const double _kVadBufferSeconds = 60; // VAD 内部バッファ（秒）。maxSpeechDuration を余裕で収める
 
-// VAD の区切り設定。無音 1.5秒 = メモの確定条件
-const double _kMinSilenceDuration = 1.5;
+const double _kMinSilenceDuration = 3.0;
 const double _kMinSpeechDuration = 0.25;
 const double _kMaxSpeechDuration = 30.0;
 
