@@ -32,9 +32,6 @@ import 'package:momeo/stt/stt_model_provisioner.dart';
 //   DB への保存だけは行う（state には触れない）。
 // ============================================================
 
-// 発話と発話のつなぎ目（カードの本文にそのまま入る）
-const _utteranceSeparator = '\n\n';
-
 // 今のカードへの追記を終了するまでの、発話が途切れている時間
 const _appendIdleLimit = Duration(seconds: 10);
 
@@ -522,8 +519,8 @@ class ListeningNotifier extends AsyncNotifier<ListeningState> {
   // カードの末尾に追記
   // ---------------------------------
   Future<void> _appendToTarget(VoiceMemo appendTarget, String content) async {
-    // 発話と発話の間は空行1つで区切る
-    final appended = '${appendTarget.content}$_utteranceSeparator$content';
+    // 発話と発話の間は区切らず、そのままつなげる
+    final appended = '${appendTarget.content}$content';
     // 追記先の内容を更新
     await _repository.updateContent(id: appendTarget.id, content: appended);
     // state 用にメモを作り直す
