@@ -36,7 +36,7 @@ import 'package:momeo/stt/stt_model_provisioner.dart';
 const _utteranceSeparator = '\n\n';
 
 // 今のカードへの追記を終了するまでの、発話が途切れている時間
-const _appendIdleLimit = Duration(minutes: 1);
+const _appendIdleLimit = Duration(seconds: 10);
 
 final listeningProvider =
     AsyncNotifierProvider.autoDispose<ListeningNotifier, ListeningState>(
