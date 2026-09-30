@@ -13,7 +13,6 @@ import 'package:momeo/providers/listening_providers.dart';
 import 'package:momeo/widgets/date_separator.dart';
 import 'package:momeo/widgets/listening_backdrop.dart';
 import 'package:momeo/widgets/listening_recording_settings_panel.dart';
-import 'package:momeo/widgets/listening_search_field.dart';
 import 'package:momeo/widgets/listening_selection_bar.dart';
 import 'package:momeo/widgets/voice_card.dart';
 
@@ -40,7 +39,7 @@ class ListeningPage extends ConsumerStatefulWidget {
 }
 
 class _ListeningPageState extends ConsumerState<ListeningPage>
-    with TickerProviderStateMixin, WidgetsBindingObserver {
+    with TickerProviderStateMixin {
   // ---------------------------------
   // 選択中のメモに関する状態
   // ---------------------------------
@@ -50,16 +49,10 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
   final Set<int> _selectedMemoIds = {};
 
   // ---------------------------------
-  // 検索フィールドに関する状態
+  // 絞り込みに関する状態
   // ---------------------------------
-  // 検索フィールドに打たれている文字列
-  final TextEditingController _keywordController = TextEditingController();
-  // 検索フィールドにカーソルが当たっているか
-  final FocusNode _keywordFocusNode = FocusNode();
-  // 一覧の絞り込みに使う語（カーソルが外れた時点の文字列から作る）
-  List<String> _keywords = const [];
-  // 前回このイベントが届いた時、キーボードが出ていたか
-  bool _wasKeyboardOpen = false;
+  // 一覧の絞り込みに使う語（検索フィールドが無いので、いつも空）
+  final List<String> _keywords = const [];
 
   // ---------------------------------
   // 選択バーに関する状態
@@ -92,10 +85,6 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
   @override
   void initState() {
     super.initState();
-    // キーボードが閉じた瞬間を検知
-    WidgetsBinding.instance.addObserver(this);
-    // 検索フィールドのフォーカスの通知を受け取る
-    _keywordFocusNode.addListener(_onKeywordFocusChanged);
     _activeCardController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 250),
@@ -113,70 +102,13 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
 
   @override
   void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
     _copyNoticeTimer?.cancel(); // コピーの知らせのタイマーを止める
     _selectionBarNoticeTimer?.cancel(); // 選択バーの一言のタイマーを止める
-    _keywordController.dispose(); // 検索フィールドのコントローラーを破棄
-    _keywordFocusNode.removeListener(
-      _onKeywordFocusChanged,
-    ); // 検索フィールドのフォーカスの通知を受け取らないようにする
-    _keywordFocusNode.dispose(); // 検索フィールドのフォーカスノードを破棄
     _selectionBarController.dispose();
     _activeCardAnimation.dispose();
     _activeCardController.removeStatusListener(_onActiveCardStatusChanged);
     _activeCardController.dispose();
     super.dispose();
-  }
-
-  // ---------------------------------
-  // Flutterのウィジェットツリーの寸法が変わったときに呼ばれる
-  // ---------------------------------
-  @override
-  void didChangeMetrics() {
-    // ---------------------------------
-    // キーボードが閉じた瞬間を検知
-    // ---------------------------------
-
-    // --- マウントされていない場合は何もしない
-    if (!mounted) return;
-    // --- 今キーボードが開いているか
-    final isOpen = View.of(context).viewInsets.bottom > 0;
-    // --- 前回と同じなら、キーボード開閉は起きていない
-    if (isOpen == _wasKeyboardOpen) return;
-    // --- 次のキーボード開閉で比較するために値を記録
-    _wasKeyboardOpen = isOpen;
-    if (!isOpen) {
-      // --- キーボードを閉じた
-      _exitKeywordInput(); // 検索フィールドからカーソルを外す
-    }
-  }
-
-  // ---------------------------------
-  // 検索フィールドのキーワードを反映
-  // ---------------------------------
-  void _applyKeywords() {
-    // --- 入力文字列を、照合に使う語の一覧へ分解
-    setState(() => _keywords = parseMemoKeywords(_keywordController.text));
-  }
-
-  // ---------------------------------
-  // 検索フィールドにカーソルが当たった・外れたとき
-  // ---------------------------------
-  void _onKeywordFocusChanged() {
-    // --- 入力中は絞り込みを変えない
-    if (_keywordFocusNode.hasFocus) return;
-    // --- カーソルが外れたら文字列を絞り込みへ取り込む
-    _applyKeywords();
-  }
-
-  // ---------------------------------
-  // 検索フィールドからカーソルを外す
-  // ---------------------------------
-  void _exitKeywordInput() {
-    // --- すでにカーソルが外れていれば何もしない
-    if (!_keywordFocusNode.hasFocus) return;
-    // --- カーソルを外す
-    _keywordFocusNode.unfocus();
   }
 
   // ---------------------------------
@@ -463,14 +395,9 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
         slivers: [
           SliverPadding(
             padding: EdgeInsets.only(
-              // 上端は、録音設定パネルの状態行と検索フィールドのぶん空ける。
+              // 上端は、録音設定パネルの状態行のぶん空ける。
               // 録音設定パネルを開いても覆いかぶさるだけなので、ここは動かさない
-              top:
-                  AppSpacing.xl +
-                  safeAreaTop +
-                  recordingSettingsPanelHeight +
-                  listeningSearchFieldHeight,
-              // キーボードの有無で余白を変えない（一覧を動かさない）
+              top: AppSpacing.xl + safeAreaTop + recordingSettingsPanelHeight,
               // 下端は、選択バーの出入りと同じ動きで押し上げる
               bottom:
                   AppSpacing.xl +
@@ -542,74 +469,45 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
 
     return Scaffold(
       backgroundColor: AppColors.surface,
-      resizeToAvoidBottomInset: false,
       body: Stack(
         children: [
+          // ---------------------------------
+          // 背景レイヤー
+          // ---------------------------------
           Positioned.fill(
-            child: Listener(
-              behavior: HitTestBehavior.translucent,
-              onPointerDown: (_) => _exitKeywordInput(),
-              child: Stack(
-                children: [
-                  // ---------------------------------
-                  // 背景レイヤー
-                  // ---------------------------------
-                  Positioned.fill(
-                    child: ListeningBackdrop(
-                      levelReader: () =>
-                          ref.read(listeningProvider.notifier).latestLevel,
-                    ),
-                  ),
-                  // ---------------------------------
-                  // ボイスカード一覧
-                  // ---------------------------------
-                  _buildMemoList(
-                    cards: cards,
-                    listening: listening,
-                    hidesActiveCard: hidesActiveCard,
-                    safeAreaTop: safeAreaTop,
-                    recordingSettingsPanelHeight: recordingSettingsPanelHeight,
-                    safeAreaBottom: safeAreaBottom,
-                  ),
-                  // ---------------------------------
-                  // 選択バー
-                  // ---------------------------------
-                  Positioned.fill(
-                    child: ListeningSelectionBar(
-                      slideAnimation: _selectionBarController,
-                      selectedCount: selectedMemos.length,
-                      onDeleteSelection: _deleteSelectedMemos,
-                      onCopySelection: () => _copySelectedMemos(selectedMemos),
-                      onClearSelection: _clearMemoSelection,
-                      notice: _selectionBarNotice,
-                    ),
-                  ),
-                ],
-              ),
+            child: ListeningBackdrop(
+              levelReader: () =>
+                  ref.read(listeningProvider.notifier).latestLevel,
             ),
           ),
           // ---------------------------------
-          // 検索フィールド
+          // ボイスカード一覧
           // ---------------------------------
-          Positioned(
-            top: safeAreaTop + recordingSettingsPanelHeight,
-            left: 0,
-            right: 0,
-            child: ListeningSearchField(
-              controller: _keywordController,
-              focusNode: _keywordFocusNode,
-              onCleared: _applyKeywords,
+          _buildMemoList(
+            cards: cards,
+            listening: listening,
+            hidesActiveCard: hidesActiveCard,
+            safeAreaTop: safeAreaTop,
+            recordingSettingsPanelHeight: recordingSettingsPanelHeight,
+            safeAreaBottom: safeAreaBottom,
+          ),
+          // ---------------------------------
+          // 選択バー
+          // ---------------------------------
+          Positioned.fill(
+            child: ListeningSelectionBar(
+              slideAnimation: _selectionBarController,
+              selectedCount: selectedMemos.length,
+              onDeleteSelection: _deleteSelectedMemos,
+              onCopySelection: () => _copySelectedMemos(selectedMemos),
+              onClearSelection: _clearMemoSelection,
+              notice: _selectionBarNotice,
             ),
           ),
           // ---------------------------------
           // 録音設定パネル
           // ---------------------------------
-          Positioned.fill(
-            child: Listener(
-              onPointerDown: (_) => _exitKeywordInput(),
-              child: const ListeningRecordingSettingsPanel(),
-            ),
-          ),
+          const Positioned.fill(child: ListeningRecordingSettingsPanel()),
         ],
       ),
     );

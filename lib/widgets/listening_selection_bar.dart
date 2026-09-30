@@ -405,7 +405,7 @@ class _ListeningSelectionBarState extends State<ListeningSelectionBar> {
   // ---------------------------------
   @override
   Widget build(BuildContext context) {
-    // --- キーボードが出ても変わらない値を使い、入力中も一覧を動かさない
+    // --- 画面下端の安全領域（ホームバーなど）の高さ
     final safeAreaBottom = MediaQuery.viewPaddingOf(context).bottom;
 
     return Align(
