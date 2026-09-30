@@ -8,7 +8,6 @@ import 'package:momeo/database/app_database.dart';
 import 'package:momeo/foundation/app_colors.dart';
 import 'package:momeo/foundation/app_spacing.dart';
 import 'package:momeo/pages/listening/memo_card_view_data.dart';
-import 'package:momeo/pages/listening/memo_keyword_filter.dart';
 import 'package:momeo/providers/listening_providers.dart';
 import 'package:momeo/widgets/date_separator.dart';
 import 'package:momeo/widgets/listening_backdrop.dart';
@@ -45,14 +44,8 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
   // ---------------------------------
   // 時刻フォーマット（日付はカードの上の区切りが持つ）
   static final _timeFormat = DateFormat('HH:mm');
-  // 選択中のメモの id（検索で一覧から隠れても外さない）
+  // 選択中のメモの id
   final Set<int> _selectedMemoIds = {};
-
-  // ---------------------------------
-  // 絞り込みに関する状態
-  // ---------------------------------
-  // 一覧の絞り込みに使う語（検索フィールドが無いので、いつも空）
-  final List<String> _keywords = const [];
 
   // ---------------------------------
   // 選択バーに関する状態
@@ -292,24 +285,6 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
   }
 
   // ---------------------------------
-  // 絞り込みで隠れたカードのタイピング演出を取り消す
-  // ---------------------------------
-  void _cancelHiddenTypeIn(int? typeInMemoId, List<MemoCardViewData> cards) {
-    // --- 演出の対象がいない
-    if (typeInMemoId == null) return;
-    // --- 対象が一覧に出ている。演出が終わったらカード自身が知らせる
-    if (cards.any((card) => card.memo.id == typeInMemoId)) return;
-
-    // --- カードの代わりに終わったと知らせる
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      // --- 待つ間に画面を離れていたら何もしない
-      if (!mounted) return;
-      // --- Notifier に終わったと知らせる
-      ref.read(listeningProvider.notifier).onTypingComplete(typeInMemoId);
-    });
-  }
-
-  // ---------------------------------
   // 確定済みメモカード1枚
   // ---------------------------------
   Widget _buildMemoCard(MemoCardViewData card, ListeningState listening) {
@@ -425,30 +400,21 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
         ref.watch(listeningProvider).value ?? const ListeningState();
 
     // ---------------------------------
-    // 検索フィールドの語で絞り込んだメモ
-    // ---------------------------------
-    final visibleMemos = filterMemosByKeywords(listening.memos, _keywords);
-
-    // ---------------------------------
     // アクティブカードを出さない場面
     // ---------------------------------
-    final hidesActiveCard =
-        _keywords.isNotEmpty || listening.appendTargetId != null;
+    final hidesActiveCard = listening.appendTargetId != null;
 
     // ---------------------------------
-    // ボイスカード一覧（日時の出し分けは絞り込んだ後の並びで決める）
+    // ボイスカード一覧
     // ---------------------------------
     final cards = buildMemoCardViewData(
-      visibleMemos,
+      listening.memos,
       today: DateTime.now(),
-      // 絞り込み中はアクティブカードを出さないので、時刻を譲る相手もいない
       activeCardTime: hidesActiveCard ? null : _activeCardTime,
     );
-    _cancelHiddenTypeIn(listening.typeInMemoId, cards);
 
     // ---------------------------------
     // 選択中のメモ（memos は新しい順なので、時系列順に並べ替える）
-    //   絞り込みで隠れているメモも選択は保つので、絞り込む前の一覧から拾う
     // ---------------------------------
     final selectedMemos = [
       for (final memo in listening.memos.reversed)
