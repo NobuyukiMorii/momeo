@@ -86,13 +86,18 @@ flutter:
   assets:
     - assets/models/silero_vad.onnx
 
-  # Android で使う本文の書体（SIL Open Font License。著作権とライセンスの表記はフォントファイル内にある）
+  # 同梱する書体（どれも SIL Open Font License。著作権とライセンスの表記はフォントファイル内にある）
   fonts:
+    # Android で使う本文の書体
     - family: Noto Sans JP
       fonts:
         - asset: assets/fonts/NotoSansJP-Regular.otf
         - asset: assets/fonts/NotoSansJP-Bold.otf
           weight: 700
+    # リスニング画面の背景に出す日付の書体
+    - family: Dancing Script
+      fonts:
+        - asset: assets/fonts/DancingScript-Regular.ttf
 
   # To add assets to your application, add an assets section, like this:
   # assets:

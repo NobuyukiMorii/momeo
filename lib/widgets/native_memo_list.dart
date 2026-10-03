@@ -17,12 +17,17 @@ const _clearSelectionMethod = 'clearSelection';
 
 // ネイティブ側から届くメソッド
 const _toggleBlockMethod = 'toggleBlock';
+const _thumbMethod = 'thumb';
 
 // 本文の文字サイズ（端末の文字サイズの設定で拡大する前の値）
 const _bodyFontSize = 18.0;
 
 // 文字選択をブロックをまたいでコピーしたときの、ブロック同士の区切り
 const _copySeparator = '\n\n';
+
+// スクロールつまみの高さ（一覧の上端から測る）と、その高さにあるメモ
+// scrolling は、指やつまみの操作でスクロールしたときだけ true（新しいメモで末尾へ移るときは false）
+typedef MemoListThumb = ({int memoId, double y, bool scrolling});
 
 // ---------------------------------
 // 本文の外から、OS が保持している文字選択を解除する
@@ -41,6 +46,7 @@ class NativeMemoList extends StatefulWidget {
     required this.selectedIds,
     required this.controller,
     required this.onToggleSelection,
+    required this.onThumbChanged,
   });
 
   // 確定済みメモ一覧（新しい順）
@@ -50,6 +56,8 @@ class NativeMemoList extends StatefulWidget {
   final NativeMemoListController controller;
   // 丸が押されたとき
   final ValueChanged<int> onToggleSelection;
+  // スクロールつまみの高さ、またはその高さにあるメモが変わったとき
+  final ValueChanged<MemoListThumb> onThumbChanged;
 
   @override
   State<NativeMemoList> createState() => _NativeMemoListState();
@@ -122,6 +130,13 @@ class _NativeMemoListState extends State<NativeMemoList> {
     switch (call.method) {
       case _toggleBlockMethod:
         widget.onToggleSelection(call.arguments as int);
+      case _thumbMethod:
+        final thumb = call.arguments as Map;
+        widget.onThumbChanged((
+          memoId: thumb['id'] as int,
+          y: (thumb['y'] as num).toDouble(),
+          scrolling: thumb['scrolling'] == true,
+        ));
     }
   }
 

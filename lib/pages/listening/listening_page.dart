@@ -7,6 +7,7 @@ import 'package:momeo/database/app_database.dart';
 import 'package:momeo/foundation/app_colors.dart';
 import 'package:momeo/providers/listening_providers.dart';
 import 'package:momeo/widgets/listening_backdrop.dart';
+import 'package:momeo/widgets/listening_memo_date_backdrop.dart';
 import 'package:momeo/widgets/listening_recording_settings_panel.dart';
 import 'package:momeo/widgets/listening_selection_bar.dart';
 import 'package:momeo/widgets/native_memo_list.dart';
@@ -19,6 +20,15 @@ const _selectionBarSlideDuration = Duration(milliseconds: 150);
 
 // 選択中のメモをまとめてコピーしたときに、選択バーへ出す一言
 const _selectionCopiedNotice = 'クリップボードにコピーしました';
+
+// スクロールが止まってから、つまみの横の日付を消し始めるまでの時間
+const _thumbDateHideDelay = Duration(milliseconds: 600);
+
+// つまみの横の日付が現れる・消える時間
+const _thumbDateFadeDuration = Duration(milliseconds: 200);
+
+// スクロールつまみの横棒の太さ（ネイティブ側の描画とそろえる）
+const _thumbThickness = 1.5;
 
 // =====================================================================
 // リスニング画面
@@ -44,6 +54,16 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
   // 文字選択は丸による選択と独立して、OS 側（ネイティブの一覧）が持つ
   final NativeMemoListController _nativeMemoListController =
       NativeMemoListController();
+
+  // ---------------------------------
+  // つまみの横の日付に関する状態
+  // ---------------------------------
+  // スクロールつまみの高さと、その高さにあるメモ（つまみの横の背景に、そのメモの日付を出す）
+  // スクロールのたびに変わるので、画面全体を組み直さずに日付の層だけを動かす
+  final ValueNotifier<MemoListThumb?> _thumb = ValueNotifier(null);
+  // 日付はスクロールしている間だけ出し、止まってしばらくしたら消す
+  final ValueNotifier<bool> _showsThumbDate = ValueNotifier(false);
+  Timer? _thumbDateHideTimer;
 
   // ---------------------------------
   // 選択バーに関する状態
@@ -73,6 +93,9 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
     _selectionBarNoticeTimer?.cancel(); // 選択バーの一言のタイマーを止める
     _selectionBarController.dispose();
     _nativeMemoListController.dispose();
+    _thumb.dispose();
+    _thumbDateHideTimer?.cancel();
+    _showsThumbDate.dispose();
     super.dispose();
   }
 
@@ -186,7 +209,49 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
         selectedIds: Set.of(_selectedMemoIds),
         controller: _nativeMemoListController,
         onToggleSelection: _toggleMemoSelection,
+        onThumbChanged: _onThumbChanged,
       ),
+    );
+  }
+
+  // ---------------------------------
+  // スクロールつまみの横に出す日付（本文の後ろの背景）
+  // ---------------------------------
+  void _onThumbChanged(MemoListThumb thumb) {
+    _thumb.value = thumb;
+    if (!thumb.scrolling) return;
+    _showsThumbDate.value = true;
+    _thumbDateHideTimer?.cancel();
+    _thumbDateHideTimer = Timer(_thumbDateHideDelay, () {
+      _showsThumbDate.value = false;
+    });
+  }
+
+  // 一覧に無くなったメモの日付は出さない
+  Widget _buildThumbDate({
+    required List<VoiceMemo> memos,
+    required double listTop,
+  }) {
+    return ListenableBuilder(
+      listenable: Listenable.merge([_thumb, _showsThumbDate]),
+      builder: (context, _) {
+        final thumb = _thumb.value;
+        final memo = memos
+            .where((memo) => memo.id == thumb?.memoId)
+            .firstOrNull;
+        if (thumb == null || memo == null) return const SizedBox.shrink();
+        return Positioned(
+          left: 0,
+          right: 0,
+          // つまみの横棒の上端に、数字の上端をそろえる
+          top: listTop + thumb.y - _thumbThickness / 2,
+          child: AnimatedOpacity(
+            opacity: _showsThumbDate.value ? 1 : 0,
+            duration: _thumbDateFadeDuration,
+            child: ListeningMemoDateBackdrop(dateTime: memo.createdAt),
+          ),
+        );
+      },
     );
   }
 
@@ -230,6 +295,13 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
               levelReader: () =>
                   ref.read(listeningProvider.notifier).latestLevel,
             ),
+          ),
+          // ---------------------------------
+          // スクロール中だけ、つまみの横の背景に出す日付
+          // ---------------------------------
+          _buildThumbDate(
+            memos: listening.memos,
+            listTop: safeAreaTop + recordingSettingsPanelHeight,
           ),
           // ---------------------------------
           // メモ一覧

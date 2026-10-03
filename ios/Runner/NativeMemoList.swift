@@ -18,6 +18,7 @@ private enum ChannelMethod {
     static let clearSelection = "clearSelection"
     // Dart へ知らせるメソッド
     static let toggleBlock = "toggleBlock"
+    static let thumb = "thumb"
 }
 
 // Dart から値が届かなかったときの既定値
@@ -139,11 +140,16 @@ private final class NativeMemoList: NSObject, FlutterPlatformView {
         documentView.onToggleBlock = { [weak self] blockId in
             self?.channel.invokeMethod(ChannelMethod.toggleBlock, arguments: blockId)
         }
+        documentView.onThumbChanged = { [weak self] blockId, y, scrolling in
+            self?.channel.invokeMethod(ChannelMethod.thumb, arguments: ["id": blockId, "y": y, "scrolling": scrolling])
+        }
         channel.setMethodCallHandler { [weak self] call, result in
             guard let self else { result(nil); return }
             switch call.method {
             case ChannelMethod.update:
                 self.documentView.update(call.arguments)
+                // 表示を作り直したときも、Flutter 側が日付を取りこぼさないように知らせ直す
+                self.documentView.reportThumb(force: true)
                 result(nil)
             case ChannelMethod.clearSelection:
                 self.documentView.clearTextSelection()
@@ -166,6 +172,9 @@ private final class NativeMemoList: NSObject, FlutterPlatformView {
 private final class MemoDocumentView: UITextView, UITextViewDelegate {
     // 丸が押されたブロックのメモ id を知らせる
     var onToggleBlock: ((Int64) -> Void)?
+    // つまみの高さと、その高さにあるブロックが変わったときに知らせる（背景の日付表示に使う。y は表示範囲の上端から測る）
+    // scrolling は、指やつまみの操作でスクロールしたときだけ true
+    var onThumbChanged: ((_ blockId: Int64, _ y: CGFloat, _ scrolling: Bool) -> Void)?
 
     // --- 文書
     // 表示中のブロック（古い順）
@@ -196,6 +205,10 @@ private final class MemoDocumentView: UITextView, UITextViewDelegate {
     private var circleCenterYs: [Int64: CGFloat] = [:]
     // ドラッグ中の、指の位置とつまみの中心のずれ
     private var scrollThumbGrabOffset: CGFloat = 0
+    // 最後に知らせたブロックと高さ（変わっていなければ知らせ直さない）
+    private var reportedThumb: (id: Int64, y: CGFloat)?
+    // 最後に知らせたときのスクロール位置
+    private var offsetYSeenByReport: CGFloat = 0
 
     override init(frame: CGRect, textContainer: NSTextContainer?) {
         // TextKit 1（NSLayoutManager）で組み、文書全体の高さを同じレイアウトから求める
@@ -284,9 +297,9 @@ private final class MemoDocumentView: UITextView, UITextViewDelegate {
         setNeedsLayout()
         layoutIfNeeded()
         if isFirstLayout || (wasAtBottom && !hadSelection && !isDragging) {
-            contentOffset = CGPoint(x: 0, y: scrollableHeight)
+            setContentOffsetByApp(scrollableHeight)
         } else {
-            contentOffset = CGPoint(x: 0, y: min(oldOffsetY, scrollableHeight))
+            setContentOffsetByApp(min(oldOffsetY, scrollableHeight))
         }
         rail.setNeedsDisplay()
     }
@@ -499,11 +512,12 @@ private final class MemoDocumentView: UITextView, UITextViewDelegate {
         }
         // 最初と、一番下を見ている間に一覧の高さが変わったとき（選択バーの出入りなど）は、一番下へ（文字選択中は動かさない）
         if isFirstLayout || (oldSize != bounds.size && wasAtBottom && selectedRange.length == 0) {
-            contentOffset = CGPoint(x: 0, y: scrollableHeight)
+            setContentOffsetByApp(scrollableHeight)
         }
         layoutRail()
         isFirstLayout = false
         lastLayoutSize = bounds.size
+        reportThumb()
     }
 
     // メモが少ないうちは上の余白を広げて一覧を下に寄せ、丸の位置を求め直す
@@ -513,6 +527,30 @@ private final class MemoDocumentView: UITextView, UITextViewDelegate {
         let topInset = max(BodyLayout.minPaddingTop, bounds.height - documentHeight - textContainerInset.bottom)
         if abs(textContainerInset.top - topInset) > 0.5 { textContainerInset.top = topInset }
         layoutCircleCenters(top: topInset)
+    }
+
+    // ---------------------------------
+    // つまみの位置を Dart へ知らせる
+    // ---------------------------------
+    // スクロールできないほど短いとき（つまみを出さないとき）は、最新のブロックの丸の高さとする
+    func reportThumb(force: Bool = false) {
+        // 前回から表示位置が動いていれば、指やつまみの操作でスクロールしている
+        let scrolling = abs(contentOffset.y - offsetYSeenByReport) > 0.5
+        offsetYSeenByReport = contentOffset.y
+        let thumbBlock = showsScrollThumb
+            ? blockWithCircleAbove(contentOffset.y + scrollThumbCenterY) ?? blocks.first
+            : blocks.last
+        guard let block = thumbBlock else { return }
+        let y = showsScrollThumb ? scrollThumbCenterY : circleCenterY(block) - contentOffset.y
+        if !force, !scrolling, let reportedThumb, reportedThumb.id == block.id, abs(reportedThumb.y - y) < 0.5 { return }
+        reportedThumb = (block.id, y)
+        onThumbChanged?(block.id, y, scrolling)
+    }
+
+    // アプリ側が動かすスクロール（新しいメモで末尾へ移るときなど）は、スクロール中の日付表示の対象にしない
+    private func setContentOffsetByApp(_ y: CGFloat) {
+        contentOffset = CGPoint(x: 0, y: y)
+        offsetYSeenByReport = contentOffset.y
     }
 
     // 縦線の View は、スクロールしても表示範囲の右端に留め、一番手前に置く

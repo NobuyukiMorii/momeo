@@ -59,6 +59,7 @@ private const val METHOD_CLEAR_SELECTION = "clearSelection"
 
 // Dart へ知らせるメソッド
 private const val METHOD_TOGGLE_BLOCK = "toggleBlock"
+private const val METHOD_THUMB = "thumb"
 
 // Dart から値が届かなかったときの既定値
 private const val DEFAULT_FONT_SIZE = 18f
@@ -173,10 +174,15 @@ private class NativeMemoList(context: Context, viewId: Int, messenger: BinaryMes
             FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT),
         )
         document.onToggleBlock = { blockId -> channel.invokeMethod(METHOD_TOGGLE_BLOCK, blockId) }
+        scroll.onThumbChanged = { blockId, y, scrolling ->
+            channel.invokeMethod(METHOD_THUMB, mapOf("id" to blockId, "y" to y, "scrolling" to scrolling))
+        }
         channel.setMethodCallHandler { call, result ->
             when (call.method) {
                 METHOD_UPDATE -> {
                     document.update(call.arguments)
+                    // 表示を作り直したときも、Flutter 側が日付を取りこぼさないように知らせ直す
+                    scroll.post { scroll.reportThumb(force = true) }
                     result.success(null)
                 }
                 METHOD_CLEAR_SELECTION -> {
@@ -194,6 +200,7 @@ private class NativeMemoList(context: Context, viewId: Int, messenger: BinaryMes
     override fun dispose() {
         channel.setMethodCallHandler(null)
         document.onToggleBlock = null
+        scroll.onThumbChanged = null
         document.clearFocus()
     }
 }
@@ -347,7 +354,7 @@ private class MemoDocumentView(context: Context, private val scroll: MemoScrollV
         // --- 組み直した後の高さで、スクロール位置を決める（最初と、一番下を見ていたときは最新へ。文字選択中は動かさない）
         post {
             val scrollsToLatest = initialScrollPending || (wasAtBottom && !hadSelection)
-            scroll.scrollTo(0, if (scrollsToLatest) max(0, height - scroll.height) else oldScrollY)
+            scroll.scrollToByApp(if (scrollsToLatest) max(0, height - scroll.height) else oldScrollY)
             initialScrollPending = false
         }
     }
@@ -631,6 +638,15 @@ private class MemoDocumentView(context: Context, private val scroll: MemoScrollV
         return blocks.indices.lastOrNull { circleCenters[it] <= y }?.let { blocks[it] }
     }
 
+    // 文書の高さ y にあるブロック（一番上の丸より上なら、一番上のブロック）
+    fun blockIdAt(y: Float): Long? = (blockWithCircleAbove(y) ?: blocks.firstOrNull())?.id
+
+    // 最新のブロックと、その丸の高さ（文書の座標）
+    fun latestBlockCircle(): Pair<Long, Float>? {
+        val block = blocks.lastOrNull() ?: return null
+        return block.id to circleCenterYs().last()
+    }
+
     // ---------------------------------
     // 描画
     // ---------------------------------
@@ -713,6 +729,17 @@ private class MemoScrollView(context: Context) : ScrollView(context) {
     private var thumbGrabOffset = 0f
     private var draggingThumb = false
 
+    // --- つまみの位置の知らせ
+    // つまみの高さと、その高さにあるブロックが変わったときに知らせる（背景の日付表示に使う。y は表示範囲の上端から測った dp）
+    // scrolling は、指やつまみの操作でスクロールしたときだけ true
+    var onThumbChanged: ((blockId: Long, y: Double, scrolling: Boolean) -> Unit)? = null
+    // 最後に知らせたブロックと高さ（変わっていなければ知らせ直さない）
+    private var reportedThumb: Pair<Long, Double>? = null
+    // 最後に知らせたときのスクロール位置
+    private var scrollYSeenByReport = 0
+    // アプリ側がスクロールを動かしている最中か
+    private var scrollingByApp = false
+
     // つまみの色（本文と同じ色）
     var thumbColor: Int = 0
         set(value) {
@@ -782,6 +809,7 @@ private class MemoScrollView(context: Context) : ScrollView(context) {
     override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
         super.onLayout(changed, left, top, right, bottom)
         documentView?.updateBottomPadding()
+        reportThumb()
     }
 
     // 一番下を見ている間に一覧の高さが変わったとき（選択バーの出入りなど）は、一番下のまま保つ
@@ -790,8 +818,43 @@ private class MemoScrollView(context: Context) : ScrollView(context) {
         val wasAtBottom = scrollY >= documentHeight - oldHeight - dp(AT_BOTTOM_TOLERANCE_DP)
         super.onSizeChanged(width, height, oldWidth, oldHeight)
         if (oldHeight > 0 && height != oldHeight && wasAtBottom) {
-            post { scrollTo(0, max(0, (documentView?.height ?: 0) - this.height)) }
+            post { scrollToByApp(max(0, (documentView?.height ?: 0) - this.height)) }
         }
+    }
+
+    // ---------------------------------
+    // つまみの位置を Dart へ知らせる
+    // ---------------------------------
+    override fun onScrollChanged(left: Int, top: Int, oldLeft: Int, oldTop: Int) {
+        super.onScrollChanged(left, top, oldLeft, oldTop)
+        reportThumb()
+    }
+
+    // スクロールできないほど短いとき（つまみを出さないとき）は、最新のブロックの丸の高さとする
+    fun reportThumb(force: Boolean = false) {
+        // 前回から表示位置が動いていれば、指やつまみの操作でスクロールしている
+        val scrolling = !scrollingByApp && scrollY != scrollYSeenByReport
+        scrollYSeenByReport = scrollY
+        val document = documentView ?: return
+        val (blockId, documentY) = if (scrollRange > 0) {
+            val thumbY = scrollY + thumbCenterY()
+            (document.blockIdAt(thumbY) ?: return) to thumbY
+        } else {
+            document.latestBlockCircle() ?: return
+        }
+        val y = ((documentY - scrollY) / density).toDouble()
+        val reported = reportedThumb
+        if (!force && !scrolling && reported != null && reported.first == blockId && abs(reported.second - y) < 0.5) return
+        reportedThumb = blockId to y
+        onThumbChanged?.invoke(blockId, y, scrolling)
+    }
+
+    // アプリ側が動かすスクロール（新しいメモで末尾へ移るときなど）は、スクロール中の日付表示の対象にしない
+    // scrollTo の中で onScrollChanged が呼ばれるので、その間だけ印を立てておく
+    fun scrollToByApp(y: Int) {
+        scrollingByApp = true
+        scrollTo(0, y)
+        scrollingByApp = false
     }
 
     // ---------------------------------
