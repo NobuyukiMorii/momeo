@@ -165,13 +165,11 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
           // 上端は、録音設定パネルの状態行のぶん空ける。
           // 録音設定パネルを開いても覆いかぶさるだけなので、ここは動かさない
           top: safeAreaTop + recordingSettingsPanelHeight,
-          // 下端は、選択バーの出入りと同じ動きで押し上げる
-          bottom:
-              safeAreaBottom +
-              listeningSelectionBarPushUpHeight(
-                slideProgress: _selectionBarController.value,
-                safeAreaBottom: safeAreaBottom,
-              ),
+          // 下端は画面の下端まで広げ、選択バーが出ている間はその高さの分だけ押し上げる
+          bottom: listeningSelectionBarVisibleHeight(
+            slideProgress: _selectionBarController.value,
+            safeAreaBottom: safeAreaBottom,
+          ),
         ),
         child: child,
       ),

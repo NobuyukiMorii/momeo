@@ -100,15 +100,13 @@ const _deleteDialogConfirmLabel = '削除する';
 final _selectionCountFormat = NumberFormat('#,###');
 
 // ---------------------------------
-// 一覧を押し上げる高さ（バーのうち、安全領域より上に出ているぶん）
-//   一覧は安全領域のぶんを自分で空けているので、それより上に出た高さだけを返す
+// バーが画面内に出ている高さ（安全領域を含む）
 // ---------------------------------
-double listeningSelectionBarPushUpHeight({
+double listeningSelectionBarVisibleHeight({
   required double slideProgress,
   required double safeAreaBottom,
 }) {
-  final visibleHeight = (_barHeight + safeAreaBottom) * slideProgress;
-  return max(0.0, visibleHeight - safeAreaBottom);
+  return (_barHeight + safeAreaBottom) * slideProgress;
 }
 
 // ---------------------------------

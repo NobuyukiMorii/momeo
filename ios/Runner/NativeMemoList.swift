@@ -31,7 +31,7 @@ private enum BodyLayout {
     static let paddingRight: CGFloat = 34
     // 本文の上の余白の下限（メモが少ないうちは、残りを上に空けて一覧を下に寄せる）
     static let minPaddingTop: CGFloat = 24
-    // 本文の下の余白
+    // 本文の下の余白（ホームインジケーターに重なる分は、これに足す）
     static let paddingBottom: CGFloat = 24
     // 本文1行の高さ（文字サイズに対する倍率）。ヒラギノの leading が上乗せされ、見た目は約2倍になる
     static let lineHeightRatio: CGFloat = 1.5
@@ -224,13 +224,21 @@ private final class MemoDocumentView: UITextView {
     // ---------------------------------
     override func layoutSubviews() {
         let oldSize = lastLayoutSize
+        let wasAtBottom = contentOffset.y >= contentSize.height - oldSize.height - BodyLayout.atBottomTolerance
         super.layoutSubviews()
         guard bounds.width > 0, bounds.height > 0 else { return }
+        // 一番下までスクロールしたときだけ、最新の行をホームインジケーターの上へ離す（途中では下を通り抜けて流れる）
+        let bottomInset = safeAreaInsets.bottom + BodyLayout.paddingBottom
+        if abs(textContainerInset.bottom - bottomInset) > 0.5 {
+            textContainerInset.bottom = bottomInset
+            needsDocumentLayout = true
+        }
         if needsDocumentLayout || oldSize != bounds.size {
             needsDocumentLayout = false
             layoutDocument()
         }
-        if isFirstLayout {
+        // 最初と、一番下を見ている間に一覧の高さが変わったとき（選択バーの出入りなど）は、一番下へ
+        if isFirstLayout || (oldSize != bounds.size && wasAtBottom) {
             contentOffset = CGPoint(x: 0, y: scrollableHeight)
         }
         isFirstLayout = false

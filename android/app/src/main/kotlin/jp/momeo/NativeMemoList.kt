@@ -3,6 +3,7 @@ package jp.momeo
 import android.content.Context
 import android.graphics.Paint
 import android.graphics.Typeface
+import android.os.Build
 import android.text.SpannableStringBuilder
 import android.text.Spanned
 import android.text.style.LineHeightSpan
@@ -11,6 +12,7 @@ import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
+import android.view.WindowInsets
 import android.widget.FrameLayout
 import android.widget.ScrollView
 import android.widget.TextView
@@ -50,7 +52,7 @@ private const val BODY_PADDING_LEFT_DP = 12
 private const val BODY_PADDING_RIGHT_DP = 34
 private const val BODY_PADDING_TOP_DP = 24
 
-// 本文の下の余白
+// 本文の下の余白（ナビゲーションバーに重なる分は、これに足す）
 private const val BODY_PADDING_BOTTOM_DP = 24
 
 // 本文1行の高さ（文字サイズに対する倍率）。iOS はヒラギノの leading が1.5倍の行高に上乗せされて約2倍に見えるため、それに合わせる
@@ -94,7 +96,7 @@ private data class MemoBlock(
 // ---------------------------------
 private class NativeMemoList(context: Context, viewId: Int, messenger: BinaryMessenger, args: Any?) : PlatformView {
     private val channel = MethodChannel(messenger, "${NativeMemoListFactory.VIEW_TYPE}/$viewId")
-    private val scroll = ScrollView(context)
+    private val scroll = MemoScrollView(context)
     private val document = MemoDocumentView(context, scroll)
 
     init {
@@ -125,7 +127,7 @@ private class NativeMemoList(context: Context, viewId: Int, messenger: BinaryMes
 // ---------------------------------
 // 本文（メモ全件を1つにした文書）
 // ---------------------------------
-private class MemoDocumentView(context: Context, private val scroll: ScrollView) : TextView(context) {
+private class MemoDocumentView(context: Context, private val scroll: MemoScrollView) : TextView(context) {
     private val density = resources.displayMetrics.density
 
     // 表示中のブロック（古い順）
@@ -139,7 +141,7 @@ private class MemoDocumentView(context: Context, private val scroll: ScrollView)
         // メモが少ないうちは、一覧を下に寄せる
         gravity = Gravity.BOTTOM or Gravity.START
         includeFontPadding = false
-        setPadding(dp(BODY_PADDING_LEFT_DP), dp(BODY_PADDING_TOP_DP), dp(BODY_PADDING_RIGHT_DP), dp(BODY_PADDING_BOTTOM_DP))
+        setPadding(dp(BODY_PADDING_LEFT_DP), dp(BODY_PADDING_TOP_DP), dp(BODY_PADDING_RIGHT_DP), 0)
         setBackgroundColor(android.graphics.Color.TRANSPARENT)
         typeface = loadFlutterAssetFont(REGULAR_FONT_ASSET)
     }
@@ -172,6 +174,7 @@ private class MemoDocumentView(context: Context, private val scroll: ScrollView)
 
         // --- 文書を差し替える
         text = buildDocument()
+        updateBottomPadding()
 
         // --- 組み直した後の高さで、スクロール位置を決める（最初と、一番下を見ていたときは最新へ）
         post {
@@ -179,6 +182,12 @@ private class MemoDocumentView(context: Context, private val scroll: ScrollView)
             scroll.scrollTo(0, if (scrollsToLatest) max(0, height - scroll.height) else oldScrollY)
             initialScrollPending = false
         }
+    }
+
+    // 文書の下の余白を、ナビゲーションバーの分に合わせる
+    fun updateBottomPadding() {
+        val bottomPadding = scroll.documentPaddingBottom()
+        if (paddingBottom != bottomPadding) setPadding(paddingLeft, paddingTop, paddingRight, bottomPadding)
     }
 
     // Dart から届いたブロックの一覧（形の合わないものは飛ばす）
@@ -202,6 +211,50 @@ private class MemoDocumentView(context: Context, private val scroll: ScrollView)
             document.setSpan(MemoLineHeightSpan(lineHeight, spacing), start, document.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
         }
         return document
+    }
+}
+
+// ---------------------------------
+// 文書をスクロールし、下端ではナビゲーションバーを避ける
+// ---------------------------------
+private class MemoScrollView(context: Context) : ScrollView(context) {
+    private val density = resources.displayMetrics.density
+
+    private val documentView: MemoDocumentView?
+        get() = getChildAt(0) as? MemoDocumentView
+
+    // 下端がナビゲーションバーに重なる高さ
+    private fun bottomSystemBarOverlap(): Float {
+        val insets = rootWindowInsets ?: return 0f
+        val systemBarHeight = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            insets.getInsets(WindowInsets.Type.navigationBars()).bottom
+        } else {
+            @Suppress("DEPRECATION")
+            insets.systemWindowInsetBottom
+        }
+        val location = IntArray(2)
+        getLocationInWindow(location)
+        val spaceBelow = rootView.height - (location[1] + height)
+        return max(0, systemBarHeight - spaceBelow).toFloat()
+    }
+
+    // 文書の下の余白（ナビゲーションバーを避ける分を足す）
+    fun documentPaddingBottom(): Int = (bottomSystemBarOverlap() + BODY_PADDING_BOTTOM_DP * density).roundToInt()
+
+    // 一番下までスクロールしたときだけ、最新の行をナビゲーションバーの上へ離す（途中では下を通り抜けて流れる）
+    override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
+        super.onLayout(changed, left, top, right, bottom)
+        documentView?.updateBottomPadding()
+    }
+
+    // 一番下を見ている間に一覧の高さが変わったとき（選択バーの出入りなど）は、一番下のまま保つ
+    override fun onSizeChanged(width: Int, height: Int, oldWidth: Int, oldHeight: Int) {
+        val documentHeight = documentView?.height ?: 0
+        val wasAtBottom = scrollY >= documentHeight - oldHeight - AT_BOTTOM_TOLERANCE_DP * density
+        super.onSizeChanged(width, height, oldWidth, oldHeight)
+        if (oldHeight > 0 && height != oldHeight && wasAtBottom) {
+            post { scrollTo(0, max(0, (documentView?.height ?: 0) - this.height)) }
+        }
     }
 }
 
