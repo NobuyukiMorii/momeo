@@ -1,6 +1,8 @@
 package jp.momeo
 
 import android.annotation.TargetApi
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Paint
@@ -57,6 +59,7 @@ private const val METHOD_TOGGLE_BLOCK = "toggleBlock"
 // Dart から値が届かなかったときの既定値
 private const val DEFAULT_FONT_SIZE = 18f
 private val DEFAULT_TEXT_COLOR = 0xff111827.toInt()
+private const val DEFAULT_COPY_SEPARATOR = "\n\n"
 
 // ---------------------------------
 // 定数: 本文（dp。iOS 側の pt とそろえる）
@@ -199,6 +202,8 @@ private class MemoDocumentView(context: Context, private val scroll: MemoScrollV
     private var initialized = false
     // アプリが置き直した選択範囲（OS がその端までスクロールしないようにする）
     private var selectionWithoutScrolling: Pair<Int, Int>? = null
+    // ブロックをまたいでコピーしたときの区切り
+    private var copySeparator = DEFAULT_COPY_SEPARATOR
 
     // --- 行高・太字と、右の縦線・丸
     // ブロックごとに付けている span（メモ id → span）
@@ -257,6 +262,7 @@ private class MemoDocumentView(context: Context, private val scroll: MemoScrollV
         val data = arguments as? Map<*, *> ?: return
         val blockValues = data["blocks"] as? List<*> ?: return
         latestArguments = arguments
+        copySeparator = data["copySeparator"] as? String ?: DEFAULT_COPY_SEPARATOR
         val incoming = parseBlocks(blockValues)
 
         // --- 差し替える前の文字選択とスクロール位置を覚えておく（選択範囲のメモが消えるなら、文字選択を解除する）
@@ -435,6 +441,34 @@ private class MemoDocumentView(context: Context, private val scroll: MemoScrollV
             updating = false
             update(latestArguments)
         }
+    }
+
+    // メニューの「コピー」「すべて選択」は、ブロックの区切りを踏まえてアプリ側で行う
+    override fun onTextContextMenuItem(id: Int): Boolean {
+        when (id) {
+            android.R.id.copy -> copySelection()
+            android.R.id.selectAll -> selectAllCopyableBlocks()
+            else -> return super.onTextContextMenuItem(id)
+        }
+        return true
+    }
+
+    // 選択範囲に掛かる各メモの部分を取り出し、区切りでつないでクリップボードへ入れる
+    private fun copySelection() {
+        val from = selectionFrom
+        val to = selectionTo
+        val pieces = copyableBlocksIn(from, to)
+            .map { it.text.substring(max(from, it.start) - it.start, min(to, it.end) - it.start) }
+        if (pieces.isEmpty()) return
+        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        clipboard.setPrimaryClip(ClipData.newPlainText("", pieces.joinToString(copySeparator)))
+    }
+
+    // 文字選択の対象になるメモ全件を、表示位置を保ったまま選ぶ
+    private fun selectAllCopyableBlocks() {
+        val copyable = copyableBlocks()
+        if (copyable.isEmpty()) return
+        setSelectionWithoutScrolling(copyable.first().start, copyable.last().end)
     }
 
     // ---------------------------------

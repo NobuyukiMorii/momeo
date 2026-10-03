@@ -23,6 +23,7 @@ private enum ChannelMethod {
 private enum DefaultValue {
     static let fontSize: Double = 18
     static let textColor: UInt32 = 0xff111827
+    static let copySeparator = "\n\n"
 }
 
 // ---------------------------------
@@ -168,6 +169,8 @@ private final class MemoDocumentView: UITextView, UITextViewDelegate {
     private var snapshots: [Int64: String] = [:]
     // 文書を組み直している間は、選択の変化を OS の操作として扱わない
     private var updating = false
+    // ブロックをまたいでコピーしたときの区切り
+    private var copySeparator = DefaultValue.copySeparator
 
     // --- 右の縦線と丸
     private let rail = MemoRailView()
@@ -226,7 +229,8 @@ private final class MemoDocumentView: UITextView, UITextViewDelegate {
         let wasAtBottom = contentOffset.y >= contentSize.height - bounds.height - BodyLayout.atBottomTolerance
         let oldOffsetY = contentOffset.y
 
-        // --- 文字の大きさ・色
+        // --- 文字の大きさ・色と、コピーの区切り
+        copySeparator = data["copySeparator"] as? String ?? DefaultValue.copySeparator
         bodySize = CGFloat((data["fontSize"] as? NSNumber)?.doubleValue ?? DefaultValue.fontSize)
         bodyColor = Self.opaqueColor(argb: (data["textColor"] as? NSNumber)?.uint32Value ?? DefaultValue.textColor)
 
@@ -407,6 +411,40 @@ private final class MemoDocumentView: UITextView, UITextViewDelegate {
             self.updating = false
             self.update(self.latestArguments)
         }
+    }
+
+    // 文字選択の対象になるメモ全件の範囲（対象が無ければ nil）
+    private var allCopyableRange: NSRange? {
+        let copyable = copyableBlocks
+        guard let first = copyable.first, let last = copyable.last else { return nil }
+        return NSRange(location: first.range.location, length: NSMaxRange(last.range) - first.range.location)
+    }
+
+    // 選択範囲に掛かる各メモの部分を取り出し、区切りでつないでクリップボードへ入れる
+    override func copy(_ sender: Any?) {
+        let pieces = copyableBlocks.compactMap { block -> String? in
+            let intersection = NSIntersectionRange(block.range, selectedRange)
+            guard intersection.length > 0 else { return nil }
+            return (block.text as NSString).substring(with: NSRange(
+                location: intersection.location - block.range.location, length: intersection.length))
+        }
+        if !pieces.isEmpty { UIPasteboard.general.string = pieces.joined(separator: copySeparator) }
+    }
+
+    // 文字選択の対象になるメモ全件を選ぶ（選んだ後のメニューは OS の全選択に出させ、範囲は本文の端までに収める）
+    override func selectAll(_ sender: Any?) {
+        super.selectAll(sender)
+        textViewDidChangeSelection(self)
+    }
+
+    override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
+        if action == #selector(copy(_:)) { return selectedRange.length > 0 }
+        // すでに全件を選んでいるときは「すべてを選択」を出さない
+        if action == #selector(selectAll(_:)) {
+            guard let range = allCopyableRange else { return false }
+            return selectedRange != range
+        }
+        return super.canPerformAction(action, withSender: sender)
     }
 
     // ---------------------------------

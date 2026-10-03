@@ -20,6 +20,9 @@ const _toggleBlockMethod = 'toggleBlock';
 // 本文の文字サイズ（端末の文字サイズの設定で拡大する前の値）
 const _bodyFontSize = 18.0;
 
+// 文字選択をブロックをまたいでコピーしたときの、ブロック同士の区切り
+const _copySeparator = '\n\n';
+
 // ---------------------------------
 // メモ一覧を1つの文書にしてネイティブ側へ渡し、表示とスクロールは OS の部品に任せる
 // ---------------------------------
@@ -95,6 +98,7 @@ class _NativeMemoListState extends State<NativeMemoList> {
       'blocks': blocks,
       'fontSize': MediaQuery.textScalerOf(context).scale(_bodyFontSize),
       'textColor': AppColors.onSurface.toARGB32(),
+      'copySeparator': _copySeparator,
     };
   }
 
