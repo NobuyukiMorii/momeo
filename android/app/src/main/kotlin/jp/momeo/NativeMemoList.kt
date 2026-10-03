@@ -7,11 +7,15 @@ import android.graphics.Typeface
 import android.os.Build
 import android.text.SpannableStringBuilder
 import android.text.Spanned
+import android.text.TextPaint
 import android.text.style.LineHeightSpan
+import android.text.style.MetricAffectingSpan
 import android.text.style.UpdateLayout
 import android.util.TypedValue
 import android.view.Gravity
+import android.view.MotionEvent
 import android.view.View
+import android.view.ViewConfiguration
 import android.view.ViewGroup
 import android.view.WindowInsets
 import android.widget.FrameLayout
@@ -23,6 +27,7 @@ import io.flutter.plugin.common.MethodChannel
 import io.flutter.plugin.common.StandardMessageCodec
 import io.flutter.plugin.platform.PlatformView
 import io.flutter.plugin.platform.PlatformViewFactory
+import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.roundToInt
 
@@ -40,6 +45,9 @@ import kotlin.math.roundToInt
 
 // Dart から呼ばれるメソッド
 private const val METHOD_UPDATE = "update"
+
+// Dart へ知らせるメソッド
+private const val METHOD_TOGGLE_BLOCK = "toggleBlock"
 
 // Dart から値が届かなかったときの既定値
 private const val DEFAULT_FONT_SIZE = 18f
@@ -69,19 +77,25 @@ private const val EMPTY_BLOCK_TEXT = "​"
 // 一番下からこの距離までにいれば、一番下を見ているとみなす
 private const val AT_BOTTOM_TOLERANCE_DP = 32
 
-// 本文の書体（Flutter 側の pubspec.yaml で同梱している Noto Sans JP）
+// 本文の書体（Flutter 側の pubspec.yaml で同梱している Noto Sans JP。選択していないとき・選択中）
 private const val REGULAR_FONT_ASSET = "assets/fonts/NotoSansJP-Regular.otf"
+private const val BOLD_FONT_ASSET = "assets/fonts/NotoSansJP-Bold.otf"
 
 // ---------------------------------
 // 定数: 右の縦線と丸（dp）
 // ---------------------------------
 
+// 縦線と丸を押せる領域の幅（一覧の右端から）
+private const val RAIL_TOUCH_WIDTH_DP = 40
+
 // 縦線の位置（一覧の右端から）
 private const val RAIL_X_FROM_RIGHT_DP = 18
 
-// 縦線の太さと丸の半径
+// 縦線の太さと丸の半径（選択していないとき・選択中）
 private const val RAIL_WIDTH_DP = 1.5f
+private const val SELECTED_RAIL_WIDTH_DP = 2.5f
 private const val CIRCLE_RADIUS_DP = 4f
+private const val SELECTED_CIRCLE_RADIUS_DP = 5.5f
 
 // ブロックが1つだけのときに、丸を1行目の文字の上端から離す距離
 private const val SINGLE_BLOCK_CIRCLE_GAP_DP = 12
@@ -105,6 +119,8 @@ private data class MemoBlock(
     val id: Long,
     // 表示する本文
     val text: String,
+    // 丸で選ばれているか
+    val selected: Boolean,
     // 文書の中での本文の範囲（start 以上 end 未満）
     var start: Int = 0,
     var end: Int = 0,
@@ -124,6 +140,7 @@ private class NativeMemoList(context: Context, viewId: Int, messenger: BinaryMes
             document,
             FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT),
         )
+        document.onToggleBlock = { blockId -> channel.invokeMethod(METHOD_TOGGLE_BLOCK, blockId) }
         channel.setMethodCallHandler { call, result ->
             when (call.method) {
                 METHOD_UPDATE -> {
@@ -140,6 +157,7 @@ private class NativeMemoList(context: Context, viewId: Int, messenger: BinaryMes
 
     override fun dispose() {
         channel.setMethodCallHandler(null)
+        document.onToggleBlock = null
     }
 }
 
@@ -147,6 +165,9 @@ private class NativeMemoList(context: Context, viewId: Int, messenger: BinaryMes
 // 本文（メモ全件を1つにした文書）と、右の縦線・丸
 // ---------------------------------
 private class MemoDocumentView(context: Context, private val scroll: MemoScrollView) : TextView(context) {
+    // 丸が押されたブロックのメモ id を知らせる
+    var onToggleBlock: ((Long) -> Unit)? = null
+
     private val density = resources.displayMetrics.density
 
     // 表示中のブロック（古い順）
@@ -155,8 +176,12 @@ private class MemoDocumentView(context: Context, private val scroll: MemoScrollV
     private var fontPixels = DEFAULT_FONT_SIZE
     // 最初の表示で、一番下（最新）までスクロールする前か
     private var initialScrollPending = true
+    // 選択中のブロックの本文に使う太字の書体
+    private val boldTypeface = loadFlutterAssetFont(BOLD_FONT_ASSET)
     // 縦線と丸を描く絵の具
     private val railPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    // 縦線・丸の上で始まったタッチ（離したときに、動かさずに離したかを判定する）
+    private var railTouchDown: MotionEvent? = null
 
     init {
         // メモが少ないうちは、一覧を下に寄せる
@@ -216,10 +241,10 @@ private class MemoDocumentView(context: Context, private val scroll: MemoScrollV
     private fun parseBlocks(values: List<*>): List<MemoBlock> = values.mapNotNull { value ->
         val item = value as? Map<*, *> ?: return@mapNotNull null
         val id = (item["id"] as? Number)?.toLong() ?: return@mapNotNull null
-        MemoBlock(id = id, text = item["text"] as? String ?: "")
+        MemoBlock(id = id, text = item["text"] as? String ?: "", selected = item["selected"] == true)
     }
 
-    // 各ブロックの本文を改行1つでつなぎ、ブロックごとに行高とブロック間隔の span を付けた文書を作る（ブロックごとの文書の中の範囲も記録する）
+    // 各ブロックの本文を改行1つでつなぎ、ブロックごとに行高・ブロック間隔・太字の span を付けた文書を作る（ブロックごとの文書の中の範囲も記録する）
     private fun buildDocument(): SpannableStringBuilder {
         val document = SpannableStringBuilder()
         val lineHeight = (fontPixels * LINE_HEIGHT_RATIO).roundToInt()
@@ -232,6 +257,9 @@ private class MemoDocumentView(context: Context, private val scroll: MemoScrollV
             // 最後のブロック以外は、後ろの改行まで含めてブロックの範囲とする
             val spacing = if (isLast) 0 else dp(BLOCK_SPACING_DP)
             document.setSpan(MemoLineHeightSpan(lineHeight, spacing), block.start, document.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            if (block.selected) {
+                document.setSpan(MemoTypefaceSpan(boldTypeface), block.start, document.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            }
         }
         return document
     }
@@ -262,6 +290,12 @@ private class MemoDocumentView(context: Context, private val scroll: MemoScrollV
         return centers
     }
 
+    // 高さ y より上で、一番近い丸を持つブロック（どの丸よりも上なら null）
+    private fun blockWithCircleAbove(y: Float): MemoBlock? {
+        val circleCenters = circleCenterYs()
+        return blocks.indices.lastOrNull { circleCenters[it] <= y }?.let { blocks[it] }
+    }
+
     // ---------------------------------
     // 描画
     // ---------------------------------
@@ -270,18 +304,60 @@ private class MemoDocumentView(context: Context, private val scroll: MemoScrollV
         drawRail(canvas)
     }
 
-    // 右の縦線と丸
+    // 右の縦線と丸（選択中のブロックは太い線と大きな丸）
     private fun drawRail(canvas: Canvas) {
         val x = width - dp(RAIL_X_FROM_RIGHT_DP).toFloat()
-        railPaint.strokeWidth = RAIL_WIDTH_DP * density
         // 親のスクロールでは描画が再実行されないため、全区間を記録する
         val circleCenters = circleCenterYs()
-        for ((index, top) in circleCenters.withIndex()) {
-            val bottom = if (index + 1 < circleCenters.size) circleCenters[index + 1] else height.toFloat()
+        for ((index, block) in blocks.withIndex()) {
+            val top = circleCenters[index]
+            val bottom = if (index + 1 < blocks.size) circleCenters[index + 1] else height.toFloat()
+            val lineWidth = if (block.selected) SELECTED_RAIL_WIDTH_DP else RAIL_WIDTH_DP
+            val radius = if (block.selected) SELECTED_CIRCLE_RADIUS_DP else CIRCLE_RADIUS_DP
+            railPaint.strokeWidth = lineWidth * density
             canvas.drawLine(x, top, x, bottom, railPaint)
-            canvas.drawCircle(x, top, CIRCLE_RADIUS_DP * density, railPaint)
+            canvas.drawCircle(x, top, radius * density, railPaint)
         }
     }
+
+    // ---------------------------------
+    // タッチ
+    // ---------------------------------
+    override fun onTouchEvent(event: MotionEvent): Boolean {
+        if (handleRailTouch(event)) return true
+        return super.onTouchEvent(event)
+    }
+
+    // 縦線・丸の上で始まったタッチを受け取り、動かさずに離したらそのブロックの選択を切り替える
+    private fun handleRailTouch(event: MotionEvent): Boolean {
+        if (event.actionMasked == MotionEvent.ACTION_DOWN && event.x >= width - dp(RAIL_TOUCH_WIDTH_DP)) {
+            railTouchDown?.recycle()
+            railTouchDown = MotionEvent.obtain(event)
+            return true
+        }
+        val down = railTouchDown ?: return false
+        when (event.actionMasked) {
+            MotionEvent.ACTION_UP -> {
+                val slop = ViewConfiguration.get(context).scaledTouchSlop
+                val isTap = abs(event.y - down.y) < slop && abs(event.x - down.x) < slop
+                if (isTap) {
+                    blockWithCircleAbove(event.y)?.let { onToggleBlock?.invoke(it.id) }
+                    performClick()
+                }
+                releaseRailTouch()
+            }
+            MotionEvent.ACTION_CANCEL -> releaseRailTouch()
+        }
+        return true
+    }
+
+    private fun releaseRailTouch() {
+        railTouchDown?.recycle()
+        railTouchDown = null
+    }
+
+    // onTouchEvent を上書きしたときの lint の決まりに合わせて、performClick も上書きしておく
+    override fun performClick(): Boolean = super.performClick()
 }
 
 // ---------------------------------
@@ -325,6 +401,20 @@ private class MemoScrollView(context: Context) : ScrollView(context) {
         if (oldHeight > 0 && height != oldHeight && wasAtBottom) {
             post { scrollTo(0, max(0, (documentView?.height ?: 0) - this.height)) }
         }
+    }
+}
+
+// ---------------------------------
+// 選択中のブロックの本文を、同梱した太字の書体で描く
+// ---------------------------------
+// 標準の StyleSpan(BOLD) では、太字の書体ではなく標準の太さを機械的に太らせて描いてしまうため
+private class MemoTypefaceSpan(private val typeface: Typeface) : MetricAffectingSpan() {
+    override fun updateDrawState(paint: TextPaint) {
+        paint.typeface = typeface
+    }
+
+    override fun updateMeasureState(paint: TextPaint) {
+        paint.typeface = typeface
     }
 }
 

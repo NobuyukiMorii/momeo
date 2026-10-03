@@ -14,6 +14,9 @@ const _viewType = 'jp.momeo/native_memo_list';
 // ネイティブ側へ呼び出すメソッド
 const _updateMethod = 'update';
 
+// ネイティブ側から届くメソッド
+const _toggleBlockMethod = 'toggleBlock';
+
 // 本文の文字サイズ（端末の文字サイズの設定で拡大する前の値）
 const _bodyFontSize = 18.0;
 
@@ -21,10 +24,19 @@ const _bodyFontSize = 18.0;
 // メモ一覧を1つの文書にしてネイティブ側へ渡し、表示とスクロールは OS の部品に任せる
 // ---------------------------------
 class NativeMemoList extends StatefulWidget {
-  const NativeMemoList({super.key, required this.memos});
+  const NativeMemoList({
+    super.key,
+    required this.memos,
+    required this.selectedIds,
+    required this.onToggleSelection,
+  });
 
   // 確定済みメモ一覧（新しい順）
   final List<VoiceMemo> memos;
+  // 丸で選ばれているメモの id
+  final Set<int> selectedIds;
+  // 丸が押されたとき
+  final ValueChanged<int> onToggleSelection;
 
   @override
   State<NativeMemoList> createState() => _NativeMemoListState();
@@ -40,13 +52,31 @@ class _NativeMemoListState extends State<NativeMemoList> {
   // 描画後に文書を送る予約が入っているか
   bool _updatePending = false;
 
+  @override
+  void dispose() {
+    _channel?.setMethodCallHandler(null);
+    super.dispose();
+  }
+
   // ---------------------------------
   // ネイティブ View ができたとき
   // ---------------------------------
   void _onPlatformViewCreated(int viewId) {
     _channel = MethodChannel('$_viewType/$viewId');
+    _channel!.setMethodCallHandler(_onNativeCall);
     // 作っている間に変わった文書を渡し直す
     _channel!.invokeMethod<void>(_updateMethod, _document);
+  }
+
+  // ---------------------------------
+  // ネイティブ側からの知らせ
+  // ---------------------------------
+  Future<void> _onNativeCall(MethodCall call) async {
+    if (!mounted) return;
+    switch (call.method) {
+      case _toggleBlockMethod:
+        widget.onToggleSelection(call.arguments as int);
+    }
   }
 
   // ---------------------------------
@@ -55,7 +85,11 @@ class _NativeMemoListState extends State<NativeMemoList> {
   Map<String, Object?> _buildDocument() {
     final blocks = [
       for (final memo in widget.memos.reversed)
-        {'id': memo.id, 'text': memo.content},
+        {
+          'id': memo.id,
+          'text': memo.content,
+          'selected': widget.selectedIds.contains(memo.id),
+        },
     ];
     return {
       'blocks': blocks,
@@ -83,7 +117,7 @@ class _NativeMemoListState extends State<NativeMemoList> {
   // ネイティブ View
   // ---------------------------------
   Widget _buildPlatformView() {
-    // 一覧の上の操作（スクロールなど）は、Flutter 側で取り合わずにすべて渡す
+    // 一覧の上の操作（スクロール・丸のタップ）は、Flutter 側で取り合わずにすべて渡す
     final gestures = <Factory<OneSequenceGestureRecognizer>>{
       Factory<EagerGestureRecognizer>(EagerGestureRecognizer.new),
     };

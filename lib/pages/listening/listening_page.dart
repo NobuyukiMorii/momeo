@@ -173,7 +173,11 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
         ),
         child: child,
       ),
-      child: NativeMemoList(memos: listening.memos),
+      child: NativeMemoList(
+        memos: listening.memos,
+        selectedIds: Set.of(_selectedMemoIds),
+        onToggleSelection: _toggleMemoSelection,
+      ),
     );
   }
 
