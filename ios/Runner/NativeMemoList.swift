@@ -5,7 +5,7 @@ import UIKit
 // NativeMemoList — リスニング画面のメモ一覧（iOS）
 //
 //   メモ全件を時系列順に並べた1つの UITextView にし、文字選択・つまみ・メニュー・スクロールは OS に任せる。
-//   右の縦線と丸（ブロック選択）、スクロールつまみはアプリ側で描く。
+//   右の縦線と丸（ブロック選択）、スクロールつまみ、発話中の「.」はアプリ側で描く。
 //   Dart 側は lib/widgets/native_memo_list.dart。
 // ============================================================
 
@@ -41,6 +41,8 @@ private enum BodyLayout {
     static let paddingBottom: CGFloat = 24
     // 本文1行の高さ（文字サイズに対する倍率）。ヒラギノの leading が上乗せされ、見た目は約2倍になる
     static let lineHeightRatio: CGFloat = 1.5
+    // 本文がまだ無いときに見込む1行の高さ（文字サイズに対する倍率。本文の行の見た目とそろえる）
+    static let emptyLineHeightRatio: CGFloat = 2
     // ブロックとブロックの間の余白
     static let blockSpacing: CGFloat = 24
     // 空のメモにも1行分の高さを持たせるために置く、幅の無い文字
@@ -118,6 +120,14 @@ private struct MemoBlock {
     var range = NSRange(location: 0, length: 0)
 }
 
+// 発話中の気配として「.」を出す場所
+private enum SpeakingDotsPlace: String {
+    // 最新のブロックの本文の続き
+    case append
+    // 次のブロックの1行目
+    case newBlock
+}
+
 // 文書の中の位置を、どのブロックの何文字目かで表したもの（本文を差し替えても選択範囲を置き直せるようにする）
 private struct BlockPosition {
     let blockId: Int64
@@ -169,7 +179,7 @@ private final class NativeMemoList: NSObject, FlutterPlatformView {
 }
 
 // ---------------------------------
-// 本文（メモ全件を1つにした文書）と、右の縦線・丸、スクロールつまみ
+// 本文（メモ全件を1つにした文書）と、右の縦線・丸、スクロールつまみ、発話中の「.」
 // ---------------------------------
 private final class MemoDocumentView: UITextView, UITextViewDelegate {
     // 丸が押されたブロックのメモ id を知らせる
@@ -212,6 +222,11 @@ private final class MemoDocumentView: UITextView, UITextViewDelegate {
     // 最後に知らせたときのスクロール位置
     private var offsetYSeenByReport: CGFloat = 0
 
+    // --- 発話中の「.」
+    private let speakingDotsView = MemoSpeakingDotsView()
+    // 出す場所（出さないときは nil）
+    private var speakingDotsPlace: SpeakingDotsPlace?
+
     override init(frame: CGRect, textContainer: NSTextContainer?) {
         // TextKit 1（NSLayoutManager）で組み、文書全体の高さを同じレイアウトから求める
         let storage = NSTextStorage()
@@ -231,6 +246,7 @@ private final class MemoDocumentView: UITextView, UITextViewDelegate {
         // 標準のスクロールバーの代わりに、縦線の上のつまみを出す
         showsVerticalScrollIndicator = false
         delegate = self
+        addSubview(speakingDotsView)
         rail.document = self
         addSubview(rail)
         rail.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(didTapRail(_:))))
@@ -268,7 +284,11 @@ private final class MemoDocumentView: UITextView, UITextViewDelegate {
         let wasAtBottom = contentOffset.y >= contentSize.height - bounds.height - BodyLayout.atBottomTolerance
         let oldOffsetY = contentOffset.y
 
-        // --- 文字の大きさ・色と、コピーの区切り
+        // --- 発話中の「.」と、文字の大きさ・色、コピーの区切り
+        let requestedDotsPlace = (data["speakingDots"] as? String).flatMap(SpeakingDotsPlace.init(rawValue:))
+        let speakingDotsChanged = requestedDotsPlace != speakingDotsPlace
+        speakingDotsPlace = requestedDotsPlace
+        if requestedDotsPlace == nil { speakingDotsView.stop() } else { speakingDotsView.start() }
         copySeparator = data["copySeparator"] as? String ?? DefaultValue.copySeparator
         bodySize = CGFloat((data["fontSize"] as? NSNumber)?.doubleValue ?? DefaultValue.fontSize)
         bodyColor = Self.opaqueColor(argb: (data["textColor"] as? NSNumber)?.uint32Value ?? DefaultValue.textColor)
@@ -285,7 +305,8 @@ private final class MemoDocumentView: UITextView, UITextViewDelegate {
         // --- 文書を差し替え、文字選択を置き直す（中身が同じなら何もしない）
         updating = true
         let document = buildDocument()
-        if sameMemoIds && document.isEqual(to: textStorage) {
+        // 本文が同じでも、「.」の出し方が変わったときは、次のブロックの分の高さを空け直すためにレイアウトし直す
+        if sameMemoIds && document.isEqual(to: textStorage) && !speakingDotsChanged {
             updating = false
             return
         }
@@ -427,6 +448,8 @@ private final class MemoDocumentView: UITextView, UITextViewDelegate {
 
     // OS の操作で文字選択が変わったとき
     func textViewDidChangeSelection(_ textView: UITextView) {
+        // 文字選択中は本文の表示を止めているので、「.」も出さない
+        speakingDotsView.isHidden = speakingDotsPlace == nil || selectedRange.length > 0
         guard !updating else { return }
         let intersections = copyableBlocks
             .map { NSIntersectionRange($0.range, selectedRange) }
@@ -506,7 +529,7 @@ private final class MemoDocumentView: UITextView, UITextViewDelegate {
         super.layoutSubviews()
         guard bounds.width > 0, bounds.height > 0 else { return }
         // 一番下までスクロールしたときだけ、最新の行をホームインジケーターの上へ離す（途中では下を通り抜けて流れる）
-        let bottomInset = safeAreaInsets.bottom + BodyLayout.paddingBottom
+        let bottomInset = safeAreaInsets.bottom + BodyLayout.paddingBottom + speakingDotsReservedHeight
         if abs(textContainerInset.bottom - bottomInset) > 0.5 {
             textContainerInset.bottom = bottomInset
             needsDocumentLayout = true
@@ -515,6 +538,7 @@ private final class MemoDocumentView: UITextView, UITextViewDelegate {
             needsDocumentLayout = false
             layoutDocument()
         }
+        layoutSpeakingDots()
         // 最初と、一番下を見ている間に一覧の高さが変わったとき（選択バーの出入りなど）は、一番下へ（文字選択中は動かさない）
         if isFirstLayout || (oldSize != bounds.size && wasAtBottom && selectedRange.length == 0) {
             setContentOffsetByApp(scrollableHeight)
@@ -605,6 +629,67 @@ private final class MemoDocumentView: UITextView, UITextViewDelegate {
     // 高さ y（文書の座標）より上で、一番近い丸を持つブロック（どの丸よりも上なら nil）
     private func blockWithCircleAbove(_ y: CGFloat) -> MemoBlock? {
         blocks.last(where: { circleCenterY($0) <= y })
+    }
+
+    // ---------------------------------
+    // 発話中の「.」の位置（最新のブロックの本文の続き、または次のブロックの1行目）
+    // ---------------------------------
+    // 次のブロックの1行目に出すあいだは、ブロック間の余白と1行分の高さを文書の下に空けておく
+    private var speakingDotsReservedHeight: CGFloat {
+        speakingDotsPlace == .newBlock ? BodyLayout.blockSpacing + lastLineRect.height : 0
+    }
+
+    // 本文の最後の行（まだ本文が無いときは、見込みの高さの行が先頭にあるものとする）
+    private var lastLineRect: CGRect {
+        guard textStorage.length > 0 else {
+            return CGRect(x: 0, y: 0, width: 0, height: bodySize * BodyLayout.emptyLineHeightRatio)
+        }
+        let glyph = layoutManager.glyphIndexForCharacter(at: textStorage.length - 1)
+        return layoutManager.lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil)
+    }
+
+    // 行の上端から文字のベースラインまで
+    private var lastLineBaselineOffset: CGFloat {
+        guard textStorage.length > 0 else {
+            let font = bodyFont(selected: false)
+            return (bodySize * BodyLayout.emptyLineHeightRatio - font.lineHeight) / 2 + font.ascender
+        }
+        let glyph = layoutManager.glyphIndexForCharacter(at: textStorage.length - 1)
+        return layoutManager.location(forGlyphAt: glyph).y
+    }
+
+    private func layoutSpeakingDots() {
+        guard let place = speakingDotsPlace else {
+            speakingDotsView.isHidden = true
+            return
+        }
+        let lineRect = lastLineRect
+        let containerWidth = textContainer.size.width
+        switch place {
+        case .append:
+            // 最後の行の文字の右端から、行の右端までに収める
+            guard let latestBlock = blocks.last, !latestBlock.text.isEmpty else {
+                speakingDotsView.isHidden = true
+                return
+            }
+            let lastCharacter = NSMaxRange(latestBlock.range) - 1
+            let glyph = layoutManager.glyphIndexForCharacter(at: lastCharacter)
+            let textRight = layoutManager.lineFragmentUsedRect(forGlyphAt: glyph, effectiveRange: nil).maxX
+            speakingDotsView.place(x: textContainerInset.left + textRight,
+                                   baseline: textContainerInset.top + lineRect.minY + lastLineBaselineOffset,
+                                   availableWidth: containerWidth - textRight,
+                                   font: bodyFont(selected: latestBlock.selected), color: bodyColor)
+        case .newBlock:
+            let lineTop = textStorage.length > 0
+                ? textContainerInset.top + lineRect.maxY + BodyLayout.blockSpacing
+                : textContainerInset.top
+            speakingDotsView.place(x: textContainerInset.left,
+                                   baseline: lineTop + lastLineBaselineOffset,
+                                   availableWidth: containerWidth,
+                                   font: bodyFont(selected: false), color: bodyColor)
+        }
+        // 文字選択中は本文の表示を止めているので、「.」も出さない
+        speakingDotsView.isHidden = selectedRange.length > 0
     }
 
     // ---------------------------------
@@ -799,5 +884,71 @@ private final class MemoSelectionDismissTap: UITapGestureRecognizer, UIGestureRe
             guard let document, document.selectedRange == selected else { return }
             document.clearTextSelection()
         }
+    }
+}
+
+// ---------------------------------
+// 発話中の気配として、0.5秒ごとに「.」を1つずつ増やし、行に収まる数（最大10個）まで増えたら0個に戻す
+// ---------------------------------
+private final class MemoSpeakingDotsView: UIView {
+    private static let interval: TimeInterval = 0.5
+    private static let maxDotCount = 10
+    private var timer: Timer?
+    // 今出している「.」の数と、行に収まる数
+    private var dotCount = 0
+    private var fittingDotCount = 0
+    private var font = UIFont.systemFont(ofSize: CGFloat(DefaultValue.fontSize))
+    private var color = UIColor.label
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        backgroundColor = .clear
+        isOpaque = false
+        isUserInteractionEnabled = false
+        isHidden = true
+    }
+
+    required init?(coder: NSCoder) { fatalError("ストーリーボードからは生成しません") }
+
+    deinit { timer?.invalidate() }
+
+    // 動いている途中なら、数えている途中から続ける
+    func start() {
+        guard timer == nil else { return }
+        dotCount = 0
+        let timer = Timer(timeInterval: Self.interval, repeats: true) { [weak self] _ in self?.advance() }
+        // スクロール中も止めずに増やす
+        RunLoop.main.add(timer, forMode: .common)
+        self.timer = timer
+        setNeedsDisplay()
+    }
+
+    func stop() {
+        timer?.invalidate()
+        timer = nil
+        dotCount = 0
+        setNeedsDisplay()
+    }
+
+    // x と baseline は文書の座標。「.」は availableWidth に収まる数までしか増やさない（折り返すと一覧の高さが変わるため）
+    func place(x: CGFloat, baseline: CGFloat, availableWidth: CGFloat, font: UIFont, color: UIColor) {
+        self.font = font
+        self.color = color
+        let dotWidth = ("." as NSString).size(withAttributes: [.font: font]).width
+        fittingDotCount = dotWidth > 0 ? min(Self.maxDotCount, max(0, Int(availableWidth / dotWidth))) : 0
+        if dotCount > fittingDotCount { dotCount = 0 }
+        frame = CGRect(x: x, y: baseline - font.ascender, width: max(0, availableWidth), height: font.lineHeight)
+        setNeedsDisplay()
+    }
+
+    private func advance() {
+        dotCount = fittingDotCount > 0 ? (dotCount + 1) % (fittingDotCount + 1) : 0
+        setNeedsDisplay()
+    }
+
+    override func draw(_ rect: CGRect) {
+        guard dotCount > 0 else { return }
+        (String(repeating: ".", count: dotCount) as NSString)
+            .draw(at: .zero, withAttributes: [.font: font, .foregroundColor: color])
     }
 }

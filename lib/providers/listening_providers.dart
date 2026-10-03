@@ -46,6 +46,7 @@ class ListeningState {
   const ListeningState({
     this.memos = const [],
     this.speechActive = false,
+    this.awaitingTranscription = false,
     this.appendTargetId,
     this.typeInMemoId,
     this.typeInFrom = 0,
@@ -56,6 +57,9 @@ class ListeningState {
 
   // 今ユーザーが発話中か（VAD の判定）
   final bool speechActive;
+
+  // 発話が終わり、文字化の結果（空の結果も含む）を待っているか
+  final bool awaitingTranscription;
 
   // 次の発話を書き足すメモの id
   final int? appendTargetId;
@@ -75,6 +79,9 @@ class ListeningState {
     return ListeningState(
       memos: memos,
       speechActive: isActive,
+      // 発話が終わったら、結果が届くまで待ちに入る
+      awaitingTranscription:
+          awaitingTranscription || (speechActive && !isActive),
       appendTargetId: appendTargetId,
       typeInMemoId: typeInMemoId,
       typeInFrom: typeInFrom,
@@ -87,6 +94,7 @@ class ListeningState {
     return ListeningState(
       memos: [memo, ...memos],
       speechActive: speechActive,
+      awaitingTranscription: false,
       appendTargetId: memo.id,
       typeInMemoId: memo.id,
       typeInFrom: 0,
@@ -98,6 +106,7 @@ class ListeningState {
     return ListeningState(
       memos: [memo, ...memos.skip(1)],
       speechActive: speechActive,
+      awaitingTranscription: false,
       appendTargetId: memo.id,
       typeInMemoId: memo.id,
       typeInFrom: typeInFrom,
@@ -109,6 +118,7 @@ class ListeningState {
     return ListeningState(
       memos: memos,
       speechActive: speechActive,
+      awaitingTranscription: awaitingTranscription,
       appendTargetId: null,
       typeInMemoId: typeInMemoId,
       typeInFrom: typeInFrom,
@@ -120,6 +130,7 @@ class ListeningState {
     return ListeningState(
       memos: memos,
       speechActive: speechActive,
+      awaitingTranscription: false,
       appendTargetId: appendTargetId,
       typeInMemoId: typeInMemoId,
       typeInFrom: typeInFrom,
@@ -134,6 +145,7 @@ class ListeningState {
           if (!removedIds.contains(memo.id)) memo,
       ],
       speechActive: speechActive,
+      awaitingTranscription: awaitingTranscription,
       // 追記先が消えていたら、追記先も手放す
       appendTargetId: removedIds.contains(appendTargetId) ? null : appendTargetId,
       // 演出の対象が消えていたら、対象ごと下ろす
@@ -147,6 +159,7 @@ class ListeningState {
     return ListeningState(
       memos: memos,
       speechActive: speechActive,
+      awaitingTranscription: awaitingTranscription,
       appendTargetId: appendTargetId,
       typeInMemoId: null,
       typeInFrom: typeInFrom,
@@ -441,7 +454,7 @@ class ListeningNotifier extends AsyncNotifier<ListeningState> {
 
   // ---------------------------------
   // 1発話の確定テキストの受け取り
-  //   空: 誤検知として通し番号だけ進める（ページが退場の合図に使う）。
+  //   空: 誤検知として結果待ちだけを解く。
   //       追記先には触れず、終了までの起点も動かさない
   //   あり: 追記先があればその末尾へ書き足し、無ければ新しく起こす
   //   ※ 画面を離れた後に届く末尾の発話も、DB への保存だけは行う

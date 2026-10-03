@@ -45,7 +45,7 @@ import kotlin.math.roundToInt
 // NativeMemoList — リスニング画面のメモ一覧（Android）
 //
 //   メモ全件を時系列順に並べた1つの TextView にし、文字選択・つまみ・メニュー・スクロールは OS に任せる。
-//   右の縦線と丸（ブロック選択）、スクロールつまみはアプリ側で描く。
+//   右の縦線と丸（ブロック選択）、スクロールつまみ、発話中の「.」はアプリ側で描く。
 //   Dart 側は lib/widgets/native_memo_list.dart。
 // ============================================================
 
@@ -129,6 +129,14 @@ private const val THUMB_TRACK_MARGIN_DP = 12
 private const val THUMB_TRACK_MARGIN_ABOVE_NAV_BAR_DP = 24
 
 // ---------------------------------
+// 定数: 発話中の「.」
+// ---------------------------------
+
+// 0.5秒ごとに「.」を1つずつ増やし、行に収まる数（最大10個）まで増えたら0個に戻す
+private const val SPEAKING_DOTS_INTERVAL_MS = 500L
+private const val SPEAKING_DOTS_MAX_COUNT = 10
+
+// ---------------------------------
 // MainActivity から登録する、メモ一覧の作り手
 // ---------------------------------
 class NativeMemoListFactory(private val messenger: BinaryMessenger) :
@@ -155,6 +163,19 @@ private data class MemoBlock(
     var start: Int = 0,
     var end: Int = 0,
 )
+
+// 発話中の気配として「.」を出す場所
+private enum class SpeakingDotsPlace(val key: String) {
+    // 最新のブロックの本文の続き
+    APPEND("append"),
+    // 次のブロックの1行目
+    NEW_BLOCK("newBlock");
+
+    companion object {
+        // Dart から届いた値に当たる場所（出さないときは null）
+        fun fromKey(key: Any?): SpeakingDotsPlace? = values().firstOrNull { it.key == key }
+    }
+}
 
 // 文書の中の位置を、どのブロックの何文字目かで表したもの（本文を差し替えても選択範囲を置き直せるようにする）
 private data class BlockPosition(val blockId: Long, val offsetInBlock: Int)
@@ -208,7 +229,7 @@ private class NativeMemoList(context: Context, viewId: Int, messenger: BinaryMes
 }
 
 // ---------------------------------
-// 本文（メモ全件を1つにした文書）と、右の縦線・丸
+// 本文（メモ全件を1つにした文書）と、右の縦線・丸、発話中の「.」
 // ---------------------------------
 private class MemoDocumentView(context: Context, private val scroll: MemoScrollView) : TextView(context) {
     // 丸が押されたブロックのメモ id を知らせる
@@ -249,6 +270,20 @@ private class MemoDocumentView(context: Context, private val scroll: MemoScrollV
     private val railPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     // 縦線・丸の上で始まったタッチ（離したときに、動かさずに離したかを判定する）
     private var railTouchDown: MotionEvent? = null
+
+    // --- 発話中の「.」
+    // 出す場所（出さないときは null）と、今の数・行に収まる数
+    private var speakingDotsPlace: SpeakingDotsPlace? = null
+    private var speakingDotCount = 0
+    private var fittingDotCount = 0
+    private val speakingDotsPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val advanceSpeakingDots = object : Runnable {
+        override fun run() {
+            speakingDotCount = if (fittingDotCount > 0) (speakingDotCount + 1) % (fittingDotCount + 1) else 0
+            invalidate()
+            postDelayed(this, SPEAKING_DOTS_INTERVAL_MS)
+        }
+    }
 
     // 選択中の面への1回タップを見分ける（長押し・ダブルタップ・ドラッグは TextView が扱う）
     private val selectionTapDetector = GestureDetector(context, object : GestureDetector.SimpleOnGestureListener() {
@@ -330,6 +365,7 @@ private class MemoDocumentView(context: Context, private val scroll: MemoScrollV
         // --- 文字の大きさ・色
         fontPixels = ((data["fontSize"] as? Number)?.toFloat() ?: DEFAULT_FONT_SIZE) * density
         val textColor = (data["textColor"] as? Number)?.toInt() ?: DEFAULT_TEXT_COLOR
+        changeSpeakingDotsPlace(SpeakingDotsPlace.fromKey(data["speakingDots"]))
 
         // --- 文字選択中のメモは、選択を始めた時点の本文のまま出す（その間の追記は、選択を解除すると出る）
         for (block in incoming) {
@@ -346,6 +382,7 @@ private class MemoDocumentView(context: Context, private val scroll: MemoScrollV
         val document = text as SpannableStringBuilder
         replaceChangedTail(document, newText)
         syncBlockSpans(document)
+        // 次のブロックの1行目に「.」を出すあいだは、その分の高さを文書の下に空けておく
         updateBottomPadding()
         if (hadSelection && selectionStartPosition != null && selectionEndPosition != null) {
             restoreSelection(selectionStartPosition, selectionEndPosition)
@@ -386,11 +423,12 @@ private class MemoDocumentView(context: Context, private val scroll: MemoScrollV
         return builder.toString()
     }
 
-    // 本文・縦線・丸・つまみの色と、本文の文字サイズ
+    // 本文・縦線・丸・「.」・つまみの色と、本文の文字サイズ
     private fun applyTextSizeAndColor(color: Int) {
         setTextSize(TypedValue.COMPLEX_UNIT_PX, fontPixels)
         setTextColor(color)
         railPaint.color = color
+        speakingDotsPaint.color = color
         scroll.thumbColor = color
     }
 
@@ -407,7 +445,7 @@ private class MemoDocumentView(context: Context, private val scroll: MemoScrollV
         document.replace(commonLength, document.length, newText.substring(commonLength))
     }
 
-    // 文書の下の余白を、ナビゲーションバーの分に合わせる
+    // 文書の下の余白を、ナビゲーションバーと発話中の「.」の分に合わせる
     fun updateBottomPadding() {
         val bottomPadding = scroll.documentPaddingBottom()
         if (paddingBottom != bottomPadding) setPadding(paddingLeft, paddingTop, paddingRight, bottomPadding)
@@ -547,7 +585,7 @@ private class MemoDocumentView(context: Context, private val scroll: MemoScrollV
     // ---------------------------------
     // span の付け外しのたびに行が組み直されるため、全ブロックを毎回付け直すと表示の更新ごとに文書全体を組み直すことになる
     private fun syncBlockSpans(document: SpannableStringBuilder) {
-        val lineHeight = (fontPixels * LINE_HEIGHT_RATIO).roundToInt()
+        val lineHeight = bodyLineHeight
         // --- 一覧から消えたブロックの span を外す
         val blockIds = blocks.map { it.id }.toSet()
         for (removedId in blockSpans.keys - blockIds) {
@@ -656,11 +694,92 @@ private class MemoDocumentView(context: Context, private val scroll: MemoScrollV
     }
 
     // ---------------------------------
+    // 発話中の「.」（最新のブロックの本文の続き、または次のブロックの1行目）
+    // ---------------------------------
+    // 本文1行の高さ（行高の span と同じ値）
+    private val bodyLineHeight: Int
+        get() = (fontPixels * LINE_HEIGHT_RATIO).roundToInt()
+
+    // 次のブロックの1行目に出すあいだ、文書の下に空けておく高さ（ブロック間の余白 + 1行）
+    val speakingDotsReservedHeight: Int
+        get() = if (speakingDotsPlace == SpeakingDotsPlace.NEW_BLOCK) dp(BLOCK_SPACING_DP) + bodyLineHeight else 0
+
+    private fun changeSpeakingDotsPlace(place: SpeakingDotsPlace?) {
+        if (place == speakingDotsPlace) return
+        speakingDotsPlace = place
+        if (place == null) stopSpeakingDots() else startSpeakingDots()
+    }
+
+    // 0個から数え直す
+    private fun startSpeakingDots() {
+        removeCallbacks(advanceSpeakingDots)
+        speakingDotCount = 0
+        postDelayed(advanceSpeakingDots, SPEAKING_DOTS_INTERVAL_MS)
+        invalidate()
+    }
+
+    private fun stopSpeakingDots() {
+        removeCallbacks(advanceSpeakingDots)
+        speakingDotCount = 0
+        invalidate()
+    }
+
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        if (speakingDotsPlace != null) startSpeakingDots()
+    }
+
+    override fun onDetachedFromWindow() {
+        removeCallbacks(advanceSpeakingDots)
+        super.onDetachedFromWindow()
+    }
+
+    private fun drawSpeakingDots(canvas: Canvas) {
+        val place = speakingDotsPlace ?: return
+        val textLayout = layout ?: return
+        // 文字選択中は本文の表示を止めているので、「.」も出さない
+        if (hasSelection()) return
+        val latestBlock = blocks.lastOrNull()
+        speakingDotsPaint.textSize = paint.textSize
+        val x: Float
+        val baseline: Float
+        val availableWidth: Float
+        when (place) {
+            SpeakingDotsPlace.APPEND -> {
+                // 最後の行の文字の右端から、行の右端までに収める
+                if (latestBlock == null || latestBlock.text.isEmpty()) return
+                speakingDotsPaint.typeface = if (latestBlock.selected) boldTypeface else paint.typeface
+                val textRight = textLayout.getPrimaryHorizontal(latestBlock.end)
+                val line = textLayout.getLineForOffset(latestBlock.end)
+                x = totalPaddingLeft + textRight
+                baseline = totalPaddingTop + textLayout.getLineBaseline(line).toFloat()
+                availableWidth = textLayout.width - textRight
+            }
+            SpeakingDotsPlace.NEW_BLOCK -> {
+                speakingDotsPaint.typeface = paint.typeface
+                // 本文の行と同じく、行高の余りを文字の上下に半分ずつ振り分けた位置にベースラインを置く
+                val metrics = speakingDotsPaint.fontMetricsInt
+                val extra = max(0, bodyLineHeight - (metrics.descent - metrics.ascent))
+                val lineTop = totalPaddingTop + textLayout.height + (if (blocks.isEmpty()) 0 else dp(BLOCK_SPACING_DP))
+                x = totalPaddingLeft.toFloat()
+                baseline = (lineTop + extra / 2 - metrics.ascent).toFloat()
+                availableWidth = textLayout.width.toFloat()
+            }
+        }
+        // 折り返すと一覧の高さが変わって全体が上下するため、行に収まる数までしか増やさない
+        val dotWidth = speakingDotsPaint.measureText(".")
+        fittingDotCount = if (dotWidth > 0) min(SPEAKING_DOTS_MAX_COUNT, max(0, (availableWidth / dotWidth).toInt())) else 0
+        if (speakingDotCount > fittingDotCount) speakingDotCount = 0
+        if (speakingDotCount > 0) canvas.drawText(".".repeat(speakingDotCount), x, baseline, speakingDotsPaint)
+    }
+
+    // ---------------------------------
     // 描画
     // ---------------------------------
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         drawRail(canvas)
+        drawSpeakingDots(canvas)
     }
 
     // 右の縦線と丸（選択中のブロックは太い線と大きな丸）
@@ -810,8 +929,11 @@ private class MemoScrollView(context: Context) : ScrollView(context) {
         return max(0, systemBarHeight - spaceBelow).toFloat()
     }
 
-    // 文書の下の余白（ナビゲーションバーを避ける分を足す）
-    fun documentPaddingBottom(): Int = (bottomSystemBarOverlap() + dp(BODY_PADDING_BOTTOM_DP)).roundToInt()
+    // 文書の下の余白（ナビゲーションバーを避ける分と、発話中の「.」を次のブロックの位置に出す分）
+    fun documentPaddingBottom(): Int {
+        val speakingDotsHeight = documentView?.speakingDotsReservedHeight ?: 0
+        return (bottomSystemBarOverlap() + dp(BODY_PADDING_BOTTOM_DP)).roundToInt() + speakingDotsHeight
+    }
 
     // 一番下までスクロールしたときだけ、最新の行をナビゲーションバーの上へ離す（途中では下を通り抜けて流れる）
     override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {

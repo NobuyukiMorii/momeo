@@ -30,6 +30,10 @@ const _copySeparator = '\n\n';
 // scrolling は、指やつまみの操作でスクロールしたときだけ true（新しいメモで末尾へ移るときは false）
 typedef MemoListThumb = ({int memoId, double y, bool scrolling});
 
+// 発話中の気配として「.」を出す場所
+// append: 最新のブロックの本文の続き / newBlock: 次のブロックの1行目
+enum MemoSpeakingDots { hidden, append, newBlock }
+
 // ---------------------------------
 // 本文の外から、OS が保持している文字選択を解除する
 // ---------------------------------
@@ -51,6 +55,7 @@ class NativeMemoList extends StatefulWidget {
     required this.onThumbChanged,
     this.typingMemoId,
     this.typeFrom = 0,
+    this.speakingDots = MemoSpeakingDots.hidden,
   });
 
   // 確定済みメモ一覧（新しい順）
@@ -67,6 +72,7 @@ class NativeMemoList extends StatefulWidget {
   // 打ち出し中のメモの id と、打ち出しを始める文字数
   final int? typingMemoId;
   final int typeFrom;
+  final MemoSpeakingDots speakingDots;
 
   @override
   State<NativeMemoList> createState() => _NativeMemoListState();
@@ -169,6 +175,9 @@ class _NativeMemoListState extends State<NativeMemoList> {
       'fontSize': MediaQuery.textScalerOf(context).scale(_bodyFontSize),
       'textColor': AppColors.onSurface.toARGB32(),
       'copySeparator': _copySeparator,
+      'speakingDots': widget.speakingDots == MemoSpeakingDots.hidden
+          ? null
+          : widget.speakingDots.name,
     };
   }
 

@@ -210,6 +210,7 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
         controller: _nativeMemoListController,
         typingMemoId: listening.typeInMemoId,
         typeFrom: listening.typeInFrom,
+        speakingDots: _speakingDots(listening),
         onToggleSelection: _toggleMemoSelection,
         onThumbChanged: _onThumbChanged,
         onTypingComplete: _onTypingComplete,
@@ -221,6 +222,22 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
   void _onTypingComplete(int memoId) {
     if (!mounted) return;
     ref.read(listeningProvider.notifier).onTypingComplete(memoId);
+  }
+
+  // ---------------------------------
+  // 発話中の「.」を出す場所
+  // ---------------------------------
+  // 発話が始まってから結果が届くまで出す。前の発話を打ち出している間は、打ち終わってから出す
+  MemoSpeakingDots _speakingDots(ListeningState listening) {
+    final waitingForText =
+        listening.speechActive || listening.awaitingTranscription;
+    if (!waitingForText || listening.typeInMemoId != null) {
+      return MemoSpeakingDots.hidden;
+    }
+    // 追記先は発話の始まりで決まるので、出す場所も発話の途中では動かない
+    return listening.appendTargetId != null
+        ? MemoSpeakingDots.append
+        : MemoSpeakingDots.newBlock;
   }
 
   // ---------------------------------
