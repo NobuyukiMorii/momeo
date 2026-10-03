@@ -105,7 +105,7 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
   }
 
   // ---------------------------------
-  // カードの選択・非選択
+  // メモの選択・非選択
   // ---------------------------------
   void _toggleMemoSelection(int memoId) {
     _changeSelection(() {

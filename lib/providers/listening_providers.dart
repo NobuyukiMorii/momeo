@@ -31,7 +31,7 @@ import 'package:momeo/stt/stt_model_provisioner.dart';
 //   DB への保存だけは行う（state には触れない）。
 // ============================================================
 
-// 今のカードへの追記を終了するまでの、発話が途切れている時間
+// 今のブロックへの追記を終了するまでの、発話が途切れている時間
 const _appendIdleLimit = Duration(seconds: 10);
 
 final listeningProvider =
@@ -104,8 +104,8 @@ class ListeningState {
     );
   }
 
-  // 今のカードへの追記を終了した（次の発話は新しいカードになる）
-  ListeningState withCurrentCardEnded() {
+  // 今のブロックへの追記を終了した（次の発話は新しいブロックになる）
+  ListeningState withCurrentBlockEnded() {
     return ListeningState(
       memos: memos,
       speechActive: speechActive,
@@ -335,7 +335,7 @@ class ListeningNotifier extends AsyncNotifier<ListeningState> {
     if (WidgetsBinding.instance.lifecycleState == AppLifecycleState.paused) {
       // 録音を停止
       debugPrint('[listening] 通知の停止ボタン: 録音を停止します');
-      unawaited(_stopRecordingAndEndCard());
+      unawaited(_stopRecordingAndEndBlock());
     }
   }
 
@@ -349,17 +349,17 @@ class ListeningNotifier extends AsyncNotifier<ListeningState> {
       return;
     }
     debugPrint('[listening] バックグラウンド遷移: 録音を停止します');
-    unawaited(_stopRecordingAndEndCard());
+    unawaited(_stopRecordingAndEndBlock());
   }
 
   // ---------------------------------
-  // 録音を止め、新しいカードで次の発話を始める
+  // 録音を止め、新しいブロックで次の発話を始める
   // ---------------------------------
-  Future<void> _stopRecordingAndEndCard() async {
+  Future<void> _stopRecordingAndEndBlock() async {
     // 録音を停止
     await _pipeline?.stop();
-    // 今のカードを終わりにする（次の発話は新しいカードになる）
-    _endCurrentCard();
+    // 今のブロックを終わりにする（次の発話は新しいブロックになる）
+    _endCurrentBlock();
   }
 
   // ---------------------------------
@@ -386,8 +386,8 @@ class ListeningNotifier extends AsyncNotifier<ListeningState> {
     // 発話が始まった
     if (isActive) {
       _speechStartedAt = DateTime.now(); // 開始時刻を記録
-      if (_shouldEndCurrentCard()) {
-        _endCurrentCard(); // 今のカードへの追記を終了（次の発話は新しいカードになる）
+      if (_shouldEndCurrentBlock()) {
+        _endCurrentBlock(); // 今のブロックへの追記を終了（次の発話は新しいブロックになる）
       }
     }
 
@@ -398,9 +398,9 @@ class ListeningNotifier extends AsyncNotifier<ListeningState> {
   }
 
   // ---------------------------------
-  // 今のカードへの追記を終了すべきか
+  // 今のブロックへの追記を終了すべきか
   // ---------------------------------
-  bool _shouldEndCurrentCard() {
+  bool _shouldEndCurrentBlock() {
 
     // 今の追記先
     final appendTarget = _appendTarget;
@@ -411,20 +411,20 @@ class ListeningNotifier extends AsyncNotifier<ListeningState> {
     // 最後に書き足した時刻
     final lastAppendedAt = _lastAppendedAt;
 
-    // 書き足した記録が無ければ判断できないので、終了（新カード追加）
+    // 書き足した記録が無ければ判断できないので、終了（新ブロック追加）
     if (lastAppendedAt == null) return true;
 
     // 現在時刻
     final now = DateTime.now();
 
-    // 最後のメモから基準となる時間が経過したら新カード追加 or 経過していなければ追記
+    // 最後のメモから基準となる時間が経過したら新ブロック追加 or 経過していなければ追記
     return now.difference(lastAppendedAt) >= _appendIdleLimit;
   }
 
   // ---------------------------------
-  // 今のカードへの追記を終了
+  // 今のブロックへの追記を終了
   // ---------------------------------
-  void _endCurrentCard() {
+  void _endCurrentBlock() {
     // 追記先を削除
     _appendTarget = null;
     // 最後に書き足した時刻を削除
@@ -435,8 +435,8 @@ class ListeningNotifier extends AsyncNotifier<ListeningState> {
     final current = state.value;
     // 読み込み中でまだ状態が無ければ、表示の更新はしない
     if (current == null) return;
-    // 追記先が無くなったことを画面へ伝える（次の発話は新しいカードになる）
-    state = AsyncData(current.withCurrentCardEnded());
+    // 追記先が無くなったことを画面へ伝える（次の発話は新しいブロックになる）
+    state = AsyncData(current.withCurrentBlockEnded());
   }
 
   // ---------------------------------
@@ -458,17 +458,17 @@ class ListeningNotifier extends AsyncNotifier<ListeningState> {
     }
     final appendTarget = _appendTarget; // 今の追記先
     if (appendTarget == null) { // 追記先が無い
-      await _startNewMemo(content); // 新しいカードを作成
+      await _startNewMemo(content); // 新しいブロックを作成
     } else { // 追記先がある
-      await _appendToTarget(appendTarget, content); // そのカードの末尾に追記
+      await _appendToTarget(appendTarget, content); // そのブロックの末尾に追記
     }
 
-    // 次の発話を同じカードに入れるかどうかの起点にする
+    // 次の発話を同じブロックに入れるかどうかの起点にする
     _lastAppendedAt = DateTime.now();
   }
 
   // ---------------------------------
-  // 新しいカードを起こす（以後の発話は、このカードへ追記していく）
+  // 新しいブロックを起こす（以後の発話は、このブロックへ追記していく）
   // ---------------------------------
   Future<void> _startNewMemo(String content) async {
     final createdAt = _speechStartedAt ?? DateTime.now();
@@ -477,7 +477,7 @@ class ListeningNotifier extends AsyncNotifier<ListeningState> {
     // 次の追記先にする
     _appendTarget = memo;
 
-    // カードが1枚増えたので、iOS の Live Activity の件数を進める（表示していなければ何もしない）
+    // ブロックが1つ増えたので、iOS の Live Activity の件数を進める（表示していなければ何もしない）
     unawaited(ListeningLiveActivity.incrementMemoCount());
 
     if (_disposed) return;
@@ -487,7 +487,7 @@ class ListeningNotifier extends AsyncNotifier<ListeningState> {
   }
 
   // ---------------------------------
-  // カードの末尾に追記
+  // ブロックの末尾に追記
   // ---------------------------------
   Future<void> _appendToTarget(VoiceMemo appendTarget, String content) async {
     // 発話と発話の間は区切らず、そのままつなげる
@@ -525,7 +525,7 @@ class ListeningNotifier extends AsyncNotifier<ListeningState> {
     await _repository.deleteByIds(memoIds.toList());
 
     // 追記先ごと消えたら終了
-    if (memoIds.contains(_appendTarget?.id)) _endCurrentCard();
+    if (memoIds.contains(_appendTarget?.id)) _endCurrentBlock();
 
     if (_disposed) return;
     final current = state.value;
