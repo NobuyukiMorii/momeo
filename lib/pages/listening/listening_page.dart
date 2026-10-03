@@ -39,6 +39,13 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
   final Set<int> _selectedMemoIds = {};
 
   // ---------------------------------
+  // 文字選択に関する状態
+  // ---------------------------------
+  // 文字選択は丸による選択と独立して、OS 側（ネイティブの一覧）が持つ
+  final NativeMemoListController _nativeMemoListController =
+      NativeMemoListController();
+
+  // ---------------------------------
   // 選択バーに関する状態
   // ---------------------------------
   // 出具合（0 = 隠れきっている、1 = 出きっている）。バー自身と一覧の押し上げで共有する
@@ -65,6 +72,7 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
   void dispose() {
     _selectionBarNoticeTimer?.cancel(); // 選択バーの一言のタイマーを止める
     _selectionBarController.dispose();
+    _nativeMemoListController.dispose();
     super.dispose();
   }
 
@@ -176,6 +184,7 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
       child: NativeMemoList(
         memos: listening.memos,
         selectedIds: Set.of(_selectedMemoIds),
+        controller: _nativeMemoListController,
         onToggleSelection: _toggleMemoSelection,
       ),
     );
@@ -247,7 +256,13 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
           // ---------------------------------
           // 録音設定パネル
           // ---------------------------------
-          const Positioned.fill(child: ListeningRecordingSettingsPanel()),
+          // 触れたら、本文の文字選択を外す
+          Positioned.fill(
+            child: Listener(
+              onPointerDown: (_) => _nativeMemoListController.clearSelection(),
+              child: const ListeningRecordingSettingsPanel(),
+            ),
+          ),
         ],
       ),
     );

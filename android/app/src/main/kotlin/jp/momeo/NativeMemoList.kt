@@ -6,6 +6,8 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Paint
+import android.graphics.Path
+import android.graphics.Region
 import android.graphics.Typeface
 import android.os.Build
 import android.text.Selection
@@ -18,6 +20,7 @@ import android.text.style.MetricAffectingSpan
 import android.text.style.UpdateLayout
 import android.util.TypedValue
 import android.view.ContextThemeWrapper
+import android.view.GestureDetector
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
@@ -52,6 +55,7 @@ import kotlin.math.roundToInt
 
 // Dart から呼ばれるメソッド
 private const val METHOD_UPDATE = "update"
+private const val METHOD_CLEAR_SELECTION = "clearSelection"
 
 // Dart へ知らせるメソッド
 private const val METHOD_TOGGLE_BLOCK = "toggleBlock"
@@ -160,6 +164,10 @@ private class NativeMemoList(context: Context, viewId: Int, messenger: BinaryMes
                     document.update(call.arguments)
                     result.success(null)
                 }
+                METHOD_CLEAR_SELECTION -> {
+                    document.clearTextSelection()
+                    result.success(null)
+                }
                 else -> result.notImplemented()
             }
         }
@@ -171,6 +179,7 @@ private class NativeMemoList(context: Context, viewId: Int, messenger: BinaryMes
     override fun dispose() {
         channel.setMethodCallHandler(null)
         document.onToggleBlock = null
+        document.clearFocus()
     }
 }
 
@@ -202,6 +211,8 @@ private class MemoDocumentView(context: Context, private val scroll: MemoScrollV
     private var initialized = false
     // アプリが置き直した選択範囲（OS がその端までスクロールしないようにする）
     private var selectionWithoutScrolling: Pair<Int, Int>? = null
+    // 選択中の面に指を置いたときの選択範囲（1回タップによる解除の判定に使う）
+    private var selectionAtTouchDown: Pair<Int, Int>? = null
     // ブロックをまたいでコピーしたときの区切り
     private var copySeparator = DEFAULT_COPY_SEPARATOR
 
@@ -214,6 +225,24 @@ private class MemoDocumentView(context: Context, private val scroll: MemoScrollV
     private val railPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     // 縦線・丸の上で始まったタッチ（離したときに、動かさずに離したかを判定する）
     private var railTouchDown: MotionEvent? = null
+
+    // 選択中の面への1回タップを見分ける（長押し・ダブルタップ・ドラッグは TextView が扱う）
+    private val selectionTapDetector = GestureDetector(context, object : GestureDetector.SimpleOnGestureListener() {
+        override fun onDown(event: MotionEvent): Boolean {
+            selectionAtTouchDown = if (selectionContains(event.x, event.y)) currentSelection else null
+            return true
+        }
+
+        override fun onSingleTapConfirmed(event: MotionEvent): Boolean {
+            val selectionAtDown = selectionAtTouchDown
+            selectionAtTouchDown = null
+            // 指を置いてから選択が変わっていなければ、解除する
+            if (selectionAtDown != null && selectionAtDown == currentSelection && isAttachedToWindow) {
+                clearTextSelection()
+            }
+            return true
+        }
+    })
 
     init {
         // メモが少ないうちは、一覧を下に寄せる
@@ -402,6 +431,17 @@ private class MemoDocumentView(context: Context, private val scroll: MemoScrollV
     override fun bringPointIntoView(offset: Int, requestRectWithoutFocus: Boolean): Boolean {
         if (selectionWithoutScrolling == currentSelection) return false
         return super.bringPointIntoView(offset, requestRectWithoutFocus)
+    }
+
+    // OS が選択色を付けている面（ブロック間の余白も含む）に、点が入っているか
+    private fun selectionContains(x: Float, y: Float): Boolean {
+        val textLayout = layout ?: return false
+        if (!hasSelection() || x >= width - dp(RAIL_TOUCH_WIDTH_DP)) return false
+        val path = Path()
+        textLayout.getSelectionPath(selectionFrom, selectionTo, path)
+        val region = Region()
+        region.setPath(path, Region(0, 0, textLayout.width, textLayout.height))
+        return region.contains((x - totalPaddingLeft + scrollX).toInt(), (y - totalPaddingTop + scrollY).toInt())
     }
 
     // OS の操作で文字選択が変わったとき
@@ -600,6 +640,8 @@ private class MemoDocumentView(context: Context, private val scroll: MemoScrollV
     // ---------------------------------
     override fun onTouchEvent(event: MotionEvent): Boolean {
         if (handleRailTouch(event)) return true
+        // 判定だけを加え、長押し・ダブルタップ・ドラッグは TextView に渡す
+        selectionTapDetector.onTouchEvent(event)
         return super.onTouchEvent(event)
     }
 

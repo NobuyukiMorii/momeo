@@ -13,6 +13,7 @@ const _viewType = 'jp.momeo/native_memo_list';
 
 // ネイティブ側へ呼び出すメソッド
 const _updateMethod = 'update';
+const _clearSelectionMethod = 'clearSelection';
 
 // ネイティブ側から届くメソッド
 const _toggleBlockMethod = 'toggleBlock';
@@ -24,13 +25,21 @@ const _bodyFontSize = 18.0;
 const _copySeparator = '\n\n';
 
 // ---------------------------------
-// メモ一覧を1つの文書にしてネイティブ側へ渡し、表示とスクロールは OS の部品に任せる
+// 本文の外から、OS が保持している文字選択を解除する
+// ---------------------------------
+class NativeMemoListController extends ChangeNotifier {
+  void clearSelection() => notifyListeners();
+}
+
+// ---------------------------------
+// メモ一覧を1つの文書にしてネイティブ側へ渡し、表示・スクロール・文字選択は OS の部品に任せる
 // ---------------------------------
 class NativeMemoList extends StatefulWidget {
   const NativeMemoList({
     super.key,
     required this.memos,
     required this.selectedIds,
+    required this.controller,
     required this.onToggleSelection,
   });
 
@@ -38,6 +47,7 @@ class NativeMemoList extends StatefulWidget {
   final List<VoiceMemo> memos;
   // 丸で選ばれているメモの id
   final Set<int> selectedIds;
+  final NativeMemoListController controller;
   // 丸が押されたとき
   final ValueChanged<int> onToggleSelection;
 
@@ -54,11 +64,40 @@ class _NativeMemoListState extends State<NativeMemoList> {
   String? _lastSignature;
   // 描画後に文書を送る予約が入っているか
   bool _updatePending = false;
+  // View ができる前に、文字選択の解除を頼まれたか
+  bool _clearPending = false;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.controller.addListener(_clearSelection);
+  }
+
+  @override
+  void didUpdateWidget(NativeMemoList oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.controller != widget.controller) {
+      oldWidget.controller.removeListener(_clearSelection);
+      widget.controller.addListener(_clearSelection);
+    }
+  }
 
   @override
   void dispose() {
+    widget.controller.removeListener(_clearSelection);
     _channel?.setMethodCallHandler(null);
     super.dispose();
+  }
+
+  // ---------------------------------
+  // 文字選択の解除（View ができる前なら、できたときに解除する）
+  // ---------------------------------
+  void _clearSelection() {
+    if (_channel == null) {
+      _clearPending = true;
+    } else {
+      _channel!.invokeMethod<void>(_clearSelectionMethod);
+    }
   }
 
   // ---------------------------------
@@ -69,6 +108,10 @@ class _NativeMemoListState extends State<NativeMemoList> {
     _channel!.setMethodCallHandler(_onNativeCall);
     // 作っている間に変わった文書を渡し直す
     _channel!.invokeMethod<void>(_updateMethod, _document);
+    if (_clearPending) {
+      _clearPending = false;
+      _clearSelection();
+    }
   }
 
   // ---------------------------------
@@ -121,7 +164,7 @@ class _NativeMemoListState extends State<NativeMemoList> {
   // ネイティブ View
   // ---------------------------------
   Widget _buildPlatformView() {
-    // 一覧の上の操作（スクロール・丸のタップ）は、Flutter 側で取り合わずにすべて渡す
+    // 一覧の上の操作（スクロール・文字選択・丸のタップ）は、Flutter 側で取り合わずにすべて渡す
     final gestures = <Factory<OneSequenceGestureRecognizer>>{
       Factory<EagerGestureRecognizer>(EagerGestureRecognizer.new),
     };

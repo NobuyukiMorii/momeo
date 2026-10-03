@@ -15,6 +15,7 @@ import UIKit
 private enum ChannelMethod {
     // Dart から呼ばれるメソッド
     static let update = "update"
+    static let clearSelection = "clearSelection"
     // Dart へ知らせるメソッド
     static let toggleBlock = "toggleBlock"
 }
@@ -130,6 +131,9 @@ private final class NativeMemoList: NSObject, FlutterPlatformView {
             case ChannelMethod.update:
                 self.documentView.update(call.arguments)
                 result(nil)
+            case ChannelMethod.clearSelection:
+                self.documentView.clearTextSelection()
+                result(nil)
             default:
                 result(FlutterMethodNotImplemented)
             }
@@ -197,6 +201,7 @@ private final class MemoDocumentView: UITextView, UITextViewDelegate {
         rail.document = self
         addSubview(rail)
         rail.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(didTapRail(_:))))
+        addGestureRecognizer(MemoSelectionDismissTap(document: self))
     }
 
     required init?(coder: NSCoder) { fatalError("ストーリーボードからは生成しません") }
@@ -373,6 +378,14 @@ private final class MemoDocumentView: UITextView, UITextViewDelegate {
         }
         let restored = NSRange(location: start, length: end - start)
         if selectedRange != restored { selectedRange = restored }
+    }
+
+    // OS が選択色を付けている面（ブロック間の余白も含む）に、点が入っているか
+    fileprivate func selectionContains(_ point: CGPoint) -> Bool {
+        guard point.x < bounds.width - RailLayout.touchWidth, let range = selectedTextRange, !range.isEmpty else {
+            return false
+        }
+        return selectionRects(for: range).contains { $0.rect.contains(point) }
     }
 
     // OS の操作で文字選択が変わったとき
@@ -585,5 +598,56 @@ private final class MemoRailView: UIView {
 
     override func draw(_ rect: CGRect) {
         document?.drawRail()
+    }
+}
+
+// ---------------------------------
+// 選択中の面への1回タップだけを、選択解除として扱う
+// ---------------------------------
+private final class MemoSelectionDismissTap: UITapGestureRecognizer, UIGestureRecognizerDelegate {
+    private weak var document: MemoDocumentView?
+    // 指を置いたときの選択範囲（それから選択が変わっていなければ解除する）
+    private var selectionAtTouchDown = NSRange(location: 0, length: 0)
+
+    init(document: MemoDocumentView) {
+        self.document = document
+        super.init(target: nil, action: nil)
+        addTarget(self, action: #selector(dismissSelection))
+        delegate = self
+        cancelsTouchesInView = false
+    }
+
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
+        guard let document, document.selectionContains(touch.location(in: document)) else { return false }
+        selectionAtTouchDown = document.selectedRange
+        return true
+    }
+
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
+                           shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool {
+        true
+    }
+
+    // OS の長押し・ダブルタップ・ドラッグの認識を優先する
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
+                           shouldRequireFailureOf other: UIGestureRecognizer) -> Bool {
+        if let tap = other as? UITapGestureRecognizer { return tap.numberOfTapsRequired > 1 }
+        return other is UILongPressGestureRecognizer || other is UIPanGestureRecognizer
+    }
+
+    // OS の1回タップ（メニューが隠れていれば出す）は、解除のタップと確定したら動かさない（出かけたメニューが解除で消えてちらつくため）
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
+                           shouldBeRequiredToFailBy other: UIGestureRecognizer) -> Bool {
+        guard let tap = other as? UITapGestureRecognizer, tap !== self, tap.view === document else { return false }
+        return tap.numberOfTapsRequired == 1
+    }
+
+    @objc private func dismissSelection() {
+        let selected = selectionAtTouchDown
+        // UIKit のタップ処理を終えてから、メニューと選択をまとめて閉じる
+        DispatchQueue.main.async { [weak document] in
+            guard let document, document.selectedRange == selected else { return }
+            document.clearTextSelection()
+        }
     }
 }
