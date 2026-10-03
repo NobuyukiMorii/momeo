@@ -23,8 +23,7 @@ import 'package:momeo/stt/stt_model_provisioner.dart';
 // ============================================================
 // listeningProvider — リスニング画面の状態を一元管理する
 //
-//   ページ（listening_page）は watch して描画し、状態の変化を
-//   アクティブカードのアニメーションに翻訳するだけの View に徹する。
+//   ページ（listening_page）は watch して描画するだけの View に徹する。
 //   録音パイプラインの生成・開始・破棄もこの Notifier が持つ。
 //
 //   autoDispose: 画面が watch をやめる（＝画面を離れる）と Notifier ごと
@@ -47,11 +46,9 @@ class ListeningState {
   const ListeningState({
     this.memos = const [],
     this.speechActive = false,
-    this.speechStartedAt,
     this.appendTargetId,
     this.typeInMemoId,
     this.typeInFrom = 0,
-    this.emptyResultCount = 0,
   });
 
   // 確定済みメモ一覧（新しい順）
@@ -59,9 +56,6 @@ class ListeningState {
 
   // 今ユーザーが発話中か（VAD の判定）
   final bool speechActive;
-
-  // 直近の発話が始まった時刻
-  final DateTime? speechStartedAt;
 
   // 次の発話を書き足すメモの id
   final int? appendTargetId;
@@ -72,24 +66,18 @@ class ListeningState {
   // タイピング演出を始める文字数
   final int typeInFrom;
 
-  // 空の認識結果（咳・物音の誤検知）で終わった回数の通し番号。
-  // ページはこの増加を「アクティブカードをスライドアウトさせる合図」として使う
-  final int emptyResultCount;
-
   // ---------------------------------
   // 状態遷移（意図が分かる名前の生成メソッドで揃える）
   // ---------------------------------
 
   // 発話中かどうかが変わった
-  ListeningState withSpeechActive(bool isActive, {DateTime? startedAt}) {
+  ListeningState withSpeechActive(bool isActive) {
     return ListeningState(
       memos: memos,
       speechActive: isActive,
-      speechStartedAt: startedAt,
       appendTargetId: appendTargetId,
       typeInMemoId: typeInMemoId,
       typeInFrom: typeInFrom,
-      emptyResultCount: emptyResultCount,
     );
   }
 
@@ -99,11 +87,9 @@ class ListeningState {
     return ListeningState(
       memos: [memo, ...memos],
       speechActive: speechActive,
-      speechStartedAt: speechStartedAt,
       appendTargetId: memo.id,
       typeInMemoId: memo.id,
       typeInFrom: 0,
-      emptyResultCount: emptyResultCount,
     );
   }
 
@@ -112,11 +98,9 @@ class ListeningState {
     return ListeningState(
       memos: [memo, ...memos.skip(1)],
       speechActive: speechActive,
-      speechStartedAt: speechStartedAt,
       appendTargetId: memo.id,
       typeInMemoId: memo.id,
       typeInFrom: typeInFrom,
-      emptyResultCount: emptyResultCount,
     );
   }
 
@@ -125,24 +109,20 @@ class ListeningState {
     return ListeningState(
       memos: memos,
       speechActive: speechActive,
-      speechStartedAt: speechStartedAt,
       appendTargetId: null,
       typeInMemoId: typeInMemoId,
       typeInFrom: typeInFrom,
-      emptyResultCount: emptyResultCount,
     );
   }
 
-  // 空の認識結果で発話が終わった
+  // 空の認識結果（咳・物音の誤検知）で発話が終わった
   ListeningState withEmptyResult() {
     return ListeningState(
       memos: memos,
       speechActive: speechActive,
-      speechStartedAt: speechStartedAt,
       appendTargetId: appendTargetId,
       typeInMemoId: typeInMemoId,
       typeInFrom: typeInFrom,
-      emptyResultCount: emptyResultCount + 1,
     );
   }
 
@@ -154,13 +134,11 @@ class ListeningState {
           if (!removedIds.contains(memo.id)) memo,
       ],
       speechActive: speechActive,
-      speechStartedAt: speechStartedAt,
       // 追記先が消えていたら、追記先も手放す
       appendTargetId: removedIds.contains(appendTargetId) ? null : appendTargetId,
       // 演出の対象が消えていたら、対象ごと下ろす
       typeInMemoId: removedIds.contains(typeInMemoId) ? null : typeInMemoId,
       typeInFrom: typeInFrom,
-      emptyResultCount: emptyResultCount,
     );
   }
 
@@ -169,11 +147,9 @@ class ListeningState {
     return ListeningState(
       memos: memos,
       speechActive: speechActive,
-      speechStartedAt: speechStartedAt,
       appendTargetId: appendTargetId,
       typeInMemoId: null,
       typeInFrom: typeInFrom,
-      emptyResultCount: emptyResultCount,
     );
   }
 }
@@ -418,9 +394,7 @@ class ListeningNotifier extends AsyncNotifier<ListeningState> {
     if (_disposed) return;
     final current = state.value;
     if (current == null) return;
-    state = AsyncData(
-      current.withSpeechActive(isActive, startedAt: _speechStartedAt),
-    );
+    state = AsyncData(current.withSpeechActive(isActive));
   }
 
   // ---------------------------------
@@ -461,7 +435,7 @@ class ListeningNotifier extends AsyncNotifier<ListeningState> {
     final current = state.value;
     // 読み込み中でまだ状態が無ければ、表示の更新はしない
     if (current == null) return;
-    // 追記先が無くなったことを画面へ伝える（次の発話はアクティブカードから始まる）
+    // 追記先が無くなったことを画面へ伝える（次の発話は新しいカードになる）
     state = AsyncData(current.withCurrentCardEnded());
   }
 

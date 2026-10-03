@@ -31,7 +31,7 @@ class ListeningPage extends ConsumerStatefulWidget {
 }
 
 class _ListeningPageState extends ConsumerState<ListeningPage>
-    with TickerProviderStateMixin {
+    with SingleTickerProviderStateMixin {
   // ---------------------------------
   // 選択中のメモに関する状態
   // ---------------------------------
