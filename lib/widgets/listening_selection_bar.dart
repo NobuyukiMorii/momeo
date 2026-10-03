@@ -16,8 +16,16 @@ import 'package:momeo/widgets/pressable_scale.dart';
 // 定数: 線の太さ
 // ---------------------------------
 
-// 上の線
-const _topBorderWidth = 1.5;
+// 枠の線（左・上・右）。録音設定パネルの枠の線とそろえる
+const _frameBorderWidth = 3.0;
+
+// 枠の上の角の丸み（録音設定パネルの下の角とそろえる）
+const _frameCornerRadius = AppRadius.l;
+
+const _frameSide = BorderSide(
+  color: AppColors.onSurface,
+  width: _frameBorderWidth,
+);
 
 // 削除・コピーのボタンの枠線
 const _buttonBorderWidth = 1.0;
@@ -51,7 +59,7 @@ const _contentBottomGap = 0.0;
 
 // 全体の高さ
 const _barHeight =
-    _topBorderWidth +
+    _frameBorderWidth +
     _noticeGap +
     _noticeFontSize +
     _noticeGap +
@@ -375,8 +383,9 @@ class _ListeningSelectionBarState extends State<ListeningSelectionBar> {
     return Container(
       decoration: const BoxDecoration(
         color: AppColors.surface,
-        border: Border(
-          top: BorderSide(color: AppColors.onSurface, width: _topBorderWidth),
+        border: Border(left: _frameSide, top: _frameSide, right: _frameSide),
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(_frameCornerRadius),
         ),
       ),
       // 線のぶんは Container が自分で空けるので、ここでは数えない
