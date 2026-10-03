@@ -5,6 +5,7 @@ import UIKit
 // NativeMemoList — リスニング画面のメモ一覧（iOS）
 //
 //   メモ全件を時系列順に並べた1つの UITextView にし、表示とスクロールは OS に任せる。
+//   右の縦線と丸はアプリ側で描く。
 //   Dart 側は lib/widgets/native_memo_list.dart。
 // ============================================================
 
@@ -26,7 +27,7 @@ private enum DefaultValue {
 // 定数: 本文（pt。Android 側の dp とそろえる）
 // ---------------------------------
 private enum BodyLayout {
-    // 本文の左右の余白（右は、縦線と丸を置く場所を空けておく）
+    // 本文の左右の余白（右は丸と縦線の領域を含む）
     static let paddingLeft: CGFloat = 12
     static let paddingRight: CGFloat = 34
     // 本文の上の余白の下限（メモが少ないうちは、残りを上に空けて一覧を下に寄せる）
@@ -43,6 +44,21 @@ private enum BodyLayout {
     static let atBottomTolerance: CGFloat = 32
     // 書体
     static let regularFontName = "HiraginoSans-W3"
+}
+
+// ---------------------------------
+// 定数: 右の縦線と丸（pt）
+// ---------------------------------
+private enum RailLayout {
+    // 縦線と丸を置く領域の幅（一覧の右端から）
+    static let touchWidth: CGFloat = 40
+    // 縦線の位置（一覧の右端から）
+    static let xFromRight: CGFloat = 18
+    // 縦線の太さと丸の半径
+    static let lineWidth: CGFloat = 1.5
+    static let circleRadius: CGFloat = 4
+    // ブロックが1つだけのときに、丸を1行目の文字の上端から離す距離
+    static let singleBlockCircleGap: CGFloat = 12
 }
 
 // ---------------------------------
@@ -72,6 +88,8 @@ private struct MemoBlock {
     let id: Int64
     // 表示する本文
     let text: String
+    // 文書の中での本文の範囲
+    var range = NSRange(location: 0, length: 0)
 }
 
 // ---------------------------------
@@ -108,7 +126,7 @@ private final class NativeMemoList: NSObject, FlutterPlatformView {
 }
 
 // ---------------------------------
-// 本文（メモ全件を1つにした文書）
+// 本文（メモ全件を1つにした文書）と、右の縦線・丸
 // ---------------------------------
 private final class MemoDocumentView: UITextView {
     // 表示中のブロック（古い順）
@@ -120,8 +138,13 @@ private final class MemoDocumentView: UITextView {
     private var isFirstLayout = true
     // 前回のレイアウトでの大きさ
     private var lastLayoutSize = CGSize.zero
-    // 文書の高さを測り直すか
+    // 文書の高さと丸の位置を測り直すか
     private var needsDocumentLayout = true
+
+    // --- 右の縦線と丸
+    private let rail = MemoRailView()
+    // 丸の中心の高さ（メモ id → 文書の座標）
+    private var circleCenterYs: [Int64: CGFloat] = [:]
 
     override init(frame: CGRect, textContainer: NSTextContainer?) {
         // TextKit 1（NSLayoutManager）で組み、文書全体の高さを同じレイアウトから求める
@@ -139,6 +162,8 @@ private final class MemoDocumentView: UITextView {
         textContainerInset = UIEdgeInsets(top: BodyLayout.minPaddingTop, left: BodyLayout.paddingLeft,
                                           bottom: BodyLayout.paddingBottom, right: BodyLayout.paddingRight)
         alwaysBounceVertical = true
+        rail.document = self
+        addSubview(rail)
     }
 
     required init?(coder: NSCoder) { fatalError("ストーリーボードからは生成しません") }
@@ -173,6 +198,7 @@ private final class MemoDocumentView: UITextView {
         } else {
             contentOffset = CGPoint(x: 0, y: min(oldOffsetY, scrollableHeight))
         }
+        rail.setNeedsDisplay()
     }
 
     // Dart から届いたブロックの一覧（形の合わないものは飛ばす）
@@ -195,13 +221,14 @@ private final class MemoDocumentView: UITextView {
         UIFont(name: BodyLayout.regularFontName, size: bodySize) ?? UIFont.systemFont(ofSize: bodySize)
     }
 
-    // 各ブロックの本文を改行1つでつないだ文書を作る
+    // 各ブロックの本文を改行1つでつないだ文書を作り、ブロックごとの文書の中の範囲も記録する
     private func buildDocument() -> NSMutableAttributedString {
         let document = NSMutableAttributedString(string: "")
         for index in blocks.indices {
             let block = blocks[index]
             let isLast = index + 1 == blocks.count
             let visibleText = block.text.isEmpty ? BodyLayout.emptyBlockText : block.text
+            blocks[index].range = NSRange(location: document.length, length: (visibleText as NSString).length)
             let paragraph = NSMutableParagraphStyle()
             paragraph.minimumLineHeight = bodySize * BodyLayout.lineHeightRatio
             paragraph.maximumLineHeight = bodySize * BodyLayout.lineHeightRatio
@@ -241,18 +268,108 @@ private final class MemoDocumentView: UITextView {
         if isFirstLayout || (oldSize != bounds.size && wasAtBottom) {
             contentOffset = CGPoint(x: 0, y: scrollableHeight)
         }
+        layoutRail()
         isFirstLayout = false
         lastLayoutSize = bounds.size
     }
 
-    // メモが少ないうちは上の余白を広げて、一覧を下に寄せる
+    // メモが少ないうちは上の余白を広げて一覧を下に寄せ、丸の位置を求め直す
     private func layoutDocument() {
         layoutManager.ensureLayout(for: textContainer)
         let documentHeight = layoutManager.usedRect(for: textContainer).height
         let topInset = max(BodyLayout.minPaddingTop, bounds.height - documentHeight - textContainerInset.bottom)
         if abs(textContainerInset.top - topInset) > 0.5 { textContainerInset.top = topInset }
+        layoutCircleCenters(top: topInset)
+    }
+
+    // 縦線の View は、スクロールしても表示範囲の右端に留め、一番手前に置く
+    private func layoutRail() {
+        rail.frame = CGRect(x: bounds.width - RailLayout.touchWidth, y: contentOffset.y,
+                            width: RailLayout.touchWidth, height: bounds.height)
+        bringSubviewToFront(rail)
+        rail.setNeedsDisplay()
     }
 
     // 一番下までスクロールしたときの位置
     private var scrollableHeight: CGFloat { max(0, contentSize.height - bounds.height) }
+
+    // ---------------------------------
+    // 丸の位置（上のブロックの最後の行の文字の下端と、このブロックの1行目の文字の上端のちょうど間）
+    // ---------------------------------
+    private func layoutCircleCenters(top: CGFloat) {
+        let glyphTops = blocks.map { glyphTopAndBottom(atCharacter: $0.range.location).top + top }
+        var centers: [Int64: CGFloat] = [:]
+        for index in blocks.indices.dropFirst() {
+            let upperLastCharacter = NSMaxRange(blocks[index - 1].range) - 1
+            let upperBottom = glyphTopAndBottom(atCharacter: upperLastCharacter).bottom + top
+            centers[blocks[index].id] = (upperBottom + glyphTops[index]) / 2
+        }
+        // 一番上のブロックには上のブロックがないので、2番目のブロックと同じだけ文字の上端から離す
+        if let first = blocks.first {
+            let halfGap = blocks.count > 1
+                ? glyphTops[1] - (centers[blocks[1].id] ?? glyphTops[1])
+                : RailLayout.singleBlockCircleGap
+            centers[first.id] = glyphTops[0] - halfGap
+        }
+        circleCenterYs = centers
+    }
+
+    // 文字の上端・下端（行高やブロック間隔の余白を含まない、フォントの ascender・descender の範囲）
+    private func glyphTopAndBottom(atCharacter index: Int) -> (top: CGFloat, bottom: CGFloat) {
+        let glyph = layoutManager.glyphIndexForCharacter(at: index)
+        let lineRect = layoutManager.lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil)
+        let baseline = lineRect.minY + layoutManager.location(forGlyphAt: glyph).y
+        let font = textStorage.attribute(.font, at: index, effectiveRange: nil) as? UIFont
+            ?? UIFont.systemFont(ofSize: bodySize)
+        return (baseline - font.ascender, baseline - font.descender)
+    }
+
+    private func circleCenterY(_ block: MemoBlock) -> CGFloat {
+        circleCenterYs[block.id] ?? textContainerInset.top
+    }
+
+    // ---------------------------------
+    // 右の縦線と丸（縦線の View の上に、見えている区間だけを描く）
+    // ---------------------------------
+    fileprivate func drawRail() {
+        guard let context = UIGraphicsGetCurrentContext() else { return }
+        context.saveGState()
+        defer { context.restoreGState() }
+        // 文書の座標で描けるよう、表示範囲の上端の分だけずらす
+        context.translateBy(x: 0, y: -contentOffset.y)
+        bodyColor.setStroke()
+        bodyColor.setFill()
+        context.setLineWidth(RailLayout.lineWidth)
+        let x = RailLayout.touchWidth - RailLayout.xFromRight
+        let radius = RailLayout.circleRadius
+        for index in blocks.indices {
+            let block = blocks[index]
+            let top = circleCenterY(block)
+            let bottom = index + 1 < blocks.count ? circleCenterY(blocks[index + 1]) : contentSize.height
+            guard bottom >= contentOffset.y, top <= contentOffset.y + bounds.height else { continue }
+            context.move(to: CGPoint(x: x, y: top))
+            context.addLine(to: CGPoint(x: x, y: bottom))
+            context.strokePath()
+            context.fillEllipse(in: CGRect(x: x - radius, y: top - radius, width: radius * 2, height: radius * 2))
+        }
+    }
+}
+
+// ---------------------------------
+// 右の縦線と丸を描く View
+// ---------------------------------
+private final class MemoRailView: UIView {
+    weak var document: MemoDocumentView?
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        backgroundColor = .clear
+        isOpaque = false
+    }
+
+    required init?(coder: NSCoder) { fatalError("ストーリーボードからは生成しません") }
+
+    override func draw(_ rect: CGRect) {
+        document?.drawRail()
+    }
 }

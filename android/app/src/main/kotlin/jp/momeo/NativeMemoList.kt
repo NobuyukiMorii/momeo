@@ -1,6 +1,7 @@
 package jp.momeo
 
 import android.content.Context
+import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.Typeface
 import android.os.Build
@@ -29,6 +30,7 @@ import kotlin.math.roundToInt
 // NativeMemoList — リスニング画面のメモ一覧（Android）
 //
 //   メモ全件を時系列順に並べた1つの TextView にし、表示とスクロールは OS に任せる。
+//   右の縦線と丸はアプリ側で描く。
 //   Dart 側は lib/widgets/native_memo_list.dart。
 // ============================================================
 
@@ -47,7 +49,7 @@ private val DEFAULT_TEXT_COLOR = 0xff111827.toInt()
 // 定数: 本文（dp。iOS 側の pt とそろえる）
 // ---------------------------------
 
-// 本文の左右と上の余白（右は、縦線と丸を置く場所を空けておく）
+// 本文の左右と上の余白（右は丸と縦線の領域を含む）
 private const val BODY_PADDING_LEFT_DP = 12
 private const val BODY_PADDING_RIGHT_DP = 34
 private const val BODY_PADDING_TOP_DP = 24
@@ -71,6 +73,20 @@ private const val AT_BOTTOM_TOLERANCE_DP = 32
 private const val REGULAR_FONT_ASSET = "assets/fonts/NotoSansJP-Regular.otf"
 
 // ---------------------------------
+// 定数: 右の縦線と丸（dp）
+// ---------------------------------
+
+// 縦線の位置（一覧の右端から）
+private const val RAIL_X_FROM_RIGHT_DP = 18
+
+// 縦線の太さと丸の半径
+private const val RAIL_WIDTH_DP = 1.5f
+private const val CIRCLE_RADIUS_DP = 4f
+
+// ブロックが1つだけのときに、丸を1行目の文字の上端から離す距離
+private const val SINGLE_BLOCK_CIRCLE_GAP_DP = 12
+
+// ---------------------------------
 // MainActivity から登録する、メモ一覧の作り手
 // ---------------------------------
 class NativeMemoListFactory(private val messenger: BinaryMessenger) :
@@ -89,6 +105,9 @@ private data class MemoBlock(
     val id: Long,
     // 表示する本文
     val text: String,
+    // 文書の中での本文の範囲（start 以上 end 未満）
+    var start: Int = 0,
+    var end: Int = 0,
 )
 
 // ---------------------------------
@@ -125,7 +144,7 @@ private class NativeMemoList(context: Context, viewId: Int, messenger: BinaryMes
 }
 
 // ---------------------------------
-// 本文（メモ全件を1つにした文書）
+// 本文（メモ全件を1つにした文書）と、右の縦線・丸
 // ---------------------------------
 private class MemoDocumentView(context: Context, private val scroll: MemoScrollView) : TextView(context) {
     private val density = resources.displayMetrics.density
@@ -136,6 +155,8 @@ private class MemoDocumentView(context: Context, private val scroll: MemoScrollV
     private var fontPixels = DEFAULT_FONT_SIZE
     // 最初の表示で、一番下（最新）までスクロールする前か
     private var initialScrollPending = true
+    // 縦線と丸を描く絵の具
+    private val railPaint = Paint(Paint.ANTI_ALIAS_FLAG)
 
     init {
         // メモが少ないうちは、一覧を下に寄せる
@@ -170,6 +191,7 @@ private class MemoDocumentView(context: Context, private val scroll: MemoScrollV
         val textColor = (data["textColor"] as? Number)?.toInt() ?: DEFAULT_TEXT_COLOR
         setTextSize(TypedValue.COMPLEX_UNIT_PX, fontPixels)
         setTextColor(textColor)
+        railPaint.color = textColor
         blocks = parseBlocks(blockValues)
 
         // --- 文書を差し替える
@@ -197,20 +219,68 @@ private class MemoDocumentView(context: Context, private val scroll: MemoScrollV
         MemoBlock(id = id, text = item["text"] as? String ?: "")
     }
 
-    // 各ブロックの本文を改行1つでつなぎ、ブロックごとに行高とブロック間隔の span を付けた文書を作る
+    // 各ブロックの本文を改行1つでつなぎ、ブロックごとに行高とブロック間隔の span を付けた文書を作る（ブロックごとの文書の中の範囲も記録する）
     private fun buildDocument(): SpannableStringBuilder {
         val document = SpannableStringBuilder()
         val lineHeight = (fontPixels * LINE_HEIGHT_RATIO).roundToInt()
         for ((index, block) in blocks.withIndex()) {
             val isLast = index + 1 == blocks.size
-            val start = document.length
+            block.start = document.length
             document.append(block.text.ifEmpty { EMPTY_BLOCK_TEXT })
+            block.end = document.length
             if (!isLast) document.append('\n')
             // 最後のブロック以外は、後ろの改行まで含めてブロックの範囲とする
             val spacing = if (isLast) 0 else dp(BLOCK_SPACING_DP)
-            document.setSpan(MemoLineHeightSpan(lineHeight, spacing), start, document.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            document.setSpan(MemoLineHeightSpan(lineHeight, spacing), block.start, document.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
         }
         return document
+    }
+
+    // ---------------------------------
+    // 丸の位置（上のブロックの最後の行の文字の下端と、このブロックの1行目の文字の上端のちょうど間）
+    // ---------------------------------
+    // 文字の上端・下端は、行高やブロック間隔の余白を含まない、フォントの ascent・descent の範囲
+    private fun circleCenterYs(): List<Float> {
+        val textLayout = layout ?: return blocks.map { totalPaddingTop.toFloat() }
+        val metrics = paint.fontMetrics
+        fun baselineAt(offset: Int) =
+            totalPaddingTop + textLayout.getLineBaseline(textLayout.getLineForOffset(offset)).toFloat()
+        val glyphTops = blocks.map { baselineAt(it.start) + metrics.ascent }
+        val centers = blocks.indices.map { index ->
+            if (index == 0) {
+                0f
+            } else {
+                val upperBottom = baselineAt(blocks[index - 1].end - 1) + metrics.descent
+                (upperBottom + glyphTops[index]) / 2
+            }
+        }.toMutableList()
+        // 一番上のブロックには上のブロックがないので、2番目のブロックと同じだけ文字の上端から離す
+        if (blocks.isNotEmpty()) {
+            val halfGap = if (blocks.size > 1) glyphTops[1] - centers[1] else dp(SINGLE_BLOCK_CIRCLE_GAP_DP).toFloat()
+            centers[0] = glyphTops[0] - halfGap
+        }
+        return centers
+    }
+
+    // ---------------------------------
+    // 描画
+    // ---------------------------------
+    override fun onDraw(canvas: Canvas) {
+        super.onDraw(canvas)
+        drawRail(canvas)
+    }
+
+    // 右の縦線と丸
+    private fun drawRail(canvas: Canvas) {
+        val x = width - dp(RAIL_X_FROM_RIGHT_DP).toFloat()
+        railPaint.strokeWidth = RAIL_WIDTH_DP * density
+        // 親のスクロールでは描画が再実行されないため、全区間を記録する
+        val circleCenters = circleCenterYs()
+        for ((index, top) in circleCenters.withIndex()) {
+            val bottom = if (index + 1 < circleCenters.size) circleCenters[index + 1] else height.toFloat()
+            canvas.drawLine(x, top, x, bottom, railPaint)
+            canvas.drawCircle(x, top, CIRCLE_RADIUS_DP * density, railPaint)
+        }
     }
 }
 
