@@ -45,7 +45,7 @@ private enum BodyLayout {
     static let emptyLineHeightRatio: CGFloat = 2
     // ブロックとブロックの間の余白
     static let blockSpacing: CGFloat = 24
-    // 空のメモにも1行分の高さを持たせるために置く、幅の無い文字
+    // 空のメモにも丸と1行分の高さを持たせるために置く、幅の無い文字
     static let emptyBlockText = "\u{200B}"
     // 一番下からこの距離までにいれば、一番下を見ているとみなす
     static let atBottomTolerance: CGFloat = 32
@@ -228,7 +228,7 @@ private final class MemoDocumentView: UITextView, UITextViewDelegate {
     private var speakingDotsPlace: SpeakingDotsPlace?
 
     override init(frame: CGRect, textContainer: NSTextContainer?) {
-        // TextKit 1（NSLayoutManager）で組み、文書全体の高さを同じレイアウトから求める
+        // TextKit 1（NSLayoutManager）で組み、文書全体の高さと丸の位置を同じレイアウトから求める
         let storage = NSTextStorage()
         let manager = NSLayoutManager()
         let container = NSTextContainer(size: .zero)

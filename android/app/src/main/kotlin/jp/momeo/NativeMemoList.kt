@@ -84,7 +84,7 @@ private const val LINE_HEIGHT_RATIO = 2f
 // ブロックとブロックの間の余白
 private const val BLOCK_SPACING_DP = 24
 
-// 空のメモにも1行分の高さを持たせるために置く、幅の無い文字
+// 空のメモにも丸と1行分の高さを持たせるために置く、幅の無い文字
 private const val EMPTY_BLOCK_TEXT = "​"
 
 // 一番下からこの距離までにいれば、一番下を見ているとみなす
@@ -552,7 +552,7 @@ private class MemoDocumentView(context: Context, private val scroll: MemoScrollV
         }
     }
 
-    // メニューの「コピー」「すべて選択」は、ブロックの区切りを踏まえてアプリ側で行う
+    // メニューの「コピー」「すべて選択」は、ブロックの区切りと打ち出し中のメモを踏まえてアプリ側で行う
     override fun onTextContextMenuItem(id: Int): Boolean {
         when (id) {
             android.R.id.copy -> copySelection()
