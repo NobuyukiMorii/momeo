@@ -91,12 +91,18 @@ final class NativeMemoListFactory: NSObject, FlutterPlatformViewFactory {
 // 1件のメモを、文書の中の1ブロックとして扱うための情報
 private struct MemoBlock {
     let id: Int64
-    // 表示する本文
-    let text: String
+    // 表示する本文（文字選択中は、選択を始めた時点の本文を保つ）
+    var text: String
     // 丸で選ばれているか
     let selected: Bool
     // 文書の中での本文の範囲
     var range = NSRange(location: 0, length: 0)
+}
+
+// 文書の中の位置を、どのブロックの何文字目かで表したもの（本文を差し替えても選択範囲を置き直せるようにする）
+private struct BlockPosition {
+    let blockId: Int64
+    let offsetInBlock: Int
 }
 
 // ---------------------------------
@@ -142,8 +148,11 @@ private final class MemoDocumentView: UITextView, UITextViewDelegate {
     // 丸が押されたブロックのメモ id を知らせる
     var onToggleBlock: ((Int64) -> Void)?
 
+    // --- 文書
     // 表示中のブロック（古い順）
     private var blocks: [MemoBlock] = []
+    // 最後に Dart から届いた文書（文字選択が外れたときに、止めていた更新を反映し直す）
+    private var latestArguments: Any?
     // 本文の文字サイズと色
     private var bodySize = CGFloat(DefaultValue.fontSize)
     private var bodyColor = UIColor.label
@@ -155,6 +164,8 @@ private final class MemoDocumentView: UITextView, UITextViewDelegate {
     private var needsDocumentLayout = true
 
     // --- 文字選択
+    // 文字選択中に、選択を始めた時点の本文を保つ（メモ id → 本文）
+    private var snapshots: [Int64: String] = [:]
     // 文書を組み直している間は、選択の変化を OS の操作として扱わない
     private var updating = false
 
@@ -195,31 +206,56 @@ private final class MemoDocumentView: UITextView, UITextViewDelegate {
     // ---------------------------------
     // Dart から届いた文書で、表示を更新する
     // ---------------------------------
+    // 本文は変わったところから後ろだけを差し替え、OS の文字選択とスクロール位置を保つ
     func update(_ arguments: Any?) {
         guard let data = arguments as? [String: Any],
               let blockValues = data["blocks"] as? [[String: Any]] else { return }
+        latestArguments = arguments
+        let incoming = Self.parseBlocks(blockValues)
 
-        // --- 差し替える前のスクロール位置を覚えておく
+        // --- 差し替える前の文字選択とスクロール位置を覚えておく（選択範囲のメモが消えるなら、文字選択を解除する）
+        let incomingIds = Set(incoming.map(\.id))
+        let sameMemoIds = blocks.map(\.id) == incoming.map(\.id)
+        let selectedBlocks = blocks.filter { NSIntersectionRange($0.range, selectedRange).length > 0 }
+        if selectedBlocks.contains(where: { !incomingIds.contains($0.id) }) {
+            clearTextSelection(refresh: false)
+        }
+        let selectionStartPosition = blockPosition(at: selectedRange.location)
+        let selectionEndPosition = blockPosition(at: NSMaxRange(selectedRange))
+        let hadSelection = selectedRange.length > 0
         let wasAtBottom = contentOffset.y >= contentSize.height - bounds.height - BodyLayout.atBottomTolerance
         let oldOffsetY = contentOffset.y
 
-        // --- 文字の大きさ・色と、ブロック
+        // --- 文字の大きさ・色
         bodySize = CGFloat((data["fontSize"] as? NSNumber)?.doubleValue ?? DefaultValue.fontSize)
         bodyColor = Self.opaqueColor(argb: (data["textColor"] as? NSNumber)?.uint32Value ?? DefaultValue.textColor)
-        blocks = Self.parseBlocks(blockValues)
 
-        // --- 文書を差し替える（中身が同じなら何もしない）
-        let document = buildDocument()
-        if document.isEqual(to: textStorage) { return }
+        // --- 文字選択中のメモは、選択を始めた時点の本文のまま出す（その間の追記は、選択を解除すると出る）
+        blocks = incoming.map { block in
+            guard let snapshot = snapshots[block.id] else { return block }
+            var shownBlock = block
+            shownBlock.text = snapshot
+            return shownBlock
+        }
+
+        // --- 文書を差し替え、文字選択を置き直す（中身が同じなら何もしない）
         updating = true
-        textStorage.setAttributedString(document)
+        let document = buildDocument()
+        if sameMemoIds && document.isEqual(to: textStorage) {
+            updating = false
+            return
+        }
+        replaceChangedTail(with: document)
+        if hadSelection, let selectionStartPosition, let selectionEndPosition {
+            restoreSelection(from: selectionStartPosition, to: selectionEndPosition)
+        }
         updating = false
 
-        // --- 組み直した後の高さで、スクロール位置を決める（最初と、一番下を見ていたときは最新へ）
+        // --- 組み直した後の高さで、スクロール位置を決める（最初と、一番下を見ていたときは最新へ。文字選択中は動かさない）
         needsDocumentLayout = true
         setNeedsLayout()
         layoutIfNeeded()
-        if isFirstLayout || (wasAtBottom && !isDragging) {
+        if isFirstLayout || (wasAtBottom && !hadSelection && !isDragging) {
             contentOffset = CGPoint(x: 0, y: scrollableHeight)
         } else {
             contentOffset = CGPoint(x: 0, y: min(oldOffsetY, scrollableHeight))
@@ -273,9 +309,68 @@ private final class MemoDocumentView: UITextView, UITextViewDelegate {
         return document
     }
 
+    // 前と同じ先頭部分は置き直さず、変わったところから後ろだけを差し替える（本文の追加だけなら OS の選択状態を保てる）
+    private func replaceChangedTail(with document: NSAttributedString) {
+        textStorage.beginEditing()
+        let oldText = textStorage.string as NSString
+        let newText = document.string as NSString
+        if oldText != newText {
+            var commonLength = 0
+            while commonLength < min(oldText.length, newText.length),
+                  oldText.character(at: commonLength) == newText.character(at: commonLength) {
+                commonLength += 1
+            }
+            // 絵文字などの文字の途中で切らない
+            if commonLength > 0, commonLength < oldText.length {
+                commonLength = oldText.rangeOfComposedCharacterSequence(at: commonLength).location
+            }
+            textStorage.replaceCharacters(
+                in: NSRange(location: commonLength, length: oldText.length - commonLength),
+                with: document.attributedSubstring(from: NSRange(location: commonLength, length: document.length - commonLength)))
+        }
+        // 文字が同じところも、太字や行高などの属性は付け直す
+        document.enumerateAttributes(in: NSRange(location: 0, length: document.length)) { attributes, range, _ in
+            self.textStorage.setAttributes(attributes, range: range)
+        }
+        textStorage.endEditing()
+    }
+
     // ---------------------------------
     // 文字選択
     // ---------------------------------
+    // 文字選択を解除する（refresh なら、選択中に止めていた本文の更新も反映する）
+    func clearTextSelection(refresh: Bool = true) {
+        updating = true
+        selectedRange = NSRange(location: 0, length: 0)
+        resignFirstResponder()
+        snapshots.removeAll()
+        updating = false
+        if refresh { update(latestArguments) }
+    }
+
+    // 文書の中の位置を、ブロックと、その中の何文字目かに直す
+    private func blockPosition(at offset: Int) -> BlockPosition? {
+        guard let block = blocks.first(where: { offset >= $0.range.location && offset <= NSMaxRange($0.range) }) else {
+            return nil
+        }
+        return BlockPosition(blockId: block.id, offsetInBlock: offset - block.range.location)
+    }
+
+    // ブロックの中の位置を、今の文書の中の位置に直す（本文が縮んでいたら末尾に留める）
+    private func documentOffset(of position: BlockPosition) -> Int? {
+        guard let block = blocks.first(where: { $0.id == position.blockId }) else { return nil }
+        return block.range.location + min(position.offsetInBlock, block.range.length)
+    }
+
+    // 差し替える前の選択範囲を、同じメモの同じ位置へ置き直す
+    private func restoreSelection(from startPosition: BlockPosition, to endPosition: BlockPosition) {
+        guard let start = documentOffset(of: startPosition), let end = documentOffset(of: endPosition), end > start else {
+            return
+        }
+        let restored = NSRange(location: start, length: end - start)
+        if selectedRange != restored { selectedRange = restored }
+    }
+
     // OS の操作で文字選択が変わったとき
     func textViewDidChangeSelection(_ textView: UITextView) {
         guard !updating else { return }
@@ -290,19 +385,27 @@ private final class MemoDocumentView: UITextView, UITextViewDelegate {
                 selectedRange = fitted
                 updating = false
             }
-        } else if selectedRange.length > 0 {
+            // 選択を始めた時点の本文を保ち、選択している間は本文を差し替えない
+            for block in blocks where snapshots[block.id] == nil {
+                snapshots[block.id] = block.text
+            }
+        } else if !snapshots.isEmpty || selectedRange.length > 0 {
             collapseSelectionLater()
         }
     }
 
-    // 本文に掛からない選択になったら、UIKit の選択通知を終えてから選択を畳む
+    // 選択が外れた（または本文に掛からない選択になった）ら、UIKit の選択通知を終えてから選択を畳み、止めていた本文の更新を反映する
     private func collapseSelectionLater() {
         let expected = selectedRange
         DispatchQueue.main.async { [weak self] in
-            guard let self, self.selectedRange == expected, self.selectedRange.length > 0 else { return }
+            guard let self, self.selectedRange == expected else { return }
             self.updating = true
-            self.selectedRange = NSRange(location: self.selectedRange.location, length: 0)
+            if self.selectedRange.length > 0 {
+                self.selectedRange = NSRange(location: self.selectedRange.location, length: 0)
+            }
+            self.snapshots.removeAll()
             self.updating = false
+            self.update(self.latestArguments)
         }
     }
 
@@ -324,8 +427,8 @@ private final class MemoDocumentView: UITextView, UITextViewDelegate {
             needsDocumentLayout = false
             layoutDocument()
         }
-        // 最初と、一番下を見ている間に一覧の高さが変わったとき（選択バーの出入りなど）は、一番下へ
-        if isFirstLayout || (oldSize != bounds.size && wasAtBottom) {
+        // 最初と、一番下を見ている間に一覧の高さが変わったとき（選択バーの出入りなど）は、一番下へ（文字選択中は動かさない）
+        if isFirstLayout || (oldSize != bounds.size && wasAtBottom && selectedRange.length == 0) {
             contentOffset = CGPoint(x: 0, y: scrollableHeight)
         }
         layoutRail()

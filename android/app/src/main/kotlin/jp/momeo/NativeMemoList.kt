@@ -1,5 +1,6 @@
 package jp.momeo
 
+import android.annotation.TargetApi
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Paint
@@ -121,14 +122,17 @@ class NativeMemoListFactory(private val messenger: BinaryMessenger) :
 // 1件のメモを、文書の中の1ブロックとして扱うための情報
 private data class MemoBlock(
     val id: Long,
-    // 表示する本文
-    val text: String,
+    // 表示する本文（文字選択中は、選択を始めた時点の本文を保つ）
+    var text: String,
     // 丸で選ばれているか
     val selected: Boolean,
     // 文書の中での本文の範囲（start 以上 end 未満）
     var start: Int = 0,
     var end: Int = 0,
 )
+
+// 文書の中の位置を、どのブロックの何文字目かで表したもの（本文を差し替えても選択範囲を置き直せるようにする）
+private data class BlockPosition(val blockId: Long, val offsetInBlock: Int)
 
 // ---------------------------------
 // メモ一覧の View と、Dart とのやり取り
@@ -176,24 +180,35 @@ private class MemoDocumentView(context: Context, private val scroll: MemoScrollV
 
     private val density = resources.displayMetrics.density
 
+    // --- 文書
     // 表示中のブロック（古い順）
     private var blocks = listOf<MemoBlock>()
+    // 最後に Dart から届いた文書（文字選択が外れたときに、止めていた更新を反映し直す）
+    private var latestArguments: Any? = null
     // 本文の文字サイズ（px）
     private var fontPixels = DEFAULT_FONT_SIZE
     // 最初の表示で、一番下（最新）までスクロールする前か
     private var initialScrollPending = true
+
+    // --- 文字選択
+    // 文字選択中に、選択を始めた時点の本文を保つ（メモ id → 本文）
+    private val snapshots = mutableMapOf<Long, String>()
+    // 文書を組み直している間は、選択の変化を OS の操作として扱わない
+    private var updating = false
+    // TextView の生成中にも選択の変化が届くため、生成が済むまでは扱わない
+    private var initialized = false
+    // アプリが置き直した選択範囲（OS がその端までスクロールしないようにする）
+    private var selectionWithoutScrolling: Pair<Int, Int>? = null
+
+    // --- 行高・太字と、右の縦線・丸
+    // ブロックごとに付けている span（メモ id → span）
+    private val blockSpans = mutableMapOf<Long, MemoBlockSpans>()
     // 選択中のブロックの本文に使う太字の書体
     private val boldTypeface = loadFlutterAssetFont(BOLD_FONT_ASSET)
     // 縦線と丸を描く絵の具
     private val railPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     // 縦線・丸の上で始まったタッチ（離したときに、動かさずに離したかを判定する）
     private var railTouchDown: MotionEvent? = null
-
-    // --- 文字選択
-    // 文書を組み直している間は、選択の変化を OS の操作として扱わない
-    private var updating = false
-    // TextView の生成中にも選択の変化が届くため、生成が済むまでは扱わない
-    private var initialized = false
 
     init {
         // メモが少ないうちは、一覧を下に寄せる
@@ -203,10 +218,23 @@ private class MemoDocumentView(context: Context, private val scroll: MemoScrollV
         setBackgroundColor(android.graphics.Color.TRANSPARENT)
         typeface = loadFlutterAssetFont(REGULAR_FONT_ASSET)
         setTextIsSelectable(true)
+        // TextView のまま、文書の差分更新で OS の選択状態を保つ
+        setSpannableFactory(object : Spannable.Factory() {
+            override fun newSpannable(source: CharSequence): Spannable = SpannableStringBuilder(source)
+        })
+        setText("", BufferType.SPANNABLE)
         initialized = true
     }
 
     private fun dp(value: Int) = (value * density).roundToInt()
+
+    // 今の選択範囲（前後の端の組）と、その前側・後側の位置
+    private val currentSelection: Pair<Int, Int>
+        get() = selectionStart to selectionEnd
+    private val selectionFrom: Int
+        get() = min(selectionStart, selectionEnd)
+    private val selectionTo: Int
+        get() = max(selectionStart, selectionEnd)
 
     // 文字選択の対象になるブロック（本文が空のメモを除く）
     private fun copyableBlocks(): List<MemoBlock> = blocks.filter { it.text.isNotEmpty() }
@@ -224,34 +252,93 @@ private class MemoDocumentView(context: Context, private val scroll: MemoScrollV
     // ---------------------------------
     // Dart から届いた文書で、表示を更新する
     // ---------------------------------
+    // 本文は変わったところから後ろだけを差し替え、OS の文字選択とスクロール位置を保つ
     fun update(arguments: Any?) {
         val data = arguments as? Map<*, *> ?: return
         val blockValues = data["blocks"] as? List<*> ?: return
+        latestArguments = arguments
+        val incoming = parseBlocks(blockValues)
 
-        // --- 差し替える前のスクロール位置を覚えておく
+        // --- 差し替える前の文字選択とスクロール位置を覚えておく（選択範囲のメモが消えるなら、文字選択を解除する）
+        val incomingIds = incoming.map { it.id }.toSet()
+        if (blocks.any { selectionIntersects(it) && it.id !in incomingIds }) clearTextSelection(refresh = false)
+        val selectionStartPosition = blockPositionAt(selectionFrom)
+        val selectionEndPosition = blockPositionAt(selectionTo)
+        val hadSelection = hasSelection()
         val wasAtBottom = scroll.scrollY >= height - scroll.height - dp(AT_BOTTOM_TOLERANCE_DP)
         val oldScrollY = scroll.scrollY
 
-        // --- 文字の大きさ・色と、ブロック
+        // --- 文字の大きさ・色
         fontPixels = ((data["fontSize"] as? Number)?.toFloat() ?: DEFAULT_FONT_SIZE) * density
         val textColor = (data["textColor"] as? Number)?.toInt() ?: DEFAULT_TEXT_COLOR
-        setTextSize(TypedValue.COMPLEX_UNIT_PX, fontPixels)
-        setTextColor(textColor)
-        railPaint.color = textColor
-        blocks = parseBlocks(blockValues)
 
-        // --- 文書を差し替える
+        // --- 文字選択中のメモは、選択を始めた時点の本文のまま出す（その間の追記は、選択を解除すると出る）
+        for (block in incoming) {
+            val snapshot = snapshots[block.id] ?: continue
+            block.text = snapshot
+        }
+        blocks = incoming
+        val newText = buildDocumentText()
+
+        // --- 文書を差し替え、文字選択を置き直す
         updating = true
-        text = buildDocument()
-        updating = false
+        applyTextSizeAndColor(textColor)
+        val document = text as SpannableStringBuilder
+        replaceChangedTail(document, newText)
+        syncBlockSpans(document)
         updateBottomPadding()
+        if (hadSelection && selectionStartPosition != null && selectionEndPosition != null) {
+            restoreSelection(selectionStartPosition, selectionEndPosition)
+        }
+        updating = false
+        requestLayout()
+        invalidate()
 
-        // --- 組み直した後の高さで、スクロール位置を決める（最初と、一番下を見ていたときは最新へ）
+        // --- 組み直した後の高さで、スクロール位置を決める（最初と、一番下を見ていたときは最新へ。文字選択中は動かさない）
         post {
-            val scrollsToLatest = initialScrollPending || wasAtBottom
+            val scrollsToLatest = initialScrollPending || (wasAtBottom && !hadSelection)
             scroll.scrollTo(0, if (scrollsToLatest) max(0, height - scroll.height) else oldScrollY)
             initialScrollPending = false
         }
+    }
+
+    // Dart から届いたブロックの一覧（形の合わないものは飛ばす）
+    private fun parseBlocks(values: List<*>): List<MemoBlock> = values.mapNotNull { value ->
+        val item = value as? Map<*, *> ?: return@mapNotNull null
+        val id = (item["id"] as? Number)?.toLong() ?: return@mapNotNull null
+        MemoBlock(id = id, text = item["text"] as? String ?: "", selected = item["selected"] == true)
+    }
+
+    // 各ブロックの本文を改行1つでつないだ文書を作り、ブロックごとの文書の中の範囲も記録する
+    private fun buildDocumentText(): String {
+        val builder = StringBuilder()
+        for ((index, block) in blocks.withIndex()) {
+            block.start = builder.length
+            builder.append(block.text.ifEmpty { EMPTY_BLOCK_TEXT })
+            block.end = builder.length
+            if (index + 1 < blocks.size) builder.append('\n')
+        }
+        return builder.toString()
+    }
+
+    // 本文・縦線・丸の色と、本文の文字サイズ
+    private fun applyTextSizeAndColor(color: Int) {
+        setTextSize(TypedValue.COMPLEX_UNIT_PX, fontPixels)
+        setTextColor(color)
+        railPaint.color = color
+    }
+
+    // 前と同じ先頭部分は置き直さず、変わったところから後ろだけを差し替える
+    private fun replaceChangedTail(document: SpannableStringBuilder, newText: String) {
+        if (document.toString() == newText) return
+        val shorterLength = min(document.length, newText.length)
+        var commonLength = 0
+        while (commonLength < shorterLength && document[commonLength] == newText[commonLength]) commonLength++
+        // サロゲートペアの途中で切らない
+        if (commonLength > 0 && commonLength < document.length && Character.isLowSurrogate(document[commonLength])) {
+            commonLength--
+        }
+        document.replace(commonLength, document.length, newText.substring(commonLength))
     }
 
     // 文書の下の余白を、ナビゲーションバーの分に合わせる
@@ -263,16 +350,67 @@ private class MemoDocumentView(context: Context, private val scroll: MemoScrollV
     // ---------------------------------
     // 文字選択
     // ---------------------------------
+    // 文字選択を解除する（refresh なら、選択中に止めていた本文の更新も反映する）
+    fun clearTextSelection(refresh: Boolean = true) {
+        updating = true
+        selectionWithoutScrolling = null
+        Selection.removeSelection(text as Spannable)
+        clearFocus()
+        snapshots.clear()
+        updating = false
+        if (refresh) update(latestArguments)
+    }
+
+    // 文字選択の範囲に、ブロックが1文字でも掛かっているか
+    private fun selectionIntersects(block: MemoBlock): Boolean =
+        hasSelection() && block.end > selectionFrom && block.start < selectionTo
+
+    // 文書の中の位置を、ブロックと、その中の何文字目かに直す
+    private fun blockPositionAt(offset: Int): BlockPosition? =
+        blocks.firstOrNull { offset in it.start..it.end }?.let { BlockPosition(it.id, offset - it.start) }
+
+    // ブロックの中の位置を、今の文書の中の位置に直す（本文が縮んでいたら末尾に留める）
+    private fun documentOffsetOf(position: BlockPosition): Int? =
+        blocks.firstOrNull { it.id == position.blockId }
+            ?.let { it.start + min(position.offsetInBlock, it.end - it.start) }
+
+    // 差し替える前の選択範囲を、同じメモの同じ位置へ置き直す
+    private fun restoreSelection(startPosition: BlockPosition, endPosition: BlockPosition) {
+        val start = documentOffsetOf(startPosition) ?: return
+        val end = documentOffsetOf(endPosition) ?: return
+        if (end > start) setSelectionWithoutScrolling(start, end)
+    }
+
+    // 選択末尾を見せるための移動は、つまみなどで範囲を動かすまで抑える
+    private fun setSelectionWithoutScrolling(start: Int, end: Int) {
+        selectionWithoutScrolling = start to end
+        Selection.setSelection(text as Spannable, start, end)
+    }
+
+    override fun bringPointIntoView(offset: Int): Boolean {
+        if (selectionWithoutScrolling == currentSelection) return false
+        return super.bringPointIntoView(offset)
+    }
+
+    @TargetApi(34)
+    override fun bringPointIntoView(offset: Int, requestRectWithoutFocus: Boolean): Boolean {
+        if (selectionWithoutScrolling == currentSelection) return false
+        return super.bringPointIntoView(offset, requestRectWithoutFocus)
+    }
+
     // OS の操作で文字選択が変わったとき
     override fun onSelectionChanged(start: Int, end: Int) {
         super.onSelectionChanged(start, end)
         if (!initialized || updating) return
+        if (selectionWithoutScrolling != (start to end)) selectionWithoutScrolling = null
         val from = min(start, end)
         val to = max(start, end)
         val touchedBlocks = copyableBlocksIn(from, to)
         if (start != end && from >= 0 && touchedBlocks.isNotEmpty()) {
             fitSelectionToBlocks(from, to, touchedBlocks)
-        } else if (from >= 0 && start != end) {
+            // 選択を始めた時点の本文を保ち、選択している間は本文を差し替えない
+            for (block in blocks) snapshots.putIfAbsent(block.id, block.text)
+        } else if (snapshots.isNotEmpty() || (from >= 0 && start != end)) {
             collapseSelectionLater(start, end)
         }
     }
@@ -287,41 +425,84 @@ private class MemoDocumentView(context: Context, private val scroll: MemoScrollV
         updating = false
     }
 
-    // 本文に掛からない選択になったら、OS の処理を終えてから選択を畳む
+    // 選択が外れた（または本文に掛からない選択になった）ら、OS の処理を終えてから選択を畳み、止めていた本文の更新を反映する
     private fun collapseSelectionLater(start: Int, end: Int) {
         post {
-            if (selectionStart != start || selectionEnd != end || !hasSelection()) return@post
+            if (selectionStart != start || selectionEnd != end) return@post
             updating = true
-            Selection.setSelection(text as Spannable, max(0, start))
+            if (hasSelection()) Selection.setSelection(text as Spannable, max(0, start))
+            snapshots.clear()
             updating = false
+            update(latestArguments)
         }
     }
 
-    // Dart から届いたブロックの一覧（形の合わないものは飛ばす）
-    private fun parseBlocks(values: List<*>): List<MemoBlock> = values.mapNotNull { value ->
-        val item = value as? Map<*, *> ?: return@mapNotNull null
-        val id = (item["id"] as? Number)?.toLong() ?: return@mapNotNull null
-        MemoBlock(id = id, text = item["text"] as? String ?: "", selected = item["selected"] == true)
-    }
-
-    // 各ブロックの本文を改行1つでつなぎ、ブロックごとに行高・ブロック間隔・太字の span を付けた文書を作る（ブロックごとの文書の中の範囲も記録する）
-    private fun buildDocument(): SpannableStringBuilder {
-        val document = SpannableStringBuilder()
+    // ---------------------------------
+    // 行高・ブロック間隔・太字の span を、変わったブロックだけ付け直す
+    // ---------------------------------
+    // span の付け外しのたびに行が組み直されるため、全ブロックを毎回付け直すと表示の更新ごとに文書全体を組み直すことになる
+    private fun syncBlockSpans(document: SpannableStringBuilder) {
         val lineHeight = (fontPixels * LINE_HEIGHT_RATIO).roundToInt()
-        for ((index, block) in blocks.withIndex()) {
-            val isLast = index + 1 == blocks.size
-            block.start = document.length
-            document.append(block.text.ifEmpty { EMPTY_BLOCK_TEXT })
-            block.end = document.length
-            if (!isLast) document.append('\n')
-            // 最後のブロック以外は、後ろの改行まで含めてブロックの範囲とする
-            val spacing = if (isLast) 0 else dp(BLOCK_SPACING_DP)
-            document.setSpan(MemoLineHeightSpan(lineHeight, spacing), block.start, document.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-            if (block.selected) {
-                document.setSpan(MemoTypefaceSpan(boldTypeface), block.start, document.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        // --- 一覧から消えたブロックの span を外す
+        val blockIds = blocks.map { it.id }.toSet()
+        for (removedId in blockSpans.keys - blockIds) {
+            blockSpans.remove(removedId)?.let { spans ->
+                document.removeSpan(spans.lineHeight)
+                spans.bold?.let { document.removeSpan(it) }
             }
         }
-        return document
+        // --- 各ブロックの span を、今の範囲と値に合わせる
+        for ((index, block) in blocks.withIndex()) {
+            val isLast = index + 1 == blocks.size
+            // 最後のブロック以外は、後ろの改行まで含めてブロックの範囲とする
+            val spanEnd = if (isLast) block.end else block.end + 1
+            val spacing = if (isLast) 0 else dp(BLOCK_SPACING_DP)
+            val current = blockSpans[block.id]
+            blockSpans[block.id] = MemoBlockSpans(
+                lineHeight = syncLineHeightSpan(document, current?.lineHeight, block.start, spanEnd, lineHeight, spacing),
+                bold = syncBoldSpan(document, current?.bold, block.selected, block.start, spanEnd),
+            )
+        }
+    }
+
+    // 行高の span が今の範囲・値のままなら使い回し、違っていれば付け直す
+    private fun syncLineHeightSpan(
+        document: SpannableStringBuilder,
+        current: MemoLineHeightSpan?,
+        start: Int,
+        end: Int,
+        lineHeight: Int,
+        spacing: Int,
+    ): MemoLineHeightSpan {
+        if (current != null && current.height == lineHeight && current.spacing == spacing &&
+            document.getSpanStart(current) == start && document.getSpanEnd(current) == end
+        ) {
+            return current
+        }
+        current?.let { document.removeSpan(it) }
+        return MemoLineHeightSpan(lineHeight, spacing).also {
+            document.setSpan(it, start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        }
+    }
+
+    // 太字の span は、選択中のブロックにだけ今の範囲で付ける
+    private fun syncBoldSpan(
+        document: SpannableStringBuilder,
+        current: MemoTypefaceSpan?,
+        selected: Boolean,
+        start: Int,
+        end: Int,
+    ): MemoTypefaceSpan? {
+        if (current != null && selected &&
+            document.getSpanStart(current) == start && document.getSpanEnd(current) == end
+        ) {
+            return current
+        }
+        current?.let { document.removeSpan(it) }
+        if (!selected) return null
+        return MemoTypefaceSpan(boldTypeface).also {
+            document.setSpan(it, start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        }
     }
 
     // ---------------------------------
@@ -495,3 +676,6 @@ private class MemoLineHeightSpan(val height: Int, val spacing: Int) : LineHeight
         fm.bottom = fm.descent
     }
 }
+
+// 1ブロックに付けている span（太字は選択中のブロックだけ）
+private class MemoBlockSpans(val lineHeight: MemoLineHeightSpan, val bold: MemoTypefaceSpan?)
