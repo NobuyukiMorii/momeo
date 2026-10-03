@@ -40,4 +40,4 @@
 | `android/app/src/main/kotlin/jp/momeo/NativeMemoList.kt` | `MemoBlock.selectable`（154〜155行目）、受け取り（393行目）             |
 
 
-選択・コピーの対象を `selectable` で絞るところ（`copyableBlocks`）は step 18 で入れている。この step で、打ち出し中のメモが実際に外れるようになる。
+選択・コピーの対象のブロック（`copyableBlocks`）は step 18 で入れている（本文が空のメモを除くだけ）。この step で `selectable` の条件を足し、打ち出し中のメモが外れるようにする。

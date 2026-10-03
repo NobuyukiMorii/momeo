@@ -4,7 +4,7 @@ import UIKit
 // ============================================================
 // NativeMemoList — リスニング画面のメモ一覧（iOS）
 //
-//   メモ全件を時系列順に並べた1つの UITextView にし、表示とスクロールは OS に任せる。
+//   メモ全件を時系列順に並べた1つの UITextView にし、文字選択・つまみ・メニュー・スクロールは OS に任せる。
 //   右の縦線と丸はアプリ側で描く。
 //   Dart 側は lib/widgets/native_memo_list.dart。
 // ============================================================
@@ -138,7 +138,7 @@ private final class NativeMemoList: NSObject, FlutterPlatformView {
 // ---------------------------------
 // 本文（メモ全件を1つにした文書）と、右の縦線・丸
 // ---------------------------------
-private final class MemoDocumentView: UITextView {
+private final class MemoDocumentView: UITextView, UITextViewDelegate {
     // 丸が押されたブロックのメモ id を知らせる
     var onToggleBlock: ((Int64) -> Void)?
 
@@ -154,6 +154,10 @@ private final class MemoDocumentView: UITextView {
     // 文書の高さと丸の位置を測り直すか
     private var needsDocumentLayout = true
 
+    // --- 文字選択
+    // 文書を組み直している間は、選択の変化を OS の操作として扱わない
+    private var updating = false
+
     // --- 右の縦線と丸
     private let rail = MemoRailView()
     // 丸の中心の高さ（メモ id → 文書の座標）
@@ -168,19 +172,25 @@ private final class MemoDocumentView: UITextView {
         manager.addTextContainer(container)
         super.init(frame: frame, textContainer: container)
         isEditable = false
-        isSelectable = false
+        isSelectable = true
         backgroundColor = .clear
         contentInsetAdjustmentBehavior = .never
         self.textContainer.lineFragmentPadding = 0
         textContainerInset = UIEdgeInsets(top: BodyLayout.minPaddingTop, left: BodyLayout.paddingLeft,
                                           bottom: BodyLayout.paddingBottom, right: BodyLayout.paddingRight)
         alwaysBounceVertical = true
+        delegate = self
         rail.document = self
         addSubview(rail)
         rail.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(didTapRail(_:))))
     }
 
     required init?(coder: NSCoder) { fatalError("ストーリーボードからは生成しません") }
+
+    // 文字選択の対象になるブロック（本文が空のメモを除く）
+    private var copyableBlocks: [MemoBlock] {
+        blocks.filter { !$0.text.isEmpty }
+    }
 
     // ---------------------------------
     // Dart から届いた文書で、表示を更新する
@@ -201,7 +211,9 @@ private final class MemoDocumentView: UITextView {
         // --- 文書を差し替える（中身が同じなら何もしない）
         let document = buildDocument()
         if document.isEqual(to: textStorage) { return }
+        updating = true
         textStorage.setAttributedString(document)
+        updating = false
 
         // --- 組み直した後の高さで、スクロール位置を決める（最初と、一番下を見ていたときは最新へ）
         needsDocumentLayout = true
@@ -259,6 +271,39 @@ private final class MemoDocumentView: UITextView {
             document.append(segment)
         }
         return document
+    }
+
+    // ---------------------------------
+    // 文字選択
+    // ---------------------------------
+    // OS の操作で文字選択が変わったとき
+    func textViewDidChangeSelection(_ textView: UITextView) {
+        guard !updating else { return }
+        let intersections = copyableBlocks
+            .map { NSIntersectionRange($0.range, selectedRange) }
+            .filter { $0.length > 0 }
+        if let first = intersections.first, let last = intersections.last {
+            // 選択範囲の両端を、掛かっているブロックの本文の端までに収める
+            let fitted = NSRange(location: first.location, length: NSMaxRange(last) - first.location)
+            if fitted != selectedRange {
+                updating = true
+                selectedRange = fitted
+                updating = false
+            }
+        } else if selectedRange.length > 0 {
+            collapseSelectionLater()
+        }
+    }
+
+    // 本文に掛からない選択になったら、UIKit の選択通知を終えてから選択を畳む
+    private func collapseSelectionLater() {
+        let expected = selectedRange
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.selectedRange == expected, self.selectedRange.length > 0 else { return }
+            self.updating = true
+            self.selectedRange = NSRange(location: self.selectedRange.location, length: 0)
+            self.updating = false
+        }
     }
 
     // ---------------------------------

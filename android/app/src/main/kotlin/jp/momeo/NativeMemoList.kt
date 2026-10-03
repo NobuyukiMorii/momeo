@@ -5,6 +5,8 @@ import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.Typeface
 import android.os.Build
+import android.text.Selection
+import android.text.Spannable
 import android.text.SpannableStringBuilder
 import android.text.Spanned
 import android.text.TextPaint
@@ -12,6 +14,7 @@ import android.text.style.LineHeightSpan
 import android.text.style.MetricAffectingSpan
 import android.text.style.UpdateLayout
 import android.util.TypedValue
+import android.view.ContextThemeWrapper
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
@@ -29,12 +32,13 @@ import io.flutter.plugin.platform.PlatformView
 import io.flutter.plugin.platform.PlatformViewFactory
 import kotlin.math.abs
 import kotlin.math.max
+import kotlin.math.min
 import kotlin.math.roundToInt
 
 // ============================================================
 // NativeMemoList — リスニング画面のメモ一覧（Android）
 //
-//   メモ全件を時系列順に並べた1つの TextView にし、表示とスクロールは OS に任せる。
+//   メモ全件を時系列順に並べた1つの TextView にし、文字選択・つまみ・メニュー・スクロールは OS に任せる。
 //   右の縦線と丸はアプリ側で描く。
 //   Dart 側は lib/widgets/native_memo_list.dart。
 // ============================================================
@@ -131,8 +135,10 @@ private data class MemoBlock(
 // ---------------------------------
 private class NativeMemoList(context: Context, viewId: Int, messenger: BinaryMessenger, args: Any?) : PlatformView {
     private val channel = MethodChannel(messenger, "${NativeMemoListFactory.VIEW_TYPE}/$viewId")
-    private val scroll = MemoScrollView(context)
-    private val document = MemoDocumentView(context, scroll)
+    // 文字選択のつまみ・メニューが、OS 標準の見た目で出るようにする
+    private val themedContext = ContextThemeWrapper(context, android.R.style.Theme_Material_Light_NoActionBar)
+    private val scroll = MemoScrollView(themedContext)
+    private val document = MemoDocumentView(themedContext, scroll)
 
     init {
         scroll.isFillViewport = true
@@ -183,6 +189,12 @@ private class MemoDocumentView(context: Context, private val scroll: MemoScrollV
     // 縦線・丸の上で始まったタッチ（離したときに、動かさずに離したかを判定する）
     private var railTouchDown: MotionEvent? = null
 
+    // --- 文字選択
+    // 文書を組み直している間は、選択の変化を OS の操作として扱わない
+    private var updating = false
+    // TextView の生成中にも選択の変化が届くため、生成が済むまでは扱わない
+    private var initialized = false
+
     init {
         // メモが少ないうちは、一覧を下に寄せる
         gravity = Gravity.BOTTOM or Gravity.START
@@ -190,9 +202,18 @@ private class MemoDocumentView(context: Context, private val scroll: MemoScrollV
         setPadding(dp(BODY_PADDING_LEFT_DP), dp(BODY_PADDING_TOP_DP), dp(BODY_PADDING_RIGHT_DP), 0)
         setBackgroundColor(android.graphics.Color.TRANSPARENT)
         typeface = loadFlutterAssetFont(REGULAR_FONT_ASSET)
+        setTextIsSelectable(true)
+        initialized = true
     }
 
     private fun dp(value: Int) = (value * density).roundToInt()
+
+    // 文字選択の対象になるブロック（本文が空のメモを除く）
+    private fun copyableBlocks(): List<MemoBlock> = blocks.filter { it.text.isNotEmpty() }
+
+    // 範囲（from 以上 to 未満）に1文字でも掛かる、文字選択の対象のブロック
+    private fun copyableBlocksIn(from: Int, to: Int): List<MemoBlock> =
+        copyableBlocks().filter { it.end > from && it.start < to }
 
     // Flutter の assets に同梱した書体を読み込む（読めなければ端末の標準の書体）
     private fun loadFlutterAssetFont(assetPath: String): Typeface {
@@ -220,7 +241,9 @@ private class MemoDocumentView(context: Context, private val scroll: MemoScrollV
         blocks = parseBlocks(blockValues)
 
         // --- 文書を差し替える
+        updating = true
         text = buildDocument()
+        updating = false
         updateBottomPadding()
 
         // --- 組み直した後の高さで、スクロール位置を決める（最初と、一番下を見ていたときは最新へ）
@@ -235,6 +258,43 @@ private class MemoDocumentView(context: Context, private val scroll: MemoScrollV
     fun updateBottomPadding() {
         val bottomPadding = scroll.documentPaddingBottom()
         if (paddingBottom != bottomPadding) setPadding(paddingLeft, paddingTop, paddingRight, bottomPadding)
+    }
+
+    // ---------------------------------
+    // 文字選択
+    // ---------------------------------
+    // OS の操作で文字選択が変わったとき
+    override fun onSelectionChanged(start: Int, end: Int) {
+        super.onSelectionChanged(start, end)
+        if (!initialized || updating) return
+        val from = min(start, end)
+        val to = max(start, end)
+        val touchedBlocks = copyableBlocksIn(from, to)
+        if (start != end && from >= 0 && touchedBlocks.isNotEmpty()) {
+            fitSelectionToBlocks(from, to, touchedBlocks)
+        } else if (from >= 0 && start != end) {
+            collapseSelectionLater(start, end)
+        }
+    }
+
+    // 選択範囲の両端を、掛かっているブロックの本文の端までに収める
+    private fun fitSelectionToBlocks(from: Int, to: Int, touchedBlocks: List<MemoBlock>) {
+        val fittedStart = max(from, touchedBlocks.first().start)
+        val fittedEnd = min(to, touchedBlocks.last().end)
+        if (fittedStart == from && fittedEnd == to) return
+        updating = true
+        Selection.setSelection(text as Spannable, fittedStart, fittedEnd)
+        updating = false
+    }
+
+    // 本文に掛からない選択になったら、OS の処理を終えてから選択を畳む
+    private fun collapseSelectionLater(start: Int, end: Int) {
+        post {
+            if (selectionStart != start || selectionEnd != end || !hasSelection()) return@post
+            updating = true
+            Selection.setSelection(text as Spannable, max(0, start))
+            updating = false
+        }
     }
 
     // Dart から届いたブロックの一覧（形の合わないものは飛ばす）
