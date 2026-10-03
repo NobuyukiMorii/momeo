@@ -23,6 +23,7 @@
 		B3FC7C5B7B7A5D364EAE51B2 /* MomeoWidgets.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = CDFA1D9307A565082CB9A50E /* MomeoWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		D10B5E28F914957D2FB664EF /* MomeoWidgetsBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C3DDEE3404B0576C8AEB7A3 /* MomeoWidgetsBundle.swift */; };
 		D54D3CD22DF370F5EE28D154 /* SttModelChannel.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACC68584E009F98472B27DB8 /* SttModelChannel.swift */; };
+		E91A885820E74219A34FA001 /* NativeMemoList.swift in Sources */ = {isa = PBXBuildFile; fileRef = E91A885820E74219A34FA002 /* NativeMemoList.swift */; };
 		F3AE6B0EBFD4F47463C3A900 /* ListeningActivityWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = A26AB548A63D27F550654B95 /* ListeningActivityWidget.swift */; };
 		FB26AA39AAA90698BD254909 /* model.int8.onnx in Resources */ = {isa = PBXBuildFile; fileRef = C28B7368AF28AB3E04473CEE /* model.int8.onnx */; };
 /* End PBXBuildFile section */
@@ -96,6 +97,7 @@
 		A83FF56E2C466BAC6391BBF6 /* Runner.entitlements */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.entitlements; path = Runner.entitlements; sourceTree = "<group>"; };
 		AC266C70F75E9EC73645D8BD /* Pods-RunnerTests.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-RunnerTests.release.xcconfig"; path = "Target Support Files/Pods-RunnerTests/Pods-RunnerTests.release.xcconfig"; sourceTree = "<group>"; };
 		ACC68584E009F98472B27DB8 /* SttModelChannel.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SttModelChannel.swift; sourceTree = "<group>"; };
+		E91A885820E74219A34FA002 /* NativeMemoList.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeMemoList.swift; sourceTree = "<group>"; };
 		B44F88B0D52D8D531AC69AC0 /* Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		C260C13195B7A91808815D3A /* Pods-Runner.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Runner.release.xcconfig"; path = "Target Support Files/Pods-Runner/Pods-Runner.release.xcconfig"; sourceTree = "<group>"; };
 		C28B7368AF28AB3E04473CEE /* model.int8.onnx */ = {isa = PBXFileReference; includeInIndex = 1; path = model.int8.onnx; sourceTree = "<group>"; };
@@ -232,6 +234,7 @@
 				74858FAD1ED2DC5600515810 /* Runner-Bridging-Header.h */,
 				016CA583B9E7763003D9095C /* Models */,
 				ACC68584E009F98472B27DB8 /* SttModelChannel.swift */,
+				E91A885820E74219A34FA002 /* NativeMemoList.swift */,
 				A83FF56E2C466BAC6391BBF6 /* Runner.entitlements */,
 			);
 			path = Runner;
@@ -514,6 +517,7 @@
 				1498D2341E8E89220040F4C2 /* GeneratedPluginRegistrant.m in Sources */,
 				7884E8682EC3CC0700C636F2 /* SceneDelegate.swift in Sources */,
 				D54D3CD22DF370F5EE28D154 /* SttModelChannel.swift in Sources */,
+				E91A885820E74219A34FA001 /* NativeMemoList.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

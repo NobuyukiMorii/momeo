@@ -29,7 +29,6 @@ step 12 でカード一覧をやめたので、カードのためだけにあっ
 | カタログの目次から、上の2つの見本                           | `lib/pages/dev/catalog/catalog_page.dart` |
 | アクティブカードに時刻を出すための状態 `speechStartedAt`       | `lib/providers/listening_providers.dart`  |
 | アクティブカードを引っ込める合図 `emptyResultCount`         | `lib/providers/listening_providers.dart`  |
-| ページに残ったカード用の定数・状態・import（時刻の書式、コピーの知らせなど） | `lib/pages/listening/listening_page.dart` |
 | アニメーションが選択バーの1つだけになるので、`TickerProviderStateMixin` を `SingleTickerProviderStateMixin` にする | `lib/pages/listening/listening_page.dart` |
 | 冒頭の説明の「アクティブカードのアニメーションに翻訳する」 | `lib/providers/listening_providers.dart` |
 
@@ -46,5 +45,5 @@ spike は消したあとの形になっている。
 | ----------------------------------------- | ------------------------------------------- |
 | `lib/providers/listening_providers.dart`  | `ListeningState`（45〜168行目）に2つの状態が無い            |
 | `lib/pages/dev/catalog/catalog_page.dart` | `Widgets` の目次（49〜53行目）に VoiceCard・VoiceIcon が無い |
-| `lib/pages/listening/listening_page.dart` | 冒頭の import と定数（1〜31行目）、状態（43〜81行目）             |
+| `lib/pages/listening/listening_page.dart` | `SingleTickerProviderStateMixin`（43〜44行目）             |
 

@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NativeMemoList.kt の役割</title>
+<style>
+  :root {
+    --bg: #f7f6f3;
+    --card: #ffffff;
+    --text: #222222;
+    --muted: #7a7a7a;
+    --line: #dddad3;
+    --accent: #2f6fdb;
+    --accent-bg: #e8f0fd;
+    --c1: #e8f0fd;
+    --c2: #e9f6ee;
+    --c3: #fdf1e3;
+    --c4: #f3eafb;
+    --c5: #f1efea;
+    --code-bg: #f4f3ef;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #1b1b1d;
+      --card: #26262a;
+      --text: #eeeeee;
+      --muted: #9a9a9a;
+      --line: #3a3a40;
+      --accent: #7aa5f2;
+      --accent-bg: #22304a;
+      --c1: #22304a;
+      --c2: #1f3a2a;
+      --c3: #3d2f1e;
+      --c4: #33263f;
+      --c5: #2e2e33;
+      --code-bg: #1f1f23;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #1b1b1d;
+    --card: #26262a;
+    --text: #eeeeee;
+    --muted: #9a9a9a;
+    --line: #3a3a40;
+    --accent: #7aa5f2;
+    --accent-bg: #22304a;
+    --c1: #22304a;
+    --c2: #1f3a2a;
+    --c3: #3d2f1e;
+    --c4: #33263f;
+    --c5: #2e2e33;
+    --code-bg: #1f1f23;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 32px 16px 56px;
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Hiragino Sans", "Noto Sans JP", sans-serif;
+    line-height: 1.6;
+  }
+  main { max-width: 760px; margin: 0 auto; }
+  h1 { font-size: 22px; margin: 0 0 6px; }
+  h1 code { font-size: 20px; }
+  .lead { margin: 0 0 32px; font-size: 17px; }
+  h2 { font-size: 14px; color: var(--muted); font-weight: 600; margin: 40px 0 12px; }
+  code { font-family: "SF Mono", Menlo, monospace; font-size: 13px; }
+  small { color: var(--muted); font-size: 12px; }
+
+  /* 左→右の流れ */
+  .flow { display: flex; align-items: stretch; gap: 8px; flex-wrap: wrap; }
+  .box {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 12px 14px;
+    flex: 1 1 140px;
+    font-size: 14px;
+  }
+  .box small { display: block; margin-top: 4px; }
+  .arrow { align-self: center; color: var(--muted); font-size: 18px; }
+
+  /* 文書の変換 */
+  .doc { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+  .doc pre {
+    flex: 1 1 260px;
+    margin: 0;
+    background: var(--code-bg);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 12px 14px;
+    font-size: 12.5px;
+    line-height: 1.7;
+    overflow-x: auto;
+  }
+  .sheet {
+    flex: 1 1 260px;
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 14px 16px;
+    font-size: 15px;
+  }
+  .sheet .block { line-height: 2; }
+  .sheet .gap {
+    height: 24px;
+    margin: 0 -6px;
+    border-top: 1px dashed var(--accent);
+    border-bottom: 1px dashed var(--accent);
+    background: var(--accent-bg);
+    font-size: 11px;
+    color: var(--accent);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* ファイルの地図 */
+  .map { display: grid; gap: 6px; }
+  .part {
+    display: grid;
+    grid-template-columns: 76px 1fr;
+    gap: 12px;
+    align-items: center;
+    border-radius: 10px;
+    padding: 10px 14px;
+    font-size: 14px;
+  }
+  .part .lines { font-family: "SF Mono", Menlo, monospace; font-size: 12px; color: var(--muted); }
+  .part b { font-weight: 600; }
+  .p1 { background: var(--c5); }
+  .p2 { background: var(--c1); }
+  .p3 { background: var(--c2); }
+  .p4 { background: var(--c3); }
+  .p5 { background: var(--c4); }
+</style>
+</head>
+<body>
+<main>
+  <h1><code>NativeMemoList.kt</code></h1>
+  <p class="lead">Dart から届いた<b>メモ一覧</b>を、Android の部品で<b>1枚の文章として画面に出す</b>ファイル。</p>
+
+  <h2>流れ</h2>
+  <div class="flow">
+    <div class="box">Dart がメモ一覧を送る<small>update</small></div>
+    <span class="arrow">→</span>
+    <div class="box">受け取る<small>NativeMemoList</small></div>
+    <span class="arrow">→</span>
+    <div class="box">メモを1枚の文章にする<small>MemoDocumentView</small></div>
+    <span class="arrow">→</span>
+    <div class="box">画面に出して、一番下までスクロール</div>
+  </div>
+
+  <h2>「1枚の文章にする」とは</h2>
+  <div class="doc">
+<pre>blocks: [
+  { id: 1, text: "お婆ちゃんの家に行った。" },
+  { id: 2, text: "耳と記憶は弱くなってて心配。" },
+]</pre>
+    <span class="arrow">→</span>
+    <div class="sheet">
+      <div class="block">お婆ちゃんの家に行った。</div>
+      <div class="gap">ブロックの間 24</div>
+      <div class="block">耳と記憶は弱くなってて心配。</div>
+    </div>
+  </div>
+  <p><small>メモ1件 = ブロック1つ。改行でつなぎ、行の高さは文字の2倍、ブロックの下に 24 空ける。書体は Noto Sans JP。</small></p>
+
+  <h2>ファイルの中身（上から順）</h2>
+  <div class="map">
+    <div class="part p1"><span class="lines">33–69</span><span><b>定数</b>　余白・行の高さ・書体など</span></div>
+    <div class="part p2"><span class="lines">74–83</span><span><b>NativeMemoListFactory</b>　作り手（MainActivity が登録する）</span></div>
+    <div class="part p3"><span class="lines">95–123</span><span><b>NativeMemoList</b>　Dart との窓口。update を受け取って下へ渡す</span></div>
+    <div class="part p4"><span class="lines">128–206</span><span><b>MemoDocumentView</b>　本文。1枚の文章を作って出す ← 中心</span></div>
+    <div class="part p5"><span class="lines">212–224</span><span><b>MemoLineHeightSpan</b>　行の高さとブロックの間を決める</span></div>
+  </div>
+</main>
+</body>
+</html>

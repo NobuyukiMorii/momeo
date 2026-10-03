@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MainActivity の役割</title>
+<style>
+  :root {
+    --bg: #f7f6f3;
+    --card: #ffffff;
+    --text: #222222;
+    --muted: #7a7a7a;
+    --line: #dddad3;
+    --new: #2f6fdb;
+    --new-bg: #e8f0fd;
+    --old-bg: #f1efea;
+    --code-bg: #f4f3ef;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #1b1b1d;
+      --card: #26262a;
+      --text: #eeeeee;
+      --muted: #9a9a9a;
+      --line: #3a3a40;
+      --new: #7aa5f2;
+      --new-bg: #22304a;
+      --old-bg: #2e2e33;
+      --code-bg: #1f1f23;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #1b1b1d;
+    --card: #26262a;
+    --text: #eeeeee;
+    --muted: #9a9a9a;
+    --line: #3a3a40;
+    --new: #7aa5f2;
+    --new-bg: #22304a;
+    --old-bg: #2e2e33;
+    --code-bg: #1f1f23;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 32px 16px 56px;
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Hiragino Sans", "Noto Sans JP", sans-serif;
+    line-height: 1.6;
+  }
+  main { max-width: 760px; margin: 0 auto; }
+  h1 { font-size: 22px; margin: 0 0 6px; }
+  h1 code { font-size: 20px; }
+  .lead { margin: 0 0 32px; font-size: 17px; }
+  h2 { font-size: 14px; color: var(--muted); font-weight: 600; margin: 36px 0 12px; }
+  code { font-family: "SF Mono", Menlo, monospace; font-size: 13px; }
+
+  /* 左→右の流れ */
+  .flow { display: flex; align-items: stretch; gap: 8px; flex-wrap: wrap; }
+  .box {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 12px 14px;
+    flex: 1 1 140px;
+    font-size: 14px;
+  }
+  .box small { display: block; color: var(--muted); font-size: 12px; margin-top: 4px; }
+  .box.new { border: 2px solid var(--new); background: var(--new-bg); }
+  .arrow { align-self: center; color: var(--muted); font-size: 18px; }
+
+  /* 上下の比較 */
+  .compare { display: grid; gap: 10px; }
+  .row {
+    display: grid;
+    grid-template-columns: 44px 1fr;
+    align-items: center;
+    gap: 12px;
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 14px;
+  }
+  .tag { font-weight: 700; }
+  .tag.after { color: var(--new); }
+  .chips { display: flex; gap: 8px; flex-wrap: wrap; }
+  .chip { border-radius: 8px; padding: 6px 10px; font-size: 14px; background: var(--old-bg); }
+  .chip.new { background: var(--new-bg); color: var(--new); font-weight: 600; }
+
+  /* コード */
+  pre {
+    margin: 0;
+    background: var(--code-bg);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 14px 0;
+    overflow-x: auto;
+    font-size: 12.5px;
+    line-height: 1.7;
+  }
+  pre span { display: block; padding: 0 14px; white-space: pre; }
+  pre .hl { background: var(--new-bg); border-left: 3px solid var(--new); padding-left: 11px; }
+  pre .dim { color: var(--muted); }
+  .note { font-size: 13px; color: var(--muted); margin-top: 8px; }
+</style>
+</head>
+<body>
+<main>
+  <h1><code>MainActivity.kt</code></h1>
+  <p class="lead">Android アプリが起動したとき、<b>ネイティブの部品を Flutter から使えるように登録する</b>場所。</p>
+
+  <h2>step 12 で変わること</h2>
+  <div class="compare">
+    <div class="row">
+      <span class="tag">前</span>
+      <div class="chips"><span class="chip">モデルのダウンロードの橋渡し</span></div>
+    </div>
+    <div class="row">
+      <span class="tag after">後</span>
+      <div class="chips">
+        <span class="chip new">＋ メモ一覧の作り手</span>
+        <span class="chip">モデルのダウンロードの橋渡し</span>
+      </div>
+    </div>
+  </div>
+
+  <h2>起動したときの流れ</h2>
+  <div class="flow">
+    <div class="box">アプリが起動</div>
+    <span class="arrow">→</span>
+    <div class="box">Flutter の準備ができる<small>configureFlutterEngine</small></div>
+    <span class="arrow">→</span>
+    <div class="box new">メモ一覧の作り手を登録</div>
+    <span class="arrow">→</span>
+    <div class="box">ダウンロードの橋渡しを用意</div>
+  </div>
+
+  <h2>登録したものが使われるとき（リスニング画面を開いたとき）</h2>
+  <div class="flow">
+    <div class="box">Dart「この名前の部品を置いて」<small>jp.momeo/native_memo_list</small></div>
+    <span class="arrow">→</span>
+    <div class="box new">登録した作り手が呼ばれる<small>NativeMemoListFactory</small></div>
+    <span class="arrow">→</span>
+    <div class="box">メモ一覧（TextView）ができて画面に入る</div>
+  </div>
+
+  <h2>コードとの対応（青が step 12 で足した所）</h2>
+<pre><span class="dim">class MainActivity : FlutterActivity() {</span>
+<span class="dim">    private var assetPackDelivery: AssetPackDeliveryChannel? = null</span>
+<span> </span>
+<span>    override fun configureFlutterEngine(flutterEngine: FlutterEngine) {</span>
+<span>        super.configureFlutterEngine(flutterEngine)</span>
+<span class="hl">        flutterEngine.platformViewsController.registry.registerViewFactory(</span>
+<span class="hl">            NativeMemoListFactory.VIEW_TYPE,          // 名前</span>
+<span class="hl">            NativeMemoListFactory(flutterEngine.dartExecutor.binaryMessenger),  // 作り手</span>
+<span class="hl">        )</span>
+<span class="dim">        assetPackDelivery = AssetPackDeliveryChannel(...)</span>
+<span>    }</span>
+<span class="dim">}</span></pre>
+  <p class="note">名前は Dart 側（native_memo_list.dart の _viewType）と同じ文字にしてある。作り手の中身は NativeMemoList.kt。</p>
+</main>
+</body>
+</html>

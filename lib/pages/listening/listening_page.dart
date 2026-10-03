@@ -3,20 +3,13 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart';
 import 'package:momeo/database/app_database.dart';
 import 'package:momeo/foundation/app_colors.dart';
-import 'package:momeo/foundation/app_spacing.dart';
-import 'package:momeo/pages/listening/memo_card_view_data.dart';
 import 'package:momeo/providers/listening_providers.dart';
-import 'package:momeo/widgets/date_separator.dart';
 import 'package:momeo/widgets/listening_backdrop.dart';
 import 'package:momeo/widgets/listening_recording_settings_panel.dart';
 import 'package:momeo/widgets/listening_selection_bar.dart';
-import 'package:momeo/widgets/voice_card.dart';
-
-// 日付区切りと上下のカードとの間隔（カード同士の間隔より広く取る）
-const _dateSeparatorSpacing = AppSpacing.xxl;
+import 'package:momeo/widgets/native_memo_list.dart';
 
 // 通知を出しておく時間
 const _noticeDuration = Duration(milliseconds: 3600);
@@ -42,8 +35,6 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
   // ---------------------------------
   // 選択中のメモに関する状態
   // ---------------------------------
-  // 時刻フォーマット（日付はカードの上の区切りが持つ）
-  static final _timeFormat = DateFormat('HH:mm');
   // 選択中のメモの id
   final Set<int> _selectedMemoIds = {};
 
@@ -56,37 +47,14 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
   // ---------------------------------
   // コピーの知らせに関する状態
   // ---------------------------------
-  // コピーの知らせを出すカードの id
-  int? _copiedMemoId;
-  // コピーの知らせのタイマー
-  Timer? _copyNoticeTimer;
   // 選択バーに出している一言（null なら出していない）
   String? _selectionBarNotice;
   // 選択バーの一言を引っ込めるタイマー
   Timer? _selectionBarNoticeTimer;
 
-  // ---------------------------------
-  // アクティブカードに関する状態
-  // ---------------------------------
-  // 出入りの進み具合（0 = 隠れきっている、1 = 出きっている）
-  late final AnimationController _activeCardController;
-  // 進み具合に緩急を付けた値（カードの高さに使う）
-  late final CurvedAnimation _activeCardAnimation;
-  // アクティブカードに出す時刻
-  DateTime? _activeCardTime;
-
   @override
   void initState() {
     super.initState();
-    _activeCardController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 250),
-    );
-    _activeCardController.addStatusListener(_onActiveCardStatusChanged);
-    _activeCardAnimation = CurvedAnimation(
-      parent: _activeCardController,
-      curve: Curves.easeOut,
-    );
     _selectionBarController = AnimationController(
       vsync: this,
       duration: _selectionBarSlideDuration,
@@ -95,96 +63,9 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
 
   @override
   void dispose() {
-    _copyNoticeTimer?.cancel(); // コピーの知らせのタイマーを止める
     _selectionBarNoticeTimer?.cancel(); // 選択バーの一言のタイマーを止める
     _selectionBarController.dispose();
-    _activeCardAnimation.dispose();
-    _activeCardController.removeStatusListener(_onActiveCardStatusChanged);
-    _activeCardController.dispose();
     super.dispose();
-  }
-
-  // ---------------------------------
-  // アクティブカードのアニメーションが終わったとき
-  // ---------------------------------
-  void _onActiveCardStatusChanged(AnimationStatus status) {
-    // --- アニメーションが終わっていなければ何もしない
-    if (status != AnimationStatus.dismissed) return;
-    // --- 画面がマウントされていない、またはアクティブカードの時刻がなければ何もしない
-    if (!mounted || _activeCardTime == null) return;
-    // --- アクティブカードの時刻を null にする
-    setState(() => _activeCardTime = null);
-  }
-
-  // ---------------------------------
-  // 状態の変化をアクティブカードのアニメーションに翻訳する
-  // ---------------------------------
-  void _onListeningChanged(
-    AsyncValue<ListeningState>? previous,
-    AsyncValue<ListeningState> next,
-  ) {
-    final before = previous?.value;
-    final after = next.value;
-    if (after == null) return;
-
-    // 発話開始 → スライドアップで登場
-    final wasActive = before?.speechActive ?? false;
-    if (after.speechActive && !wasActive) {
-      _activeCardController.forward();
-      setState(() => _activeCardTime = after.speechStartedAt); // 時刻を記録
-    }
-
-    // 直前の最新カード
-    final newestBefore = before?.memos.firstOrNull;
-    // 今最新のカード
-    final newestAfter = after.memos.firstOrNull;
-    if (newestAfter != null && newestAfter != newestBefore) { // 今最新のカードと直前の最新カードが違う
-      _activeCardController.value = 0.0; // 発話中の...を消す
-      if (after.speechActive) { // 発話中なら
-        _activeCardController.forward(); // アクティブカードが下から滑り込んで現れる/下へ引っ込むアニメーションを進める
-        setState(() => _activeCardTime = after.speechStartedAt); // 時刻を記録
-      }
-    }
-
-    // 空の認識結果（咳・物音の誤検知）→ 下へスライドアウト
-    if (before != null &&
-        after.emptyResultCount > before.emptyResultCount &&
-        !after.speechActive) {
-      _activeCardController.reverse();
-    }
-  }
-
-  // ---------------------------------
-  // アクティブカード（リスニング中インジケーター）
-  // ---------------------------------
-  // 発話中だけ下から滑り込んで現れる。完全に隠れている間は
-  // 中身ごとツリーから外し、ドット増減のタイマーも止めて常時負荷を避ける
-  Widget _buildActiveCard() {
-    return AnimatedBuilder(
-      animation: _activeCardController,
-      builder: (context, _) {
-        if (_activeCardController.isDismissed) {
-          return const SizedBox.shrink();
-        }
-        // 一覧に占める高さが上のカードを押し上げる量になるので、カード自身は
-        // その箱の上辺に貼り付けて下へはみ出させ、押し上げと同じ速さで昇らせる。
-        // クリップしないので、はみ出した下辺は画面の外に隠れるだけで切れない
-        return Align(
-          alignment: Alignment.topCenter,
-          heightFactor: _activeCardAnimation.value,
-          child: Padding(
-            padding: const EdgeInsets.only(top: AppSpacing.xl),
-            child: VoiceCard(
-              text: '',
-              isListening: true,
-              dateTime: _activeCardTime == null
-                  ? null
-                  : _timeFormat.format(_activeCardTime!),
-            ),
-          ),
-        );
-      },
-    );
   }
 
   // ---------------------------------
@@ -239,22 +120,6 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
   }
 
   // ---------------------------------
-  // カード長押しでコピー
-  // ---------------------------------
-  void _copyMemo(int memoId, String text) {
-    // --- クリップボードにコピー
-    Clipboard.setData(ClipboardData(text: text));
-    // --- カード左上に通知を表示
-    setState(() => _copiedMemoId = memoId);
-    // --- 続けてコピーした場合、最後の通知を非表示とする
-    _copyNoticeTimer?.cancel();
-    // --- 通知を一定時間表示
-    _copyNoticeTimer = Timer(_noticeDuration, () {
-      if (mounted) setState(() => _copiedMemoId = null);
-    });
-  }
-
-  // ---------------------------------
   // 選択をすべて解除する（メモ自体は残る）
   // ---------------------------------
   void _clearMemoSelection() {
@@ -285,133 +150,42 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
   }
 
   // ---------------------------------
-  // 確定済みメモカード1枚
-  // ---------------------------------
-  Widget _buildMemoCard(MemoCardViewData card, ListeningState listening) {
-
-    // このカードへの追記を聞き取っている最中
-    final expectsMore = card.memo.id == listening.appendTargetId && // 追記先のカードか
-        !_activeCardController.isDismissed; // 発話の...が出ている間かどうか
-
-    // 今まさに1文字ずつ打ち出されて現れるアニメーションが表示されているかどうか
-    final typeIn = card.memo.id == listening.typeInMemoId;
-
-    final voiceCard = VoiceCard(
-      key: ValueKey(card.memo.id),
-      text: card.memo.content,
-      expectsMore: expectsMore, // 追記中のドットを出すかどうか
-      dateTime: card.showDateTime
-          ? _timeFormat.format(card.memo.createdAt)
-          : null,
-      typeIn: typeIn,
-      typeFrom: typeIn ? listening.typeInFrom : 0,
-      selected: _selectedMemoIds.contains(card.memo.id),
-      onTap: () => _toggleMemoSelection(card.memo.id),
-      onLongPress: () => _copyMemo(card.memo.id, card.memo.content),
-      showCopyNotice: _copiedMemoId == card.memo.id,
-      // 演出が終わったと Notifier に返す（スクロールで戻っても再生し直さない）
-      onTypingComplete: () {
-        if (!mounted) return;
-        ref.read(listeningProvider.notifier).onTypingComplete(card.memo.id);
-      },
-    );
-
-    // --- 日付が変わる境目では、カードの上へ区切りを挟む
-    return Column(
-      children: [
-        if (card.dateSeparatorLabel != null) ...[
-          const SizedBox(height: _dateSeparatorSpacing - AppSpacing.xl),
-          DateSeparator(label: card.dateSeparatorLabel!),
-          const SizedBox(height: _dateSeparatorSpacing),
-        ],
-        voiceCard,
-      ],
-    );
-  }
-
-  // ---------------------------------
-  // ボイスカード一覧
+  // メモ一覧
   // ---------------------------------
   Widget _buildMemoList({
-    required List<MemoCardViewData> cards,
     required ListeningState listening,
-    required bool hidesActiveCard,
     required double safeAreaTop,
     required double recordingSettingsPanelHeight,
     required double safeAreaBottom,
   }) {
-    // ---------------------------------
-    // 並べるカード
-    // ---------------------------------
-    final memoCards = SliverList.separated(
-      // --- 確定済みメモ + 一番下のアクティブカードで1つ多い
-      itemCount: cards.length + 1,
-      // --- アクティブカードとの間隔はカード側が持つ（消えた時に余白を残さない）
-      separatorBuilder: (_, index) =>
-          SizedBox(height: index == 0 ? 0 : AppSpacing.xl),
-      itemBuilder: (context, index) {
-        if (index == 0) {
-          // --- 一番下はアクティブカード（出すかは呼び出し側が決める）
-          return hidesActiveCard ? const SizedBox.shrink() : _buildActiveCard();
-        }
-        return _buildMemoCard(cards[index - 1], listening);
-      },
-    );
-
-    // ---------------------------------
-    // 余白を付けて下から積む
-    // ---------------------------------
     return AnimatedBuilder(
       animation: _selectionBarController,
-      child: memoCards,
-      builder: (context, memoCards) => CustomScrollView(
-        // --- 新しいカードが下に来るよう、下から積む
-        reverse: true,
-        slivers: [
-          SliverPadding(
-            padding: EdgeInsets.only(
-              // 上端は、録音設定パネルの状態行のぶん空ける。
-              // 録音設定パネルを開いても覆いかぶさるだけなので、ここは動かさない
-              top: AppSpacing.xl + safeAreaTop + recordingSettingsPanelHeight,
-              // 下端は、選択バーの出入りと同じ動きで押し上げる
-              bottom:
-                  AppSpacing.xl +
-                  safeAreaBottom +
-                  listeningSelectionBarPushUpHeight(
-                    slideProgress: _selectionBarController.value,
-                    safeAreaBottom: safeAreaBottom,
-                  ),
-            ),
-            sliver: memoCards,
-          ),
-        ],
+      builder: (context, child) => Padding(
+        padding: EdgeInsets.only(
+          // 上端は、録音設定パネルの状態行のぶん空ける。
+          // 録音設定パネルを開いても覆いかぶさるだけなので、ここは動かさない
+          top: safeAreaTop + recordingSettingsPanelHeight,
+          // 下端は、選択バーの出入りと同じ動きで押し上げる
+          bottom:
+              safeAreaBottom +
+              listeningSelectionBarPushUpHeight(
+                slideProgress: _selectionBarController.value,
+                safeAreaBottom: safeAreaBottom,
+              ),
+        ),
+        child: child,
       ),
+      child: NativeMemoList(memos: listening.memos),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    ref.listen(listeningProvider, _onListeningChanged);
-
     // ---------------------------------
     // リスニング状態
     // ---------------------------------
     final listening =
         ref.watch(listeningProvider).value ?? const ListeningState();
-
-    // ---------------------------------
-    // アクティブカードを出さない場面
-    // ---------------------------------
-    final hidesActiveCard = listening.appendTargetId != null;
-
-    // ---------------------------------
-    // ボイスカード一覧
-    // ---------------------------------
-    final cards = buildMemoCardViewData(
-      listening.memos,
-      today: DateTime.now(),
-      activeCardTime: hidesActiveCard ? null : _activeCardTime,
-    );
 
     // ---------------------------------
     // 選択中のメモ（memos は新しい順なので、時系列順に並べ替える）
@@ -447,12 +221,10 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
             ),
           ),
           // ---------------------------------
-          // ボイスカード一覧
+          // メモ一覧
           // ---------------------------------
           _buildMemoList(
-            cards: cards,
             listening: listening,
-            hidesActiveCard: hidesActiveCard,
             safeAreaTop: safeAreaTop,
             recordingSettingsPanelHeight: recordingSettingsPanelHeight,
             safeAreaBottom: safeAreaBottom,
