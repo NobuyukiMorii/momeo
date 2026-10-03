@@ -208,10 +208,19 @@ class _ListeningPageState extends ConsumerState<ListeningPage>
         memos: listening.memos,
         selectedIds: Set.of(_selectedMemoIds),
         controller: _nativeMemoListController,
+        typingMemoId: listening.typeInMemoId,
+        typeFrom: listening.typeInFrom,
         onToggleSelection: _toggleMemoSelection,
         onThumbChanged: _onThumbChanged,
+        onTypingComplete: _onTypingComplete,
       ),
     );
+  }
+
+  // 打ち出しの演出を使い切ったら、再表示で打ち直さないように知らせる
+  void _onTypingComplete(int memoId) {
+    if (!mounted) return;
+    ref.read(listeningProvider.notifier).onTypingComplete(memoId);
   }
 
   // ---------------------------------

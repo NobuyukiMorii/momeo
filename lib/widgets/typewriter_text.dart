@@ -21,6 +21,7 @@ class TypewriterText extends StatefulWidget {
     this.typeFrom = 0,
     this.style,
     this.onFinished,
+    this.builder,
   });
 
   final String text;
@@ -35,6 +36,9 @@ class TypewriterText extends StatefulWidget {
 
   // 演出を使い切ったときの通知（打ち終わり時と、見せ切る前に破棄されたとき）
   final VoidCallback? onFinished;
+
+  // 表示途中の本文から、表示する部品を組み立てる（省略時は style を当てた Text）
+  final Widget Function(String text)? builder;
 
   @override
   State<TypewriterText> createState() => _TypewriterTextState();
@@ -128,6 +132,7 @@ class _TypewriterTextState extends State<TypewriterText> {
 
   @override
   Widget build(BuildContext context) {
-    return Text(_graphemes.take(_visibleCount).join(), style: widget.style);
+    final text = _graphemes.take(_visibleCount).join();
+    return widget.builder?.call(text) ?? Text(text, style: widget.style);
   }
 }

@@ -112,6 +112,8 @@ private struct MemoBlock {
     var text: String
     // 丸で選ばれているか
     let selected: Bool
+    // 文字選択の対象にするか（打ち出し中は対象にしない）
+    var selectable: Bool
     // 文書の中での本文の範囲
     var range = NSRange(location: 0, length: 0)
 }
@@ -238,9 +240,9 @@ private final class MemoDocumentView: UITextView, UITextViewDelegate {
 
     required init?(coder: NSCoder) { fatalError("ストーリーボードからは生成しません") }
 
-    // 文字選択の対象になるブロック（本文が空のメモを除く）
+    // 文字選択とコピーの対象になるブロック（打ち出し中のメモと、本文が空のメモを除く）
     private var copyableBlocks: [MemoBlock] {
-        blocks.filter { !$0.text.isEmpty }
+        blocks.filter { $0.selectable && !$0.text.isEmpty }
     }
 
     // ---------------------------------
@@ -276,6 +278,7 @@ private final class MemoDocumentView: UITextView, UITextViewDelegate {
             guard let snapshot = snapshots[block.id] else { return block }
             var shownBlock = block
             shownBlock.text = snapshot
+            shownBlock.selectable = true
             return shownBlock
         }
 
@@ -308,7 +311,9 @@ private final class MemoDocumentView: UITextView, UITextViewDelegate {
     private static func parseBlocks(_ values: [[String: Any]]) -> [MemoBlock] {
         values.compactMap { value -> MemoBlock? in
             guard let id = value["id"] as? NSNumber, let text = value["text"] as? String else { return nil }
-            return MemoBlock(id: id.int64Value, text: text, selected: value["selected"] as? Bool ?? false)
+            return MemoBlock(id: id.int64Value, text: text,
+                             selected: value["selected"] as? Bool ?? false,
+                             selectable: value["selectable"] as? Bool ?? true)
         }
     }
 
@@ -435,7 +440,7 @@ private final class MemoDocumentView: UITextView, UITextViewDelegate {
                 updating = false
             }
             // 選択を始めた時点の本文を保ち、選択している間は本文を差し替えない
-            for block in blocks where snapshots[block.id] == nil {
+            for block in blocks where block.selectable && snapshots[block.id] == nil {
                 snapshots[block.id] = block.text
             }
         } else if !snapshots.isEmpty || selectedRange.length > 0 {

@@ -149,6 +149,8 @@ private data class MemoBlock(
     var text: String,
     // 丸で選ばれているか
     val selected: Boolean,
+    // 文字選択の対象にするか（打ち出し中は対象にしない）
+    var selectable: Boolean,
     // 文書の中での本文の範囲（start 以上 end 未満）
     var start: Int = 0,
     var end: Int = 0,
@@ -292,8 +294,8 @@ private class MemoDocumentView(context: Context, private val scroll: MemoScrollV
     private val selectionTo: Int
         get() = max(selectionStart, selectionEnd)
 
-    // 文字選択の対象になるブロック（本文が空のメモを除く）
-    private fun copyableBlocks(): List<MemoBlock> = blocks.filter { it.text.isNotEmpty() }
+    // 文字選択とコピーの対象になるブロック（打ち出し中のメモと、本文が空のメモを除く）
+    private fun copyableBlocks(): List<MemoBlock> = blocks.filter { it.selectable && it.text.isNotEmpty() }
 
     // 範囲（from 以上 to 未満）に1文字でも掛かる、文字選択の対象のブロック
     private fun copyableBlocksIn(from: Int, to: Int): List<MemoBlock> =
@@ -333,6 +335,7 @@ private class MemoDocumentView(context: Context, private val scroll: MemoScrollV
         for (block in incoming) {
             val snapshot = snapshots[block.id] ?: continue
             block.text = snapshot
+            block.selectable = true
         }
         blocks = incoming
         val newText = buildDocumentText()
@@ -363,7 +366,12 @@ private class MemoDocumentView(context: Context, private val scroll: MemoScrollV
     private fun parseBlocks(values: List<*>): List<MemoBlock> = values.mapNotNull { value ->
         val item = value as? Map<*, *> ?: return@mapNotNull null
         val id = (item["id"] as? Number)?.toLong() ?: return@mapNotNull null
-        MemoBlock(id = id, text = item["text"] as? String ?: "", selected = item["selected"] == true)
+        MemoBlock(
+            id = id,
+            text = item["text"] as? String ?: "",
+            selected = item["selected"] == true,
+            selectable = item["selectable"] != false,
+        )
     }
 
     // 各ブロックの本文を改行1つでつないだ文書を作り、ブロックごとの文書の中の範囲も記録する
@@ -478,7 +486,7 @@ private class MemoDocumentView(context: Context, private val scroll: MemoScrollV
         if (start != end && from >= 0 && touchedBlocks.isNotEmpty()) {
             fitSelectionToBlocks(from, to, touchedBlocks)
             // 選択を始めた時点の本文を保ち、選択している間は本文を差し替えない
-            for (block in blocks) snapshots.putIfAbsent(block.id, block.text)
+            for (block in blocks) if (block.selectable) snapshots.putIfAbsent(block.id, block.text)
         } else if (snapshots.isNotEmpty() || (from >= 0 && start != end)) {
             collapseSelectionLater(start, end)
         }

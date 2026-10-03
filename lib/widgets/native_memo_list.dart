@@ -7,6 +7,7 @@ import 'package:flutter/rendering.dart' show PlatformViewHitTestBehavior;
 import 'package:flutter/services.dart';
 import 'package:momeo/database/app_database.dart';
 import 'package:momeo/foundation/app_colors.dart';
+import 'package:momeo/widgets/typewriter_text.dart';
 
 // ネイティブ側（NativeMemoListFactory）の登録名とそろえる、View の種類名
 const _viewType = 'jp.momeo/native_memo_list';
@@ -46,7 +47,10 @@ class NativeMemoList extends StatefulWidget {
     required this.selectedIds,
     required this.controller,
     required this.onToggleSelection,
+    required this.onTypingComplete,
     required this.onThumbChanged,
+    this.typingMemoId,
+    this.typeFrom = 0,
   });
 
   // 確定済みメモ一覧（新しい順）
@@ -56,8 +60,13 @@ class NativeMemoList extends StatefulWidget {
   final NativeMemoListController controller;
   // 丸が押されたとき
   final ValueChanged<int> onToggleSelection;
+  // 打ち出しの演出を使い切ったとき
+  final ValueChanged<int> onTypingComplete;
   // スクロールつまみの高さ、またはその高さにあるメモが変わったとき
   final ValueChanged<MemoListThumb> onThumbChanged;
+  // 打ち出し中のメモの id と、打ち出しを始める文字数
+  final int? typingMemoId;
+  final int typeFrom;
 
   @override
   State<NativeMemoList> createState() => _NativeMemoListState();
@@ -143,13 +152,16 @@ class _NativeMemoListState extends State<NativeMemoList> {
   // ---------------------------------
   // ネイティブ側へ渡す文書（ブロックは古い順）
   // ---------------------------------
-  Map<String, Object?> _buildDocument() {
+  Map<String, Object?> _buildDocument(String typingText) {
     final blocks = [
       for (final memo in widget.memos.reversed)
         {
           'id': memo.id,
-          'text': memo.content,
+          // 打ち出し中のメモは、表示途中の本文を出す
+          'text': memo.id == widget.typingMemoId ? typingText : memo.content,
           'selected': widget.selectedIds.contains(memo.id),
+          // 打ち出し中のメモは、打ち終わるまで文字選択の対象にしない
+          'selectable': memo.id != widget.typingMemoId,
         },
     ];
     return {
@@ -219,10 +231,27 @@ class _NativeMemoListState extends State<NativeMemoList> {
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    _document = _buildDocument();
+  // 打ち出し途中の本文ごとに、文書を作り直して送る
+  Widget _buildView(String typingText) {
+    _document = _buildDocument(typingText);
     _sendDocumentIfChanged();
     return _buildPlatformView();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final typingMemo = widget.memos
+        .where((memo) => memo.id == widget.typingMemoId)
+        .firstOrNull;
+    // 部品の階層を保ち、打ち出しの開始・終了でネイティブ View を作り直さない
+    return TypewriterText(
+      typingMemo?.content ?? '',
+      enabled: typingMemo != null,
+      typeFrom: widget.typeFrom,
+      onFinished: typingMemo == null
+          ? null
+          : () => widget.onTypingComplete(typingMemo.id),
+      builder: _buildView,
+    );
   }
 }
