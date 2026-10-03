@@ -45,7 +45,7 @@ import kotlin.math.roundToInt
 // NativeMemoList — リスニング画面のメモ一覧（Android）
 //
 //   メモ全件を時系列順に並べた1つの TextView にし、文字選択・つまみ・メニュー・スクロールは OS に任せる。
-//   右の縦線と丸はアプリ側で描く。
+//   右の縦線と丸（ブロック選択）、スクロールつまみはアプリ側で描く。
 //   Dart 側は lib/widgets/native_memo_list.dart。
 // ============================================================
 
@@ -111,6 +111,21 @@ private const val SELECTED_CIRCLE_RADIUS_DP = 5.5f
 
 // ブロックが1つだけのときに、丸を1行目の文字の上端から離す距離
 private const val SINGLE_BLOCK_CIRCLE_GAP_DP = 12
+
+// ---------------------------------
+// 定数: スクロールつまみ（dp）
+// ---------------------------------
+
+// 横棒の幅と太さ
+private const val THUMB_WIDTH_DP = 24
+private const val THUMB_THICKNESS_DP = 1.5f
+
+// 細い横棒でも掴めるよう、当たり判定は見た目より上下に広げる
+private const val THUMB_TOUCH_HEIGHT_DP = 44
+
+// つまみが動く範囲の上下の余白（下端がナビゲーションバーに重なるときは広めにとる）
+private const val THUMB_TRACK_MARGIN_DP = 12
+private const val THUMB_TRACK_MARGIN_ABOVE_NAV_BAR_DP = 24
 
 // ---------------------------------
 // MainActivity から登録する、メモ一覧の作り手
@@ -356,11 +371,12 @@ private class MemoDocumentView(context: Context, private val scroll: MemoScrollV
         return builder.toString()
     }
 
-    // 本文・縦線・丸の色と、本文の文字サイズ
+    // 本文・縦線・丸・つまみの色と、本文の文字サイズ
     private fun applyTextSizeAndColor(color: Int) {
         setTextSize(TypedValue.COMPLEX_UNIT_PX, fontPixels)
         setTextColor(color)
         railPaint.color = color
+        scroll.thumbColor = color
     }
 
     // 前と同じ先頭部分は置き直さず、変わったところから後ろだけを差し替える
@@ -605,6 +621,10 @@ private class MemoDocumentView(context: Context, private val scroll: MemoScrollV
         return centers
     }
 
+    // 線の始まり（一番上のブロックの丸の中心）
+    val railTop: Float?
+        get() = circleCenterYs().firstOrNull()
+
     // 高さ y より上で、一番近い丸を持つブロック（どの丸よりも上なら null）
     private fun blockWithCircleAbove(y: Float): MemoBlock? {
         val circleCenters = circleCenterYs()
@@ -678,15 +698,69 @@ private class MemoDocumentView(context: Context, private val scroll: MemoScrollV
 }
 
 // ---------------------------------
-// 文書をスクロールし、下端ではナビゲーションバーを避ける
+// 文書をスクロールし、右の縦線の上にスクロールつまみを重ねる。下端ではナビゲーションバーを避ける
 // ---------------------------------
+// つまみの上で指が動いたときだけドラッグとして奪う。動かさずに離せば、文書側の丸・線のタップ（ブロック選択）になる
 private class MemoScrollView(context: Context) : ScrollView(context) {
     private val density = resources.displayMetrics.density
+    private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
+    private val thumbPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+
+    // --- つまみのドラッグ
+    // つまみの上に指を置いた高さ（つまみの外に置いたときは null）
+    private var thumbTouchDownY: Float? = null
+    // ドラッグ中の、指の位置とつまみの中心のずれ
+    private var thumbGrabOffset = 0f
+    private var draggingThumb = false
+
+    // つまみの色（本文と同じ色）
+    var thumbColor: Int = 0
+        set(value) {
+            field = value
+            thumbPaint.color = value
+            invalidate()
+        }
+
+    init {
+        // 標準のスクロールバーの代わりに、つまみを出す
+        isVerticalScrollBarEnabled = false
+    }
+
+    private fun dp(value: Int) = value * density
 
     private val documentView: MemoDocumentView?
         get() = getChildAt(0) as? MemoDocumentView
 
-    // 下端がナビゲーションバーに重なる高さ
+    private val scrollRange: Int
+        get() = max(0, (documentView?.height ?: 0) - height)
+
+    // ---------------------------------
+    // つまみの位置（y は表示範囲の上端から測る）
+    // ---------------------------------
+    // 上端は、一番上までスクロールしたときの線の始まり（一番上のブロックの丸）にそろえる
+    private val trackTop: Float
+        get() = documentView?.railTop ?: dp(THUMB_TRACK_MARGIN_DP)
+
+    private val trackBottom: Float
+        get() {
+            val overlap = bottomSystemBarOverlap()
+            val margin = if (overlap > 0) dp(THUMB_TRACK_MARGIN_ABOVE_NAV_BAR_DP) else dp(THUMB_TRACK_MARGIN_DP)
+            return max(trackTop, height - overlap - margin)
+        }
+
+    private fun thumbCenterY(): Float {
+        val progress = if (scrollRange > 0) scrollY.toFloat() / scrollRange else 0f
+        return trackTop + (trackBottom - trackTop) * progress.coerceIn(0f, 1f)
+    }
+
+    // スクロールできないほど短いときは、つまみを出さない
+    private fun thumbContains(x: Float, y: Float): Boolean =
+        scrollRange > 0 && x >= width - dp(RAIL_TOUCH_WIDTH_DP) && abs(y - thumbCenterY()) <= dp(THUMB_TOUCH_HEIGHT_DP) / 2
+
+    // ---------------------------------
+    // ナビゲーションバーを避ける
+    // ---------------------------------
+    // 下端がナビゲーションバーに重なる高さ（ホームへ戻る操作の受付領域では掴みにくいため、つまみはその上までにする）
     private fun bottomSystemBarOverlap(): Float {
         val insets = rootWindowInsets ?: return 0f
         val systemBarHeight = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
@@ -702,7 +776,7 @@ private class MemoScrollView(context: Context) : ScrollView(context) {
     }
 
     // 文書の下の余白（ナビゲーションバーを避ける分を足す）
-    fun documentPaddingBottom(): Int = (bottomSystemBarOverlap() + BODY_PADDING_BOTTOM_DP * density).roundToInt()
+    fun documentPaddingBottom(): Int = (bottomSystemBarOverlap() + dp(BODY_PADDING_BOTTOM_DP)).roundToInt()
 
     // 一番下までスクロールしたときだけ、最新の行をナビゲーションバーの上へ離す（途中では下を通り抜けて流れる）
     override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
@@ -713,11 +787,75 @@ private class MemoScrollView(context: Context) : ScrollView(context) {
     // 一番下を見ている間に一覧の高さが変わったとき（選択バーの出入りなど）は、一番下のまま保つ
     override fun onSizeChanged(width: Int, height: Int, oldWidth: Int, oldHeight: Int) {
         val documentHeight = documentView?.height ?: 0
-        val wasAtBottom = scrollY >= documentHeight - oldHeight - AT_BOTTOM_TOLERANCE_DP * density
+        val wasAtBottom = scrollY >= documentHeight - oldHeight - dp(AT_BOTTOM_TOLERANCE_DP)
         super.onSizeChanged(width, height, oldWidth, oldHeight)
         if (oldHeight > 0 && height != oldHeight && wasAtBottom) {
             post { scrollTo(0, max(0, (documentView?.height ?: 0) - this.height)) }
         }
+    }
+
+    // ---------------------------------
+    // つまみのドラッグ
+    // ---------------------------------
+    override fun onInterceptTouchEvent(event: MotionEvent): Boolean {
+        if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+            thumbTouchDownY = if (thumbContains(event.x, event.y)) event.y else null
+        }
+        val downY = thumbTouchDownY ?: return super.onInterceptTouchEvent(event)
+        when (event.actionMasked) {
+            MotionEvent.ACTION_MOVE -> if (abs(event.y - downY) > touchSlop) {
+                startThumbDrag(event, downY)
+                return true
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> thumbTouchDownY = null
+        }
+        // つまみの上では、OS のスクロールに奪わせない
+        return false
+    }
+
+    private fun startThumbDrag(event: MotionEvent, downY: Float) {
+        // 慣性スクロールが残っていると指の位置と取り合うため、指を置いてすぐ離した扱いにして止める
+        val stop = MotionEvent.obtain(event)
+        stop.action = MotionEvent.ACTION_DOWN
+        super.onTouchEvent(stop)
+        stop.action = MotionEvent.ACTION_CANCEL
+        super.onTouchEvent(stop)
+        stop.recycle()
+        // 指を置いた位置とつまみの中心のずれを保ったまま動かす
+        thumbGrabOffset = downY - thumbCenterY()
+        draggingThumb = true
+    }
+
+    override fun onTouchEvent(event: MotionEvent): Boolean {
+        if (!draggingThumb) return super.onTouchEvent(event)
+        when (event.actionMasked) {
+            MotionEvent.ACTION_MOVE -> {
+                val trackLength = trackBottom - trackTop
+                if (trackLength > 0) {
+                    val progress = (event.y - thumbGrabOffset - trackTop) / trackLength
+                    scrollTo(0, (progress.coerceIn(0f, 1f) * scrollRange).roundToInt())
+                }
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                draggingThumb = false
+                thumbTouchDownY = null
+            }
+        }
+        return true
+    }
+
+    // ---------------------------------
+    // つまみの描画
+    // ---------------------------------
+    override fun dispatchDraw(canvas: Canvas) {
+        super.dispatchDraw(canvas)
+        if (scrollRange == 0) return
+        // canvas は文書の座標なので、表示範囲の上端（scrollY）を足す
+        val centerX = width - dp(RAIL_X_FROM_RIGHT_DP)
+        val centerY = scrollY + thumbCenterY()
+        val halfWidth = dp(THUMB_WIDTH_DP) / 2
+        val halfThickness = THUMB_THICKNESS_DP * density / 2
+        canvas.drawRect(centerX - halfWidth, centerY - halfThickness, centerX + halfWidth, centerY + halfThickness, thumbPaint)
     }
 }
 

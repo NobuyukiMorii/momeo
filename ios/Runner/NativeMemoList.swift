@@ -5,7 +5,7 @@ import UIKit
 // NativeMemoList — リスニング画面のメモ一覧（iOS）
 //
 //   メモ全件を時系列順に並べた1つの UITextView にし、文字選択・つまみ・メニュー・スクロールは OS に任せる。
-//   右の縦線と丸はアプリ側で描く。
+//   右の縦線と丸（ブロック選択）、スクロールつまみはアプリ側で描く。
 //   Dart 側は lib/widgets/native_memo_list.dart。
 // ============================================================
 
@@ -66,6 +66,20 @@ private enum RailLayout {
     static let selectedCircleRadius: CGFloat = 5.5
     // ブロックが1つだけのときに、丸を1行目の文字の上端から離す距離
     static let singleBlockCircleGap: CGFloat = 12
+}
+
+// ---------------------------------
+// 定数: スクロールつまみ（pt）
+// ---------------------------------
+private enum ScrollThumbLayout {
+    // 横棒の幅と太さ
+    static let width: CGFloat = 24
+    static let thickness: CGFloat = 1.5
+    // 細い横棒でも掴めるよう、当たり判定は見た目より上下に広げる
+    static let touchHeight: CGFloat = 44
+    // つまみが動く範囲の上下の余白（下端がホームインジケーターに重なるときは広めにとる）
+    static let trackMargin: CGFloat = 12
+    static let trackMarginAboveHomeIndicator: CGFloat = 24
 }
 
 // ---------------------------------
@@ -147,7 +161,7 @@ private final class NativeMemoList: NSObject, FlutterPlatformView {
 }
 
 // ---------------------------------
-// 本文（メモ全件を1つにした文書）と、右の縦線・丸
+// 本文（メモ全件を1つにした文書）と、右の縦線・丸、スクロールつまみ
 // ---------------------------------
 private final class MemoDocumentView: UITextView, UITextViewDelegate {
     // 丸が押されたブロックのメモ id を知らせる
@@ -176,10 +190,12 @@ private final class MemoDocumentView: UITextView, UITextViewDelegate {
     // ブロックをまたいでコピーしたときの区切り
     private var copySeparator = DefaultValue.copySeparator
 
-    // --- 右の縦線と丸
+    // --- 右の縦線・丸と、スクロールつまみ
     private let rail = MemoRailView()
     // 丸の中心の高さ（メモ id → 文書の座標）
     private var circleCenterYs: [Int64: CGFloat] = [:]
+    // ドラッグ中の、指の位置とつまみの中心のずれ
+    private var scrollThumbGrabOffset: CGFloat = 0
 
     override init(frame: CGRect, textContainer: NSTextContainer?) {
         // TextKit 1（NSLayoutManager）で組み、文書全体の高さを同じレイアウトから求める
@@ -197,10 +213,13 @@ private final class MemoDocumentView: UITextView, UITextViewDelegate {
         textContainerInset = UIEdgeInsets(top: BodyLayout.minPaddingTop, left: BodyLayout.paddingLeft,
                                           bottom: BodyLayout.paddingBottom, right: BodyLayout.paddingRight)
         alwaysBounceVertical = true
+        // 標準のスクロールバーの代わりに、縦線の上のつまみを出す
+        showsVerticalScrollIndicator = false
         delegate = self
         rail.document = self
         addSubview(rail)
         rail.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(didTapRail(_:))))
+        rail.addGestureRecognizer(MemoScrollThumbPan(document: self))
         addGestureRecognizer(MemoSelectionDismissTap(document: self))
     }
 
@@ -504,8 +523,6 @@ private final class MemoDocumentView: UITextView, UITextViewDelegate {
         rail.setNeedsDisplay()
     }
 
-    // 一番下までスクロールしたときの位置
-    private var scrollableHeight: CGFloat { max(0, contentSize.height - bounds.height) }
 
     // ---------------------------------
     // 丸の位置（上のブロックの最後の行の文字の下端と、このブロックの1行目の文字の上端のちょうど間）
@@ -579,10 +596,70 @@ private final class MemoDocumentView: UITextView, UITextViewDelegate {
             context.fillEllipse(in: CGRect(x: x - radius, y: top - radius, width: radius * 2, height: radius * 2))
         }
     }
+
+    // ---------------------------------
+    // スクロールつまみ（縦線の上を、表示範囲の中だけ動く。y は表示範囲の上端から測る）
+    // ---------------------------------
+    private var scrollableHeight: CGFloat { max(0, contentSize.height - bounds.height) }
+
+    // 下端がホームインジケーターに重なるときは、その上に広めの余白をとる（ホームへ戻る操作の受付領域では掴みにくいため）
+    private var scrollThumbTrack: ClosedRange<CGFloat> {
+        // 上端は、一番上までスクロールしたときの線の始まり（一番上のブロックの丸）にそろえる
+        let top = blocks.first.map { circleCenterY($0) } ?? ScrollThumbLayout.trackMargin
+        let bottomMargin = safeAreaInsets.bottom > 0
+            ? ScrollThumbLayout.trackMarginAboveHomeIndicator
+            : ScrollThumbLayout.trackMargin
+        let bottom = bounds.height - safeAreaInsets.bottom - bottomMargin
+        return top...max(top, bottom)
+    }
+
+    private var scrollThumbCenterY: CGFloat {
+        let track = scrollThumbTrack
+        let progress = scrollableHeight > 0 ? min(max(contentOffset.y / scrollableHeight, 0), 1) : 0
+        return track.lowerBound + (track.upperBound - track.lowerBound) * progress
+    }
+
+    // スクロールできないほど短いときは、つまみを出さない
+    private var showsScrollThumb: Bool { scrollableHeight > 0.5 }
+
+    fileprivate func scrollThumbContains(_ point: CGPoint) -> Bool {
+        let y = point.y - contentOffset.y
+        return showsScrollThumb && point.x >= bounds.width - RailLayout.touchWidth
+            && abs(y - scrollThumbCenterY) <= ScrollThumbLayout.touchHeight / 2
+    }
+
+    // 縦線の View の上に描く
+    fileprivate func drawScrollThumb() {
+        guard showsScrollThumb else { return }
+        let centerX = RailLayout.touchWidth - RailLayout.xFromRight
+        let rect = CGRect(x: centerX - ScrollThumbLayout.width / 2,
+                          y: scrollThumbCenterY - ScrollThumbLayout.thickness / 2,
+                          width: ScrollThumbLayout.width, height: ScrollThumbLayout.thickness)
+        bodyColor.setFill()
+        UIRectFill(rect)
+    }
+
+    @objc fileprivate func draggedScrollThumb(_ recognizer: MemoScrollThumbPan) {
+        let y = recognizer.location(in: self).y - contentOffset.y
+        switch recognizer.state {
+        case .began:
+            // 慣性スクロールを止め、指を置いた位置とつまみの中心のずれを保ったまま動かす
+            setContentOffset(contentOffset, animated: false)
+            scrollThumbGrabOffset = recognizer.touchDownY - scrollThumbCenterY
+        case .changed:
+            let track = scrollThumbTrack
+            let trackLength = track.upperBound - track.lowerBound
+            guard trackLength > 0 else { return }
+            let progress = (y - scrollThumbGrabOffset - track.lowerBound) / trackLength
+            contentOffset = CGPoint(x: 0, y: min(max(progress, 0), 1) * scrollableHeight)
+        default:
+            break
+        }
+    }
 }
 
 // ---------------------------------
-// 右の縦線と丸を描き、タップを受け取る View
+// 右の縦線・丸とスクロールつまみを描き、タップとドラッグを受け取る View
 // ---------------------------------
 private final class MemoRailView: UIView {
     weak var document: MemoDocumentView?
@@ -598,6 +675,36 @@ private final class MemoRailView: UIView {
 
     override func draw(_ rect: CGRect) {
         document?.drawRail()
+        document?.drawScrollThumb()
+    }
+}
+
+// ---------------------------------
+// つまみの上で指が動いたときだけ、一覧のスクロールより先にドラッグとして受け取る
+// ---------------------------------
+// 動かさずに離したときは失敗するので、下の丸・線のタップ（ブロック選択）に届く
+private final class MemoScrollThumbPan: UIPanGestureRecognizer, UIGestureRecognizerDelegate {
+    private weak var document: MemoDocumentView?
+    // 指を置いた位置（表示範囲の上端から測る）。パンが始まるまでに動いた分も、つまみに反映するために使う
+    private(set) var touchDownY: CGFloat = 0
+
+    init(document: MemoDocumentView) {
+        self.document = document
+        super.init(target: document, action: #selector(MemoDocumentView.draggedScrollThumb(_:)))
+        delegate = self
+        maximumNumberOfTouches = 1
+    }
+
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
+        guard let document else { return false }
+        let point = touch.location(in: document)
+        touchDownY = point.y - document.contentOffset.y
+        return document.scrollThumbContains(point)
+    }
+
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
+                           shouldBeRequiredToFailBy other: UIGestureRecognizer) -> Bool {
+        other === document?.panGestureRecognizer
     }
 }
 
