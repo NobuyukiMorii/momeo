@@ -46,16 +46,6 @@ class VoiceMemoRepository {
   }
 
   // ---------------------------------
-  // 指定した id をまとめて削除する
-  // ---------------------------------
-  Future<void> deleteByIds(List<int> ids) {
-    // --- 空なら DB に触れずに終える
-    if (ids.isEmpty) return Future.value();
-    // --- 指定された id だけを消す
-    return (_db.delete(_db.voiceMemos)..where((memo) => memo.id.isIn(ids))).go();
-  }
-
-  // ---------------------------------
   // 全件削除する
   // ---------------------------------
   Future<void> deleteAll() {

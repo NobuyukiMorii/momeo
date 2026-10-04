@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 abstract final class AppPalette {
   static const white = Color(0xFFFFFFFF);
   static const gray200 = Color(0xFFE5E7EB);
+  static const gray300 = Color(0xFFCFD1D4);
   static const gray500 = Color(0xFF6B7280);
   static const gray900 = Color(0xFF111827);
   static const red500 = Color(0xFFEF4444);
@@ -14,6 +15,7 @@ abstract final class AppPalette {
   static const entries = [
     ('white', white),
     ('gray200', gray200),
+    ('gray300', gray300),
     ('gray500', gray500),
     ('gray900', gray900),
     ('red500', red500),

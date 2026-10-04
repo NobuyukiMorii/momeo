@@ -14,14 +14,15 @@ import android.text.Selection
 import android.text.Spannable
 import android.text.SpannableStringBuilder
 import android.text.Spanned
-import android.text.TextPaint
 import android.text.style.LineHeightSpan
-import android.text.style.MetricAffectingSpan
 import android.text.style.UpdateLayout
 import android.util.TypedValue
+import android.view.ActionMode
 import android.view.ContextThemeWrapper
 import android.view.GestureDetector
 import android.view.Gravity
+import android.view.Menu
+import android.view.MenuItem
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewConfiguration
@@ -36,6 +37,7 @@ import io.flutter.plugin.common.MethodChannel
 import io.flutter.plugin.common.StandardMessageCodec
 import io.flutter.plugin.platform.PlatformView
 import io.flutter.plugin.platform.PlatformViewFactory
+import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
@@ -45,7 +47,7 @@ import kotlin.math.roundToInt
 // NativeMemoList — リスニング画面のメモ一覧（Android）
 //
 //   メモ全件を時系列順に並べた1つの TextView にし、文字選択・つまみ・メニュー・スクロールは OS に任せる。
-//   右の縦線と丸（ブロック選択）、スクロールつまみ、発話中の「.」はアプリ側で描く。
+//   右の縦線と日付の区切りの横線、スクロールつまみ、発話中の「.」はアプリ側で描く。
 //   Dart 側は lib/widgets/native_memo_list.dart。
 // ============================================================
 
@@ -58,21 +60,22 @@ private const val METHOD_UPDATE = "update"
 private const val METHOD_CLEAR_SELECTION = "clearSelection"
 
 // Dart へ知らせるメソッド
-private const val METHOD_TOGGLE_BLOCK = "toggleBlock"
 private const val METHOD_THUMB = "thumb"
+private const val METHOD_DELETE_TEXT = "deleteText"
 
 // Dart から値が届かなかったときの既定値
 private const val DEFAULT_FONT_SIZE = 18f
 private val DEFAULT_TEXT_COLOR = 0xff111827.toInt()
+private val DEFAULT_RAIL_COLOR = 0xffcfd1d4.toInt()
 private const val DEFAULT_COPY_SEPARATOR = "\n\n"
 
 // ---------------------------------
 // 定数: 本文（dp。iOS 側の pt とそろえる）
 // ---------------------------------
 
-// 本文の左右と上の余白（右は丸と縦線の領域を含む）
-private const val BODY_PADDING_LEFT_DP = 12
-private const val BODY_PADDING_RIGHT_DP = 34
+// 本文の左右と上の余白（右も左と同じ。縦線は本文の後ろを通す）
+private const val BODY_PADDING_LEFT_DP = 8
+private const val BODY_PADDING_RIGHT_DP = 8
 private const val BODY_PADDING_TOP_DP = 24
 
 // 本文の下の余白（ナビゲーションバーに重なる分は、これに足す）
@@ -84,34 +87,37 @@ private const val LINE_HEIGHT_RATIO = 2f
 // ブロックとブロックの間の余白
 private const val BLOCK_SPACING_DP = 24
 
-// 空のメモにも丸と1行分の高さを持たせるために置く、幅の無い文字
+// 空のメモにも区切りと1行分の高さを持たせるために置く、幅の無い文字
 private const val EMPTY_BLOCK_TEXT = "​"
 
 // 一番下からこの距離までにいれば、一番下を見ているとみなす
 private const val AT_BOTTOM_TOLERANCE_DP = 32
 
-// 本文の書体（Flutter 側の pubspec.yaml で同梱している Noto Sans JP。選択していないとき・選択中）
+// 本文の書体（Flutter 側の pubspec.yaml で同梱している Noto Sans JP）
 private const val REGULAR_FONT_ASSET = "assets/fonts/NotoSansJP-Regular.otf"
-private const val BOLD_FONT_ASSET = "assets/fonts/NotoSansJP-Bold.otf"
 
 // ---------------------------------
-// 定数: 右の縦線と丸（dp）
+// 定数: 文字選択のメニュー
 // ---------------------------------
 
-// 縦線と丸を押せる領域の幅（一覧の右端から）
-private const val RAIL_TOUCH_WIDTH_DP = 40
+// メニューに足す「削除」の識別子
+private const val MENU_ITEM_DELETE_ID = 1
+
+// 「削除」の並び順（OS の「コピー」が 5、「すべて選択」が 8 なので、その間に置く）
+private const val MENU_ITEM_ORDER_DELETE = 6
+
+// ---------------------------------
+// 定数: 右の縦線と、日付の区切りの横線（dp）
+// ---------------------------------
 
 // 縦線の位置（一覧の右端から）
 private const val RAIL_X_FROM_RIGHT_DP = 18
 
-// 縦線の太さと丸の半径（選択していないとき・選択中）
-private const val RAIL_WIDTH_DP = 1.5f
-private const val SELECTED_RAIL_WIDTH_DP = 2.5f
-private const val CIRCLE_RADIUS_DP = 4f
-private const val SELECTED_CIRCLE_RADIUS_DP = 5.5f
+// 縦線と横線の太さ
+private const val RAIL_WIDTH_DP = 0.5f
 
-// ブロックが1つだけのときに、丸を1行目の文字の上端から離す距離
-private const val SINGLE_BLOCK_CIRCLE_GAP_DP = 12
+// ブロックが1つだけのときに、区切りを1行目の文字の上端から離す距離
+private const val SINGLE_BLOCK_BOUNDARY_GAP_DP = 12
 
 // ---------------------------------
 // 定数: スクロールつまみ（dp）
@@ -119,9 +125,10 @@ private const val SINGLE_BLOCK_CIRCLE_GAP_DP = 12
 
 // 横棒の幅と太さ
 private const val THUMB_WIDTH_DP = 24
-private const val THUMB_THICKNESS_DP = 1.5f
+private const val THUMB_THICKNESS_DP = 0.5f
 
-// 細い横棒でも掴めるよう、当たり判定は見た目より上下に広げる
+// つまみを掴める幅（一覧の右端から）と高さ。細い横棒でも掴めるよう、当たり判定は見た目より上下に広げる
+private const val THUMB_TOUCH_WIDTH_DP = 40
 private const val THUMB_TOUCH_HEIGHT_DP = 44
 
 // つまみが動く範囲の上下の余白（下端がナビゲーションバーに重なるときは広めにとる）
@@ -155,10 +162,10 @@ private data class MemoBlock(
     val id: Long,
     // 表示する本文（文字選択中は、選択を始めた時点の本文を保つ）
     var text: String,
-    // 丸で選ばれているか
-    val selected: Boolean,
     // 文字選択の対象にするか（打ち出し中は対象にしない）
     var selectable: Boolean,
+    // その日の最初のメモか（日付の区切りの横線は、その日の最初のメモの上にだけ引く）
+    val startsDay: Boolean,
     // 文書の中での本文の範囲（start 以上 end 未満）
     var start: Int = 0,
     var end: Int = 0,
@@ -175,6 +182,12 @@ private enum class SpeakingDotsPlace(val key: String) {
         // Dart から届いた値に当たる場所（出さないときは null）
         fun fromKey(key: Any?): SpeakingDotsPlace? = values().firstOrNull { it.key == key }
     }
+}
+
+// 文字選択の範囲に掛かる、1つのメモの部分（メモの本文の中の start 以上 end 未満）
+private class SelectedPiece(val block: MemoBlock, val start: Int, val end: Int) {
+    val text: String
+        get() = block.text.substring(start, end)
 }
 
 // 文書の中の位置を、どのブロックの何文字目かで表したもの（本文を差し替えても選択範囲を置き直せるようにする）
@@ -196,10 +209,10 @@ private class NativeMemoList(context: Context, viewId: Int, messenger: BinaryMes
             document,
             FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT),
         )
-        document.onToggleBlock = { blockId -> channel.invokeMethod(METHOD_TOGGLE_BLOCK, blockId) }
         scroll.onThumbChanged = { blockId, y, scrolling ->
             channel.invokeMethod(METHOD_THUMB, mapOf("id" to blockId, "y" to y, "scrolling" to scrolling))
         }
+        document.onDeleteText = { ranges -> channel.invokeMethod(METHOD_DELETE_TEXT, ranges) }
         channel.setMethodCallHandler { call, result ->
             when (call.method) {
                 METHOD_UPDATE -> {
@@ -222,18 +235,18 @@ private class NativeMemoList(context: Context, viewId: Int, messenger: BinaryMes
 
     override fun dispose() {
         channel.setMethodCallHandler(null)
-        document.onToggleBlock = null
+        document.onDeleteText = null
         scroll.onThumbChanged = null
         document.clearFocus()
     }
 }
 
 // ---------------------------------
-// 本文（メモ全件を1つにした文書）と、右の縦線・丸、発話中の「.」
+// 本文（メモ全件を1つにした文書）と、右の縦線・日付の区切りの横線、発話中の「.」
 // ---------------------------------
 private class MemoDocumentView(context: Context, private val scroll: MemoScrollView) : TextView(context) {
-    // 丸が押されたブロックのメモ id を知らせる
-    var onToggleBlock: ((Long) -> Unit)? = null
+    // メニューの「削除」で消す範囲を知らせる（メモ id と、そのメモの本文の中の start 以上 end 未満）
+    var onDeleteText: ((List<Map<String, Any>>) -> Unit)? = null
 
     private val density = resources.displayMetrics.density
 
@@ -261,15 +274,11 @@ private class MemoDocumentView(context: Context, private val scroll: MemoScrollV
     // ブロックをまたいでコピーしたときの区切り
     private var copySeparator = DEFAULT_COPY_SEPARATOR
 
-    // --- 行高・太字と、右の縦線・丸
-    // ブロックごとに付けている span（メモ id → span）
-    private val blockSpans = mutableMapOf<Long, MemoBlockSpans>()
-    // 選択中のブロックの本文に使う太字の書体
-    private val boldTypeface = loadFlutterAssetFont(BOLD_FONT_ASSET)
-    // 縦線と丸を描く絵の具
+    // --- 行高と、縦線・横線
+    // ブロックごとに付けている行高の span（メモ id → span）
+    private val lineHeightSpans = mutableMapOf<Long, MemoLineHeightSpan>()
+    // 縦線と横線を描く絵の具（背景の波線と同じ色）
     private val railPaint = Paint(Paint.ANTI_ALIAS_FLAG)
-    // 縦線・丸の上で始まったタッチ（離したときに、動かさずに離したかを判定する）
-    private var railTouchDown: MotionEvent? = null
 
     // --- 発話中の「.」
     // 出す場所（出さないときは null）と、今の数・行に収まる数
@@ -316,6 +325,25 @@ private class MemoDocumentView(context: Context, private val scroll: MemoScrollV
             override fun newSpannable(source: CharSequence): Spannable = SpannableStringBuilder(source)
         })
         setText("", BufferType.SPANNABLE)
+        // 文字選択のメニューに「削除」を足す
+        customSelectionActionModeCallback = object : ActionMode.Callback {
+            override fun onCreateActionMode(mode: ActionMode, menu: Menu): Boolean {
+                menu.add(Menu.NONE, MENU_ITEM_DELETE_ID, MENU_ITEM_ORDER_DELETE, deleteMenuTitle())
+                    .setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS)
+                return true
+            }
+
+            override fun onPrepareActionMode(mode: ActionMode, menu: Menu): Boolean = false
+
+            override fun onActionItemClicked(mode: ActionMode, item: MenuItem): Boolean {
+                if (item.itemId != MENU_ITEM_DELETE_ID) return false
+                deleteSelection()
+                mode.finish()
+                return true
+            }
+
+            override fun onDestroyActionMode(mode: ActionMode) {}
+        }
         initialized = true
     }
 
@@ -365,6 +393,7 @@ private class MemoDocumentView(context: Context, private val scroll: MemoScrollV
         // --- 文字の大きさ・色
         fontPixels = ((data["fontSize"] as? Number)?.toFloat() ?: DEFAULT_FONT_SIZE) * density
         val textColor = (data["textColor"] as? Number)?.toInt() ?: DEFAULT_TEXT_COLOR
+        val railColor = (data["railColor"] as? Number)?.toInt() ?: DEFAULT_RAIL_COLOR
         changeSpeakingDotsPlace(SpeakingDotsPlace.fromKey(data["speakingDots"]))
 
         // --- 文字選択中のメモは、選択を始めた時点の本文のまま出す（その間の追記は、選択を解除すると出る）
@@ -378,7 +407,7 @@ private class MemoDocumentView(context: Context, private val scroll: MemoScrollV
 
         // --- 文書を差し替え、文字選択を置き直す
         updating = true
-        applyTextSizeAndColor(textColor)
+        applyTextSizeAndColor(textColor, railColor)
         val document = text as SpannableStringBuilder
         replaceChangedTail(document, newText)
         syncBlockSpans(document)
@@ -406,8 +435,8 @@ private class MemoDocumentView(context: Context, private val scroll: MemoScrollV
         MemoBlock(
             id = id,
             text = item["text"] as? String ?: "",
-            selected = item["selected"] == true,
             selectable = item["selectable"] != false,
+            startsDay = item["startsDay"] != false,
         )
     }
 
@@ -423,13 +452,13 @@ private class MemoDocumentView(context: Context, private val scroll: MemoScrollV
         return builder.toString()
     }
 
-    // 本文・縦線・丸・「.」・つまみの色と、本文の文字サイズ
-    private fun applyTextSizeAndColor(color: Int) {
+    // 本文・縦線・横線・「.」・つまみの色と、本文の文字サイズ
+    private fun applyTextSizeAndColor(textColor: Int, railColor: Int) {
         setTextSize(TypedValue.COMPLEX_UNIT_PX, fontPixels)
-        setTextColor(color)
-        railPaint.color = color
-        speakingDotsPaint.color = color
-        scroll.thumbColor = color
+        setTextColor(textColor)
+        railPaint.color = railColor
+        speakingDotsPaint.color = textColor
+        scroll.thumbColor = textColor
     }
 
     // 前と同じ先頭部分は置き直さず、変わったところから後ろだけを差し替える
@@ -505,7 +534,7 @@ private class MemoDocumentView(context: Context, private val scroll: MemoScrollV
     // OS が選択色を付けている面（ブロック間の余白も含む）に、点が入っているか
     private fun selectionContains(x: Float, y: Float): Boolean {
         val textLayout = layout ?: return false
-        if (!hasSelection() || x >= width - dp(RAIL_TOUCH_WIDTH_DP)) return false
+        if (!hasSelection()) return false
         val path = Path()
         textLayout.getSelectionPath(selectionFrom, selectionTo, path)
         val region = Region()
@@ -562,16 +591,33 @@ private class MemoDocumentView(context: Context, private val scroll: MemoScrollV
         return true
     }
 
-    // 選択範囲に掛かる各メモの部分を取り出し、区切りでつないでクリップボードへ入れる
-    private fun copySelection() {
+    // 選択範囲に掛かる各メモの部分（メモの本文の中での範囲）
+    private fun selectedPieces(): List<SelectedPiece> {
         val from = selectionFrom
         val to = selectionTo
-        val pieces = copyableBlocksIn(from, to)
-            .map { it.text.substring(max(from, it.start) - it.start, min(to, it.end) - it.start) }
+        return copyableBlocksIn(from, to).map { block ->
+            SelectedPiece(block, start = max(from, block.start) - block.start, end = min(to, block.end) - block.start)
+        }
+    }
+
+    // 選択範囲に掛かる各メモの部分を取り出し、区切りでつないでクリップボードへ入れる
+    private fun copySelection() {
+        val pieces = selectedPieces().map { it.text }
         if (pieces.isEmpty()) return
         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         clipboard.setPrimaryClip(ClipData.newPlainText("", pieces.joinToString(copySeparator)))
     }
+
+    // 選択範囲に掛かる各メモの部分を消すよう Dart へ知らせ、文字選択を外す（本文の書き換えと保存は Dart 側が行う）
+    private fun deleteSelection() {
+        val ranges = selectedPieces().map { mapOf("id" to it.block.id, "start" to it.start, "end" to it.end) }
+        if (ranges.isEmpty()) return
+        clearTextSelection()
+        onDeleteText?.invoke(ranges)
+    }
+
+    // メニューの「削除」の文言（OS のメニューと同じく、端末の言語に合わせる）
+    private fun deleteMenuTitle(): String = if (Locale.getDefault().language == "ja") "削除" else "Delete"
 
     // 文字選択の対象になるメモ全件を、表示位置を保ったまま選ぶ
     private fun selectAllCopyableBlocks() {
@@ -581,18 +627,15 @@ private class MemoDocumentView(context: Context, private val scroll: MemoScrollV
     }
 
     // ---------------------------------
-    // 行高・ブロック間隔・太字の span を、変わったブロックだけ付け直す
+    // 行高・ブロック間隔の span を、変わったブロックだけ付け直す
     // ---------------------------------
     // span の付け外しのたびに行が組み直されるため、全ブロックを毎回付け直すと表示の更新ごとに文書全体を組み直すことになる
     private fun syncBlockSpans(document: SpannableStringBuilder) {
         val lineHeight = bodyLineHeight
         // --- 一覧から消えたブロックの span を外す
         val blockIds = blocks.map { it.id }.toSet()
-        for (removedId in blockSpans.keys - blockIds) {
-            blockSpans.remove(removedId)?.let { spans ->
-                document.removeSpan(spans.lineHeight)
-                spans.bold?.let { document.removeSpan(it) }
-            }
+        for (removedId in lineHeightSpans.keys - blockIds) {
+            lineHeightSpans.remove(removedId)?.let { document.removeSpan(it) }
         }
         // --- 各ブロックの span を、今の範囲と値に合わせる
         for ((index, block) in blocks.withIndex()) {
@@ -600,11 +643,8 @@ private class MemoDocumentView(context: Context, private val scroll: MemoScrollV
             // 最後のブロック以外は、後ろの改行まで含めてブロックの範囲とする
             val spanEnd = if (isLast) block.end else block.end + 1
             val spacing = if (isLast) 0 else dp(BLOCK_SPACING_DP)
-            val current = blockSpans[block.id]
-            blockSpans[block.id] = MemoBlockSpans(
-                lineHeight = syncLineHeightSpan(document, current?.lineHeight, block.start, spanEnd, lineHeight, spacing),
-                bold = syncBoldSpan(document, current?.bold, block.selected, block.start, spanEnd),
-            )
+            lineHeightSpans[block.id] =
+                syncLineHeightSpan(document, lineHeightSpans[block.id], block.start, spanEnd, lineHeight, spacing)
         }
     }
 
@@ -628,37 +668,17 @@ private class MemoDocumentView(context: Context, private val scroll: MemoScrollV
         }
     }
 
-    // 太字の span は、選択中のブロックにだけ今の範囲で付ける
-    private fun syncBoldSpan(
-        document: SpannableStringBuilder,
-        current: MemoTypefaceSpan?,
-        selected: Boolean,
-        start: Int,
-        end: Int,
-    ): MemoTypefaceSpan? {
-        if (current != null && selected &&
-            document.getSpanStart(current) == start && document.getSpanEnd(current) == end
-        ) {
-            return current
-        }
-        current?.let { document.removeSpan(it) }
-        if (!selected) return null
-        return MemoTypefaceSpan(boldTypeface).also {
-            document.setSpan(it, start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-        }
-    }
-
     // ---------------------------------
-    // 丸の位置（上のブロックの最後の行の文字の下端と、このブロックの1行目の文字の上端のちょうど間）
+    // ブロックの区切りの位置（上のブロックの最後の行の文字の下端と、このブロックの1行目の文字の上端のちょうど間）
     // ---------------------------------
     // 文字の上端・下端は、行高やブロック間隔の余白を含まない、フォントの ascent・descent の範囲
-    private fun circleCenterYs(): List<Float> {
+    private fun boundaryYs(): List<Float> {
         val textLayout = layout ?: return blocks.map { totalPaddingTop.toFloat() }
         val metrics = paint.fontMetrics
         fun baselineAt(offset: Int) =
             totalPaddingTop + textLayout.getLineBaseline(textLayout.getLineForOffset(offset)).toFloat()
         val glyphTops = blocks.map { baselineAt(it.start) + metrics.ascent }
-        val centers = blocks.indices.map { index ->
+        val boundaries = blocks.indices.map { index ->
             if (index == 0) {
                 0f
             } else {
@@ -668,29 +688,29 @@ private class MemoDocumentView(context: Context, private val scroll: MemoScrollV
         }.toMutableList()
         // 一番上のブロックには上のブロックがないので、2番目のブロックと同じだけ文字の上端から離す
         if (blocks.isNotEmpty()) {
-            val halfGap = if (blocks.size > 1) glyphTops[1] - centers[1] else dp(SINGLE_BLOCK_CIRCLE_GAP_DP).toFloat()
-            centers[0] = glyphTops[0] - halfGap
+            val halfGap = if (blocks.size > 1) glyphTops[1] - boundaries[1] else dp(SINGLE_BLOCK_BOUNDARY_GAP_DP).toFloat()
+            boundaries[0] = glyphTops[0] - halfGap
         }
-        return centers
+        return boundaries
     }
 
-    // 線の始まり（一番上のブロックの丸の中心）
+    // 縦線の始まり（一番上のブロックの区切り）
     val railTop: Float?
-        get() = circleCenterYs().firstOrNull()
+        get() = boundaryYs().firstOrNull()
 
-    // 高さ y より上で、一番近い丸を持つブロック（どの丸よりも上なら null）
-    private fun blockWithCircleAbove(y: Float): MemoBlock? {
-        val circleCenters = circleCenterYs()
-        return blocks.indices.lastOrNull { circleCenters[it] <= y }?.let { blocks[it] }
+    // 高さ y より上で、一番近い区切りを持つブロック（どの区切りよりも上なら null）
+    private fun blockWithBoundaryAbove(y: Float): MemoBlock? {
+        val boundaries = boundaryYs()
+        return blocks.indices.lastOrNull { boundaries[it] <= y }?.let { blocks[it] }
     }
 
-    // 文書の高さ y にあるブロック（一番上の丸より上なら、一番上のブロック）
-    fun blockIdAt(y: Float): Long? = (blockWithCircleAbove(y) ?: blocks.firstOrNull())?.id
+    // 文書の高さ y にあるブロック（一番上の区切りより上なら、一番上のブロック）
+    fun blockIdAt(y: Float): Long? = (blockWithBoundaryAbove(y) ?: blocks.firstOrNull())?.id
 
-    // 最新のブロックと、その丸の高さ（文書の座標）
-    fun latestBlockCircle(): Pair<Long, Float>? {
+    // 最新のブロックと、その区切りの高さ（文書の座標）
+    fun latestBlockBoundary(): Pair<Long, Float>? {
         val block = blocks.lastOrNull() ?: return null
-        return block.id to circleCenterYs().last()
+        return block.id to boundaryYs().last()
     }
 
     // ---------------------------------
@@ -748,7 +768,7 @@ private class MemoDocumentView(context: Context, private val scroll: MemoScrollV
             SpeakingDotsPlace.APPEND -> {
                 // 最後の行の文字の右端から、行の右端までに収める
                 if (latestBlock == null || latestBlock.text.isEmpty()) return
-                speakingDotsPaint.typeface = if (latestBlock.selected) boldTypeface else paint.typeface
+                speakingDotsPaint.typeface = paint.typeface
                 val textRight = textLayout.getPrimaryHorizontal(latestBlock.end)
                 val line = textLayout.getLineForOffset(latestBlock.end)
                 x = totalPaddingLeft + textRight
@@ -777,24 +797,25 @@ private class MemoDocumentView(context: Context, private val scroll: MemoScrollV
     // 描画
     // ---------------------------------
     override fun onDraw(canvas: Canvas) {
-        super.onDraw(canvas)
+        // 縦線と横線は本文の後ろに描く
         drawRail(canvas)
+        super.onDraw(canvas)
         drawSpeakingDots(canvas)
     }
 
-    // 右の縦線と丸（選択中のブロックは太い線と大きな丸）
+    // 右の縦線と、日付の区切りの横線
     private fun drawRail(canvas: Canvas) {
+        if (blocks.isEmpty()) return
+        railPaint.strokeWidth = RAIL_WIDTH_DP * density
+        // 親のスクロールでは描画が再実行されないため、見えていない部分も含めて全体を描く
+        val boundaries = boundaryYs()
+        // 縦線は、一番上のブロックの区切りから文書の下端まで1本で引く
         val x = width - dp(RAIL_X_FROM_RIGHT_DP).toFloat()
-        // 親のスクロールでは描画が再実行されないため、全区間を記録する
-        val circleCenters = circleCenterYs()
+        canvas.drawLine(x, boundaries.first(), x, height.toFloat(), railPaint)
+        // 横線は、その日の最初のブロックの区切りに、画面の端から端まで引く（一番上のブロックには引かない）
         for ((index, block) in blocks.withIndex()) {
-            val top = circleCenters[index]
-            val bottom = if (index + 1 < blocks.size) circleCenters[index + 1] else height.toFloat()
-            val lineWidth = if (block.selected) SELECTED_RAIL_WIDTH_DP else RAIL_WIDTH_DP
-            val radius = if (block.selected) SELECTED_CIRCLE_RADIUS_DP else CIRCLE_RADIUS_DP
-            railPaint.strokeWidth = lineWidth * density
-            canvas.drawLine(x, top, x, bottom, railPaint)
-            canvas.drawCircle(x, top, radius * density, railPaint)
+            if (index == 0 || !block.startsDay) continue
+            canvas.drawLine(0f, boundaries[index], width.toFloat(), boundaries[index], railPaint)
         }
     }
 
@@ -802,38 +823,9 @@ private class MemoDocumentView(context: Context, private val scroll: MemoScrollV
     // タッチ
     // ---------------------------------
     override fun onTouchEvent(event: MotionEvent): Boolean {
-        if (handleRailTouch(event)) return true
         // 判定だけを加え、長押し・ダブルタップ・ドラッグは TextView に渡す
         selectionTapDetector.onTouchEvent(event)
         return super.onTouchEvent(event)
-    }
-
-    // 縦線・丸の上で始まったタッチを受け取り、動かさずに離したらそのブロックの選択を切り替える
-    private fun handleRailTouch(event: MotionEvent): Boolean {
-        if (event.actionMasked == MotionEvent.ACTION_DOWN && event.x >= width - dp(RAIL_TOUCH_WIDTH_DP)) {
-            railTouchDown?.recycle()
-            railTouchDown = MotionEvent.obtain(event)
-            return true
-        }
-        val down = railTouchDown ?: return false
-        when (event.actionMasked) {
-            MotionEvent.ACTION_UP -> {
-                val slop = ViewConfiguration.get(context).scaledTouchSlop
-                val isTap = abs(event.y - down.y) < slop && abs(event.x - down.x) < slop
-                if (isTap) {
-                    blockWithCircleAbove(event.y)?.let { onToggleBlock?.invoke(it.id) }
-                    performClick()
-                }
-                releaseRailTouch()
-            }
-            MotionEvent.ACTION_CANCEL -> releaseRailTouch()
-        }
-        return true
-    }
-
-    private fun releaseRailTouch() {
-        railTouchDown?.recycle()
-        railTouchDown = null
     }
 
     // onTouchEvent を上書きしたときの lint の決まりに合わせて、performClick も上書きしておく
@@ -843,10 +835,11 @@ private class MemoDocumentView(context: Context, private val scroll: MemoScrollV
 // ---------------------------------
 // 文書をスクロールし、右の縦線の上にスクロールつまみを重ねる。下端ではナビゲーションバーを避ける
 // ---------------------------------
-// つまみの上で指が動いたときだけドラッグとして奪う。動かさずに離せば、文書側の丸・線のタップ（ブロック選択）になる
+// つまみの上で指を置いてすぐ動かしたときだけドラッグとして奪う。それ以外（長押し・タップなど）は、文書側の文字選択の操作になる
 private class MemoScrollView(context: Context) : ScrollView(context) {
     private val density = resources.displayMetrics.density
     private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
+    private val longPressTimeout = ViewConfiguration.getLongPressTimeout()
     private val thumbPaint = Paint(Paint.ANTI_ALIAS_FLAG)
 
     // --- つまみのドラッグ
@@ -891,7 +884,7 @@ private class MemoScrollView(context: Context) : ScrollView(context) {
     // ---------------------------------
     // つまみの位置（y は表示範囲の上端から測る）
     // ---------------------------------
-    // 上端は、一番上までスクロールしたときの線の始まり（一番上のブロックの丸）にそろえる
+    // 上端は、一番上までスクロールしたときの縦線の始まり（一番上のブロックの区切り）にそろえる
     private val trackTop: Float
         get() = documentView?.railTop ?: dp(THUMB_TRACK_MARGIN_DP)
 
@@ -909,7 +902,7 @@ private class MemoScrollView(context: Context) : ScrollView(context) {
 
     // スクロールできないほど短いときは、つまみを出さない
     private fun thumbContains(x: Float, y: Float): Boolean =
-        scrollRange > 0 && x >= width - dp(RAIL_TOUCH_WIDTH_DP) && abs(y - thumbCenterY()) <= dp(THUMB_TOUCH_HEIGHT_DP) / 2
+        scrollRange > 0 && x >= width - dp(THUMB_TOUCH_WIDTH_DP) && abs(y - thumbCenterY()) <= dp(THUMB_TOUCH_HEIGHT_DP) / 2
 
     // ---------------------------------
     // ナビゲーションバーを避ける
@@ -942,7 +935,7 @@ private class MemoScrollView(context: Context) : ScrollView(context) {
         reportThumb()
     }
 
-    // 一番下を見ている間に一覧の高さが変わったとき（選択バーの出入りなど）は、一番下のまま保つ
+    // 一番下を見ている間に一覧の高さが変わったときは、一番下のまま保つ
     override fun onSizeChanged(width: Int, height: Int, oldWidth: Int, oldHeight: Int) {
         val documentHeight = documentView?.height ?: 0
         val wasAtBottom = scrollY >= documentHeight - oldHeight - dp(AT_BOTTOM_TOLERANCE_DP)
@@ -960,7 +953,7 @@ private class MemoScrollView(context: Context) : ScrollView(context) {
         reportThumb()
     }
 
-    // スクロールできないほど短いとき（つまみを出さないとき）は、最新のブロックの丸の高さとする
+    // スクロールできないほど短いとき（つまみを出さないとき）は、最新のブロックの区切りの高さとする
     fun reportThumb(force: Boolean = false) {
         // 前回から表示位置が動いていれば、指やつまみの操作でスクロールしている
         val scrolling = !scrollingByApp && scrollY != scrollYSeenByReport
@@ -970,7 +963,7 @@ private class MemoScrollView(context: Context) : ScrollView(context) {
             val thumbY = scrollY + thumbCenterY()
             (document.blockIdAt(thumbY) ?: return) to thumbY
         } else {
-            document.latestBlockCircle() ?: return
+            document.latestBlockBoundary() ?: return
         }
         val y = ((documentY - scrollY) / density).toDouble()
         val reported = reportedThumb
@@ -996,9 +989,14 @@ private class MemoScrollView(context: Context) : ScrollView(context) {
         }
         val downY = thumbTouchDownY ?: return super.onInterceptTouchEvent(event)
         when (event.actionMasked) {
-            MotionEvent.ACTION_MOVE -> if (abs(event.y - downY) > touchSlop) {
-                startThumbDrag(event, downY)
-                return true
+            // 指を置いてすぐ動かしたときだけ掴む（動かさずに待てば、本文の長押しとして文字選択になる）
+            MotionEvent.ACTION_MOVE -> {
+                val moved = abs(event.y - downY) > touchSlop
+                val beforeLongPress = event.eventTime - event.downTime < longPressTimeout
+                if (moved && beforeLongPress) {
+                    startThumbDrag(event, downY)
+                    return true
+                }
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> thumbTouchDownY = null
         }
@@ -1040,8 +1038,13 @@ private class MemoScrollView(context: Context) : ScrollView(context) {
     // ---------------------------------
     // つまみの描画
     // ---------------------------------
+    // つまみは本文の後ろに描くため、文書（子の View）より先に描く
     override fun dispatchDraw(canvas: Canvas) {
+        drawThumb(canvas)
         super.dispatchDraw(canvas)
+    }
+
+    private fun drawThumb(canvas: Canvas) {
         if (scrollRange == 0) return
         // canvas は文書の座標なので、表示範囲の上端（scrollY）を足す
         val centerX = width - dp(RAIL_X_FROM_RIGHT_DP)
@@ -1049,20 +1052,6 @@ private class MemoScrollView(context: Context) : ScrollView(context) {
         val halfWidth = dp(THUMB_WIDTH_DP) / 2
         val halfThickness = THUMB_THICKNESS_DP * density / 2
         canvas.drawRect(centerX - halfWidth, centerY - halfThickness, centerX + halfWidth, centerY + halfThickness, thumbPaint)
-    }
-}
-
-// ---------------------------------
-// 選択中のブロックの本文を、同梱した太字の書体で描く
-// ---------------------------------
-// 標準の StyleSpan(BOLD) では、太字の書体ではなく標準の太さを機械的に太らせて描いてしまうため
-private class MemoTypefaceSpan(private val typeface: Typeface) : MetricAffectingSpan() {
-    override fun updateDrawState(paint: TextPaint) {
-        paint.typeface = typeface
-    }
-
-    override fun updateMeasureState(paint: TextPaint) {
-        paint.typeface = typeface
     }
 }
 
@@ -1083,6 +1072,3 @@ private class MemoLineHeightSpan(val height: Int, val spacing: Int) : LineHeight
         fm.bottom = fm.descent
     }
 }
-
-// 1ブロックに付けている span（太字は選択中のブロックだけ）
-private class MemoBlockSpans(val lineHeight: MemoLineHeightSpan, val bold: MemoTypefaceSpan?)

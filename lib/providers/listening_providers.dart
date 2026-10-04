@@ -137,19 +137,23 @@ class ListeningState {
     );
   }
 
-  // メモの削除
-  ListeningState withMemosRemoved(Set<int> removedIds) {
+  // 文字選択で選んだ範囲を消した（本文を書き換えたメモは差し替え、空になったメモは一覧から外す）
+  ListeningState withTextDeleted({
+    required Map<int, VoiceMemo> editedMemos,
+    required Set<int> removedIds,
+  }) {
     return ListeningState(
       memos: [
         for (final memo in memos)
-          if (!removedIds.contains(memo.id)) memo,
+          if (!removedIds.contains(memo.id)) editedMemos[memo.id] ?? memo,
       ],
       speechActive: speechActive,
       awaitingTranscription: awaitingTranscription,
       // 追記先が消えていたら、追記先も手放す
-      appendTargetId: removedIds.contains(appendTargetId) ? null : appendTargetId,
-      // 演出の対象が消えていたら、対象ごと下ろす
-      typeInMemoId: removedIds.contains(typeInMemoId) ? null : typeInMemoId,
+      appendTargetId: removedIds.contains(appendTargetId)
+          ? null
+          : appendTargetId,
+      typeInMemoId: typeInMemoId,
       typeInFrom: typeInFrom,
     );
   }
@@ -531,19 +535,56 @@ class ListeningNotifier extends AsyncNotifier<ListeningState> {
   }
 
   // ---------------------------------
-  // 選択中のメモを DB ごと削除する（元に戻す手段は持たない）
+  // 文字選択で選んだ範囲の文字を、メモの本文から消す
+  //   ranges は、選択範囲に掛かるメモごとの部分（本文の中の start 以上 end 未満）
+  //   空白や改行だけが残ったメモは、メモごと消す（元に戻す手段は持たない）
   // ---------------------------------
-  Future<void> deleteMemos(Set<int> memoIds) async {
-    if (memoIds.isEmpty) return;
-    await _repository.deleteByIds(memoIds.toList());
-
-    // 追記先ごと消えたら終了
-    if (memoIds.contains(_appendTarget?.id)) _endCurrentBlock();
-
-    if (_disposed) return;
+  Future<void> deleteTextRanges(
+    List<({int memoId, int start, int end})> ranges,
+  ) async {
     final current = state.value;
     if (current == null) return;
-    state = AsyncData(current.withMemosRemoved(memoIds));
+    final memosById = {for (final memo in current.memos) memo.id: memo};
+    final editedMemos = <int, VoiceMemo>{};
+    final removedIds = <int>{};
+
+    // --- メモごとに本文を書き換え、DB に保存する
+    for (final range in ranges) {
+      final memo = memosById[range.memoId];
+      if (memo == null) continue;
+      // 文字選択の間に書き足されても、書き足しは末尾に付くだけなので、選んだ位置はずれない
+      final end = range.end.clamp(0, memo.content.length);
+      final start = range.start.clamp(0, end);
+      final content = memo.content.replaceRange(start, end, '');
+      if (content.trim().isEmpty) {
+        await _repository.delete(memo.id);
+        removedIds.add(memo.id);
+      } else {
+        await _repository.updateContent(id: memo.id, content: content);
+        editedMemos[memo.id] = memo.copyWith(content: content);
+      }
+    }
+
+    // --- 次の発話の追記先を、書き換えた後のメモに合わせる
+    final appendTargetId = _appendTarget?.id;
+    final editedAppendTarget = editedMemos[appendTargetId];
+    if (editedAppendTarget != null) _appendTarget = editedAppendTarget;
+
+    // --- 画面へ反映する
+    if (!_disposed) {
+      final latest = state.value;
+      if (latest != null) {
+        state = AsyncData(
+          latest.withTextDeleted(
+            editedMemos: editedMemos,
+            removedIds: removedIds,
+          ),
+        );
+      }
+    }
+
+    // --- 追記先ごと消えたら、次の発話は新しいメモにする
+    if (removedIds.contains(appendTargetId)) _endCurrentBlock();
   }
 
   // タイピング演出を使い切ったときにページから呼ばれる（再表示時の再再生を防ぐ）

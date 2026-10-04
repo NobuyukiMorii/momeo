@@ -137,7 +137,7 @@ class _ListeningBackdropState extends State<ListeningBackdrop>
           history: _history,
           current: _current,
           scrollFrac: _scrollFrac,
-          color: AppColors.onSurface.withValues(alpha: _lineOpacity),
+          color: AppColors.onSurfaceFaint,
         ),
         // 全面を覆うことで paint() の size に画面全体が入る
         child: const SizedBox.expand(),
@@ -258,4 +258,3 @@ const double _gainExponent = 0.5; // ゲイン曲線の指数（小さいほど�
 const double _idleAmplitude = 0.06; // 無音揺れの振幅（最大振れ幅比）
 const double _idleFrequencyHz = 0.4; // 無音揺れの周期
 const double _maxAmplitudeFactor = 0.40; // 画面高さに対する、中央ラインからの最大振れ幅
-const double _lineOpacity = 0.2; // 波線の濃さ（onSurface に対する透過）

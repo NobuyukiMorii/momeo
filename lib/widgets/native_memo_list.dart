@@ -17,8 +17,8 @@ const _updateMethod = 'update';
 const _clearSelectionMethod = 'clearSelection';
 
 // ネイティブ側から届くメソッド
-const _toggleBlockMethod = 'toggleBlock';
 const _thumbMethod = 'thumb';
+const _deleteTextMethod = 'deleteText';
 
 // 本文の文字サイズ（端末の文字サイズの設定で拡大する前の値）
 const _bodyFontSize = 18.0;
@@ -29,6 +29,9 @@ const _copySeparator = '\n\n';
 // スクロールつまみの高さ（一覧の上端から測る）と、その高さにあるメモ
 // scrolling は、指やつまみの操作でスクロールしたときだけ true（新しいメモで末尾へ移るときは false）
 typedef MemoListThumb = ({int memoId, double y, bool scrolling});
+
+// 文字選択のメニューの「削除」で消す、1つのメモの部分（本文の中の start 以上 end 未満）
+typedef MemoTextRange = ({int memoId, int start, int end});
 
 // 発話中の気配として「.」を出す場所
 // append: 最新のブロックの本文の続き / newBlock: 次のブロックの1行目
@@ -48,11 +51,10 @@ class NativeMemoList extends StatefulWidget {
   const NativeMemoList({
     super.key,
     required this.memos,
-    required this.selectedIds,
     required this.controller,
-    required this.onToggleSelection,
     required this.onTypingComplete,
     required this.onThumbChanged,
+    required this.onDeleteText,
     this.typingMemoId,
     this.typeFrom = 0,
     this.speakingDots = MemoSpeakingDots.hidden,
@@ -60,15 +62,13 @@ class NativeMemoList extends StatefulWidget {
 
   // 確定済みメモ一覧（新しい順）
   final List<VoiceMemo> memos;
-  // 丸で選ばれているメモの id
-  final Set<int> selectedIds;
   final NativeMemoListController controller;
-  // 丸が押されたとき
-  final ValueChanged<int> onToggleSelection;
   // 打ち出しの演出を使い切ったとき
   final ValueChanged<int> onTypingComplete;
   // スクロールつまみの高さ、またはその高さにあるメモが変わったとき
   final ValueChanged<MemoListThumb> onThumbChanged;
+  // 文字選択のメニューで「削除」が押されたとき（選択範囲に掛かるメモごとの部分）
+  final ValueChanged<List<MemoTextRange>> onDeleteText;
   // 打ち出し中のメモの id と、打ち出しを始める文字数
   final int? typingMemoId;
   final int typeFrom;
@@ -143,8 +143,6 @@ class _NativeMemoListState extends State<NativeMemoList> {
   Future<void> _onNativeCall(MethodCall call) async {
     if (!mounted) return;
     switch (call.method) {
-      case _toggleBlockMethod:
-        widget.onToggleSelection(call.arguments as int);
       case _thumbMethod:
         final thumb = call.arguments as Map;
         widget.onThumbChanged((
@@ -152,6 +150,16 @@ class _NativeMemoListState extends State<NativeMemoList> {
           y: (thumb['y'] as num).toDouble(),
           scrolling: thumb['scrolling'] == true,
         ));
+      case _deleteTextMethod:
+        final ranges = call.arguments as List;
+        widget.onDeleteText([
+          for (final range in ranges.cast<Map>())
+            (
+              memoId: range['id'] as int,
+              start: range['start'] as int,
+              end: range['end'] as int,
+            ),
+        ]);
     }
   }
 
@@ -159,21 +167,30 @@ class _NativeMemoListState extends State<NativeMemoList> {
   // ネイティブ側へ渡す文書（ブロックは古い順）
   // ---------------------------------
   Map<String, Object?> _buildDocument(String typingText) {
+    final oldestFirst = widget.memos.reversed.toList();
     final blocks = [
-      for (final memo in widget.memos.reversed)
+      for (final (index, memo) in oldestFirst.indexed)
         {
           'id': memo.id,
           // 打ち出し中のメモは、表示途中の本文を出す
           'text': memo.id == widget.typingMemoId ? typingText : memo.content,
-          'selected': widget.selectedIds.contains(memo.id),
           // 打ち出し中のメモは、打ち終わるまで文字選択の対象にしない
           'selectable': memo.id != widget.typingMemoId,
+          // その日の最初のメモか（日付の区切りの横線は、その日の最初のメモの上にだけ引く）
+          'startsDay':
+              index == 0 ||
+              !DateUtils.isSameDay(
+                oldestFirst[index - 1].createdAt,
+                memo.createdAt,
+              ),
         },
     ];
     return {
       'blocks': blocks,
       'fontSize': MediaQuery.textScalerOf(context).scale(_bodyFontSize),
       'textColor': AppColors.onSurface.toARGB32(),
+      // 縦線・横線は、背景の波線と同じ色
+      'railColor': AppColors.onSurfaceFaint.toARGB32(),
       'copySeparator': _copySeparator,
       'speakingDots': widget.speakingDots == MemoSpeakingDots.hidden
           ? null
@@ -200,7 +217,7 @@ class _NativeMemoListState extends State<NativeMemoList> {
   // ネイティブ View
   // ---------------------------------
   Widget _buildPlatformView() {
-    // 一覧の上の操作（スクロール・文字選択・丸のタップ）は、Flutter 側で取り合わずにすべて渡す
+    // 一覧の上の操作（スクロール・文字選択・つまみのドラッグ）は、Flutter 側で取り合わずにすべて渡す
     final gestures = <Factory<OneSequenceGestureRecognizer>>{
       Factory<EagerGestureRecognizer>(EagerGestureRecognizer.new),
     };

@@ -5,7 +5,7 @@ import UIKit
 // NativeMemoList — リスニング画面のメモ一覧（iOS）
 //
 //   メモ全件を時系列順に並べた1つの UITextView にし、文字選択・つまみ・メニュー・スクロールは OS に任せる。
-//   右の縦線と丸（ブロック選択）、スクロールつまみ、発話中の「.」はアプリ側で描く。
+//   右の縦線と日付の区切りの横線、スクロールつまみ、発話中の「.」はアプリ側で描く。
 //   Dart 側は lib/widgets/native_memo_list.dart。
 // ============================================================
 
@@ -17,14 +17,15 @@ private enum ChannelMethod {
     static let update = "update"
     static let clearSelection = "clearSelection"
     // Dart へ知らせるメソッド
-    static let toggleBlock = "toggleBlock"
     static let thumb = "thumb"
+    static let deleteText = "deleteText"
 }
 
 // Dart から値が届かなかったときの既定値
 private enum DefaultValue {
     static let fontSize: Double = 18
     static let textColor: UInt32 = 0xff111827
+    static let railColor: UInt32 = 0xffcfd1d4
     static let copySeparator = "\n\n"
 }
 
@@ -32,9 +33,9 @@ private enum DefaultValue {
 // 定数: 本文（pt。Android 側の dp とそろえる）
 // ---------------------------------
 private enum BodyLayout {
-    // 本文の左右の余白（右は丸と縦線の領域を含む）
-    static let paddingLeft: CGFloat = 12
-    static let paddingRight: CGFloat = 34
+    // 本文の左右の余白（右も左と同じ。縦線は本文の後ろを通す）
+    static let paddingLeft: CGFloat = 8
+    static let paddingRight: CGFloat = 8
     // 本文の上の余白の下限（メモが少ないうちは、残りを上に空けて一覧を下に寄せる）
     static let minPaddingTop: CGFloat = 24
     // 本文の下の余白（ホームインジケーターに重なる分は、これに足す）
@@ -45,30 +46,24 @@ private enum BodyLayout {
     static let emptyLineHeightRatio: CGFloat = 2
     // ブロックとブロックの間の余白
     static let blockSpacing: CGFloat = 24
-    // 空のメモにも丸と1行分の高さを持たせるために置く、幅の無い文字
+    // 空のメモにも区切りと1行分の高さを持たせるために置く、幅の無い文字
     static let emptyBlockText = "\u{200B}"
     // 一番下からこの距離までにいれば、一番下を見ているとみなす
     static let atBottomTolerance: CGFloat = 32
-    // 書体（選択していないとき・選択中）
-    static let regularFontName = "HiraginoSans-W3"
-    static let boldFontName = "HiraginoSans-W6"
+    // 書体
+    static let fontName = "HiraginoSans-W3"
 }
 
 // ---------------------------------
-// 定数: 右の縦線と丸（pt）
+// 定数: 右の縦線と、日付の区切りの横線（pt）
 // ---------------------------------
 private enum RailLayout {
-    // 縦線と丸を押せる領域の幅（一覧の右端から）
-    static let touchWidth: CGFloat = 40
     // 縦線の位置（一覧の右端から）
     static let xFromRight: CGFloat = 18
-    // 縦線の太さと丸の半径（選択していないとき・選択中）
-    static let lineWidth: CGFloat = 1.5
-    static let selectedLineWidth: CGFloat = 2.5
-    static let circleRadius: CGFloat = 4
-    static let selectedCircleRadius: CGFloat = 5.5
-    // ブロックが1つだけのときに、丸を1行目の文字の上端から離す距離
-    static let singleBlockCircleGap: CGFloat = 12
+    // 縦線と横線の太さ
+    static let lineWidth: CGFloat = 0.5
+    // ブロックが1つだけのときに、区切りを1行目の文字の上端から離す距離
+    static let singleBlockBoundaryGap: CGFloat = 12
 }
 
 // ---------------------------------
@@ -77,9 +72,12 @@ private enum RailLayout {
 private enum ScrollThumbLayout {
     // 横棒の幅と太さ
     static let width: CGFloat = 24
-    static let thickness: CGFloat = 1.5
-    // 細い横棒でも掴めるよう、当たり判定は見た目より上下に広げる
+    static let thickness: CGFloat = 0.5
+    // つまみを掴める幅（一覧の右端から）と高さ。細い横棒でも掴めるよう、当たり判定は見た目より上下に広げる
+    static let touchWidth: CGFloat = 40
     static let touchHeight: CGFloat = 44
+    // 文字選択の両端の、OS のつまみを掴めるとみなす広さ（ここではスクロールつまみより OS のつまみを優先する）
+    static let selectionEdgeTouchMargin: CGFloat = 22
     // つまみが動く範囲の上下の余白（下端がホームインジケーターに重なるときは広めにとる）
     static let trackMargin: CGFloat = 12
     static let trackMarginAboveHomeIndicator: CGFloat = 24
@@ -112,10 +110,10 @@ private struct MemoBlock {
     let id: Int64
     // 表示する本文（文字選択中は、選択を始めた時点の本文を保つ）
     var text: String
-    // 丸で選ばれているか
-    let selected: Bool
     // 文字選択の対象にするか（打ち出し中は対象にしない）
     var selectable: Bool
+    // その日の最初のメモか（日付の区切りの横線は、その日の最初のメモの上にだけ引く）
+    let startsDay: Bool
     // 文書の中での本文の範囲
     var range = NSRange(location: 0, length: 0)
 }
@@ -149,8 +147,8 @@ private final class NativeMemoList: NSObject, FlutterPlatformView {
         documentView.frame = container.bounds
         documentView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         container.addSubview(documentView)
-        documentView.onToggleBlock = { [weak self] blockId in
-            self?.channel.invokeMethod(ChannelMethod.toggleBlock, arguments: blockId)
+        documentView.onDeleteText = { [weak self] ranges in
+            self?.channel.invokeMethod(ChannelMethod.deleteText, arguments: ranges)
         }
         documentView.onThumbChanged = { [weak self] blockId, y, scrolling in
             self?.channel.invokeMethod(ChannelMethod.thumb, arguments: ["id": blockId, "y": y, "scrolling": scrolling])
@@ -179,14 +177,14 @@ private final class NativeMemoList: NSObject, FlutterPlatformView {
 }
 
 // ---------------------------------
-// 本文（メモ全件を1つにした文書）と、右の縦線・丸、スクロールつまみ、発話中の「.」
+// 本文（メモ全件を1つにした文書）と、右の縦線・日付の区切りの横線、スクロールつまみ、発話中の「.」
 // ---------------------------------
 private final class MemoDocumentView: UITextView, UITextViewDelegate {
-    // 丸が押されたブロックのメモ id を知らせる
-    var onToggleBlock: ((Int64) -> Void)?
     // つまみの高さと、その高さにあるブロックが変わったときに知らせる（背景の日付表示に使う。y は表示範囲の上端から測る）
     // scrolling は、指やつまみの操作でスクロールしたときだけ true
     var onThumbChanged: ((_ blockId: Int64, _ y: CGFloat, _ scrolling: Bool) -> Void)?
+    // メニューの「削除」で消す範囲を知らせる（メモ id と、そのメモの本文の中の start 以上 end 未満）
+    var onDeleteText: (([[String: Any]]) -> Void)?
 
     // --- 文書
     // 表示中のブロック（古い順）
@@ -196,11 +194,13 @@ private final class MemoDocumentView: UITextView, UITextViewDelegate {
     // 本文の文字サイズと色
     private var bodySize = CGFloat(DefaultValue.fontSize)
     private var bodyColor = UIColor.label
+    // 縦線・横線の色（背景の波線と同じ色）
+    private var railColor = UIColor.label
     // まだ一度もレイアウトしていないか（最初の表示では、一番下（最新）までスクロールする）
     private var isFirstLayout = true
     // 前回のレイアウトでの大きさ
     private var lastLayoutSize = CGSize.zero
-    // 文書の高さと丸の位置を測り直すか
+    // 文書の高さとブロックの区切りの位置を測り直すか
     private var needsDocumentLayout = true
 
     // --- 文字選択
@@ -211,10 +211,10 @@ private final class MemoDocumentView: UITextView, UITextViewDelegate {
     // ブロックをまたいでコピーしたときの区切り
     private var copySeparator = DefaultValue.copySeparator
 
-    // --- 右の縦線・丸と、スクロールつまみ
+    // --- 縦線・横線と、スクロールつまみ
     private let rail = MemoRailView()
-    // 丸の中心の高さ（メモ id → 文書の座標）
-    private var circleCenterYs: [Int64: CGFloat] = [:]
+    // ブロックの区切りの高さ（メモ id → 文書の座標）
+    private var boundaryYs: [Int64: CGFloat] = [:]
     // ドラッグ中の、指の位置とつまみの中心のずれ
     private var scrollThumbGrabOffset: CGFloat = 0
     // 最後に知らせたブロックと高さ（変わっていなければ知らせ直さない）
@@ -228,7 +228,7 @@ private final class MemoDocumentView: UITextView, UITextViewDelegate {
     private var speakingDotsPlace: SpeakingDotsPlace?
 
     override init(frame: CGRect, textContainer: NSTextContainer?) {
-        // TextKit 1（NSLayoutManager）で組み、文書全体の高さと丸の位置を同じレイアウトから求める
+        // TextKit 1（NSLayoutManager）で組み、文書全体の高さとブロックの区切りの位置を同じレイアウトから求める
         let storage = NSTextStorage()
         let manager = NSLayoutManager()
         let container = NSTextContainer(size: .zero)
@@ -248,10 +248,14 @@ private final class MemoDocumentView: UITextView, UITextViewDelegate {
         delegate = self
         addSubview(speakingDotsView)
         rail.document = self
-        addSubview(rail)
-        rail.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(didTapRail(_:))))
-        rail.addGestureRecognizer(MemoScrollThumbPan(document: self))
+        // 縦線・横線とつまみは本文の後ろに描く
+        insertSubview(rail, at: 0)
+        addGestureRecognizer(MemoScrollThumbPan(document: self))
         addGestureRecognizer(MemoSelectionDismissTap(document: self))
+        // iOS 15 以前は、文字選択のメニューに「削除」をここで足す（iOS 16 以降は textView(_:editMenuForTextIn:suggestedActions:) で足す）
+        if #unavailable(iOS 16) {
+            UIMenuController.shared.menuItems = [UIMenuItem(title: Self.deleteMenuTitle, action: #selector(deleteSelectedText(_:)))]
+        }
     }
 
     required init?(coder: NSCoder) { fatalError("ストーリーボードからは生成しません") }
@@ -292,6 +296,7 @@ private final class MemoDocumentView: UITextView, UITextViewDelegate {
         copySeparator = data["copySeparator"] as? String ?? DefaultValue.copySeparator
         bodySize = CGFloat((data["fontSize"] as? NSNumber)?.doubleValue ?? DefaultValue.fontSize)
         bodyColor = Self.opaqueColor(argb: (data["textColor"] as? NSNumber)?.uint32Value ?? DefaultValue.textColor)
+        railColor = Self.opaqueColor(argb: (data["railColor"] as? NSNumber)?.uint32Value ?? DefaultValue.railColor)
 
         // --- 文字選択中のメモは、選択を始めた時点の本文のまま出す（その間の追記は、選択を解除すると出る）
         blocks = incoming.map { block in
@@ -333,8 +338,8 @@ private final class MemoDocumentView: UITextView, UITextViewDelegate {
         values.compactMap { value -> MemoBlock? in
             guard let id = value["id"] as? NSNumber, let text = value["text"] as? String else { return nil }
             return MemoBlock(id: id.int64Value, text: text,
-                             selected: value["selected"] as? Bool ?? false,
-                             selectable: value["selectable"] as? Bool ?? true)
+                             selectable: value["selectable"] as? Bool ?? true,
+                             startsDay: value["startsDay"] as? Bool ?? true)
         }
     }
 
@@ -345,10 +350,9 @@ private final class MemoDocumentView: UITextView, UITextViewDelegate {
                 blue: CGFloat(argb & 255) / 255, alpha: 1)
     }
 
-    // 本文の書体（選択中のブロックは太字）
-    private func bodyFont(selected: Bool) -> UIFont {
-        UIFont(name: selected ? BodyLayout.boldFontName : BodyLayout.regularFontName, size: bodySize)
-            ?? UIFont.systemFont(ofSize: bodySize, weight: selected ? .bold : .regular)
+    // 本文の書体
+    private var bodyFont: UIFont {
+        UIFont(name: BodyLayout.fontName, size: bodySize) ?? UIFont.systemFont(ofSize: bodySize)
     }
 
     // 各ブロックの本文を改行1つでつないだ文書を作り、ブロックごとの文書の中の範囲も記録する
@@ -364,7 +368,7 @@ private final class MemoDocumentView: UITextView, UITextViewDelegate {
             paragraph.maximumLineHeight = bodySize * BodyLayout.lineHeightRatio
             let segment = NSMutableAttributedString(
                 string: visibleText + (isLast ? "" : "\n"),
-                attributes: [.font: bodyFont(selected: block.selected), .foregroundColor: bodyColor, .paragraphStyle: paragraph])
+                attributes: [.font: bodyFont, .foregroundColor: bodyColor, .paragraphStyle: paragraph])
             // ブロックの最後の段落の下に、ブロック間の余白を空ける
             let lastParagraph = (segment.string as NSString).paragraphRange(
                 for: NSRange(location: max(0, (visibleText as NSString).length - 1), length: 0))
@@ -395,7 +399,7 @@ private final class MemoDocumentView: UITextView, UITextViewDelegate {
                 in: NSRange(location: commonLength, length: oldText.length - commonLength),
                 with: document.attributedSubstring(from: NSRange(location: commonLength, length: document.length - commonLength)))
         }
-        // 文字が同じところも、太字や行高などの属性は付け直す
+        // 文字が同じところも、行高などの属性は付け直す
         document.enumerateAttributes(in: NSRange(location: 0, length: document.length)) { attributes, range, _ in
             self.textStorage.setAttributes(attributes, range: range)
         }
@@ -440,10 +444,17 @@ private final class MemoDocumentView: UITextView, UITextViewDelegate {
 
     // OS が選択色を付けている面（ブロック間の余白も含む）に、点が入っているか
     fileprivate func selectionContains(_ point: CGPoint) -> Bool {
-        guard point.x < bounds.width - RailLayout.touchWidth, let range = selectedTextRange, !range.isEmpty else {
-            return false
-        }
+        guard let range = selectedTextRange, !range.isEmpty else { return false }
         return selectionRects(for: range).contains { $0.rect.contains(point) }
+    }
+
+    // 文字選択の両端（OS のつまみが出るところ）の近くに、点が入っているか
+    fileprivate func selectionEdgeContains(_ point: CGPoint) -> Bool {
+        guard let range = selectedTextRange, !range.isEmpty else { return false }
+        return [range.start, range.end].contains { position in
+            caretRect(for: position).insetBy(dx: -ScrollThumbLayout.selectionEdgeTouchMargin,
+                                             dy: -ScrollThumbLayout.selectionEdgeTouchMargin).contains(point)
+        }
     }
 
     // OS の操作で文字選択が変わったとき
@@ -493,15 +504,61 @@ private final class MemoDocumentView: UITextView, UITextViewDelegate {
         return NSRange(location: first.range.location, length: NSMaxRange(last.range) - first.range.location)
     }
 
-    // 選択範囲に掛かる各メモの部分を取り出し、区切りでつないでクリップボードへ入れる
-    override func copy(_ sender: Any?) {
-        let pieces = copyableBlocks.compactMap { block -> String? in
+    // 選択範囲に掛かる各メモの部分（メモの本文の中での範囲）
+    private var selectedPieces: [(block: MemoBlock, rangeInBlock: NSRange)] {
+        copyableBlocks.compactMap { block in
             let intersection = NSIntersectionRange(block.range, selectedRange)
             guard intersection.length > 0 else { return nil }
-            return (block.text as NSString).substring(with: NSRange(
-                location: intersection.location - block.range.location, length: intersection.length))
+            return (block, NSRange(location: intersection.location - block.range.location, length: intersection.length))
         }
+    }
+
+    // 選択範囲に掛かる各メモの部分を取り出し、区切りでつないでクリップボードへ入れる
+    override func copy(_ sender: Any?) {
+        let pieces = selectedPieces.map { ($0.block.text as NSString).substring(with: $0.rangeInBlock) }
         if !pieces.isEmpty { UIPasteboard.general.string = pieces.joined(separator: copySeparator) }
+    }
+
+    // 選択範囲に掛かる各メモの部分を消すよう Dart へ知らせ、文字選択を外す（本文の書き換えと保存は Dart 側が行う）
+    @objc private func deleteSelectedText(_ sender: Any?) {
+        let ranges = selectedPieces.map { piece -> [String: Any] in
+            ["id": piece.block.id, "start": piece.rangeInBlock.location, "end": NSMaxRange(piece.rangeInBlock)]
+        }
+        guard !ranges.isEmpty else { return }
+        clearTextSelection()
+        onDeleteText?(ranges)
+    }
+
+    // メニューの「削除」の文言（OS のメニューと同じく、端末の言語に合わせる）
+    private static var deleteMenuTitle: String {
+        Locale.preferredLanguages.first?.hasPrefix("ja") == true ? "削除" : "Delete"
+    }
+
+    // iOS 16 以降: OS が用意したメニューの「コピー」のすぐ後ろに「削除」を差し込む
+    @available(iOS 16.0, *)
+    func textView(_ textView: UITextView, editMenuForTextIn range: NSRange,
+                  suggestedActions: [UIMenuElement]) -> UIMenu? {
+        guard range.length > 0 else { return nil }
+        let deleteAction = UIAction(title: Self.deleteMenuTitle) { [weak self] _ in self?.deleteSelectedText(nil) }
+        return UIMenu(children: Self.inserting(deleteAction, afterCopyIn: suggestedActions))
+    }
+
+    // メニューの中を入れ子までたどり、「コピー」の後ろに差し込む（見つからなければ末尾に足す）
+    @available(iOS 16.0, *)
+    private static func inserting(_ action: UIAction, afterCopyIn elements: [UIMenuElement]) -> [UIMenuElement] {
+        var inserted = false
+        func insert(into elements: [UIMenuElement]) -> [UIMenuElement] {
+            elements.flatMap { element -> [UIMenuElement] in
+                if let command = element as? UICommand, command.action == #selector(UIResponderStandardEditActions.copy(_:)) {
+                    inserted = true
+                    return [command, action]
+                }
+                if let menu = element as? UIMenu { return [menu.replacingChildren(insert(into: menu.children))] }
+                return [element]
+            }
+        }
+        let result = insert(into: elements)
+        return inserted ? result : result + [action]
     }
 
     // 文字選択の対象になるメモ全件を選ぶ（選んだ後のメニューは OS の全選択に出させ、範囲は本文の端までに収める）
@@ -512,6 +569,7 @@ private final class MemoDocumentView: UITextView, UITextViewDelegate {
 
     override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
         if action == #selector(copy(_:)) { return selectedRange.length > 0 }
+        if action == #selector(deleteSelectedText(_:)) { return selectedRange.length > 0 }
         // すでに全件を選んでいるときは「すべてを選択」を出さない
         if action == #selector(selectAll(_:)) {
             guard let range = allCopyableRange else { return false }
@@ -539,7 +597,7 @@ private final class MemoDocumentView: UITextView, UITextViewDelegate {
             layoutDocument()
         }
         layoutSpeakingDots()
-        // 最初と、一番下を見ている間に一覧の高さが変わったとき（選択バーの出入りなど）は、一番下へ（文字選択中は動かさない）
+        // 最初と、一番下を見ている間に一覧の高さが変わったときは、一番下へ（文字選択中は動かさない）
         if isFirstLayout || (oldSize != bounds.size && wasAtBottom && selectedRange.length == 0) {
             setContentOffsetByApp(scrollableHeight)
         }
@@ -549,28 +607,28 @@ private final class MemoDocumentView: UITextView, UITextViewDelegate {
         reportThumb()
     }
 
-    // メモが少ないうちは上の余白を広げて一覧を下に寄せ、丸の位置を求め直す
+    // メモが少ないうちは上の余白を広げて一覧を下に寄せ、ブロックの区切りの位置を求め直す
     private func layoutDocument() {
         layoutManager.ensureLayout(for: textContainer)
         let documentHeight = layoutManager.usedRect(for: textContainer).height
         let topInset = max(BodyLayout.minPaddingTop, bounds.height - documentHeight - textContainerInset.bottom)
         if abs(textContainerInset.top - topInset) > 0.5 { textContainerInset.top = topInset }
-        layoutCircleCenters(top: topInset)
+        layoutBoundaries(top: topInset)
     }
 
     // ---------------------------------
     // つまみの位置を Dart へ知らせる
     // ---------------------------------
-    // スクロールできないほど短いとき（つまみを出さないとき）は、最新のブロックの丸の高さとする
+    // スクロールできないほど短いとき（つまみを出さないとき）は、最新のブロックの区切りの高さとする
     func reportThumb(force: Bool = false) {
         // 前回から表示位置が動いていれば、指やつまみの操作でスクロールしている
         let scrolling = abs(contentOffset.y - offsetYSeenByReport) > 0.5
         offsetYSeenByReport = contentOffset.y
         let thumbBlock = showsScrollThumb
-            ? blockWithCircleAbove(contentOffset.y + scrollThumbCenterY) ?? blocks.first
+            ? blockWithBoundaryAbove(contentOffset.y + scrollThumbCenterY) ?? blocks.first
             : blocks.last
         guard let block = thumbBlock else { return }
-        let y = showsScrollThumb ? scrollThumbCenterY : circleCenterY(block) - contentOffset.y
+        let y = showsScrollThumb ? scrollThumbCenterY : boundaryY(block) - contentOffset.y
         if !force, !scrolling, let reportedThumb, reportedThumb.id == block.id, abs(reportedThumb.y - y) < 0.5 { return }
         reportedThumb = (block.id, y)
         onThumbChanged?(block.id, y, scrolling)
@@ -582,34 +640,33 @@ private final class MemoDocumentView: UITextView, UITextViewDelegate {
         offsetYSeenByReport = contentOffset.y
     }
 
-    // 縦線の View は、スクロールしても表示範囲の右端に留め、一番手前に置く
+    // 縦線・横線の View は、スクロールしても表示範囲に重ねたまま留め、本文より後ろに置く
     private func layoutRail() {
-        rail.frame = CGRect(x: bounds.width - RailLayout.touchWidth, y: contentOffset.y,
-                            width: RailLayout.touchWidth, height: bounds.height)
-        bringSubviewToFront(rail)
+        rail.frame = CGRect(x: 0, y: contentOffset.y, width: bounds.width, height: bounds.height)
+        sendSubviewToBack(rail)
         rail.setNeedsDisplay()
     }
 
 
     // ---------------------------------
-    // 丸の位置（上のブロックの最後の行の文字の下端と、このブロックの1行目の文字の上端のちょうど間）
+    // ブロックの区切りの位置（上のブロックの最後の行の文字の下端と、このブロックの1行目の文字の上端のちょうど間）
     // ---------------------------------
-    private func layoutCircleCenters(top: CGFloat) {
+    private func layoutBoundaries(top: CGFloat) {
         let glyphTops = blocks.map { glyphTopAndBottom(atCharacter: $0.range.location).top + top }
-        var centers: [Int64: CGFloat] = [:]
+        var boundaries: [Int64: CGFloat] = [:]
         for index in blocks.indices.dropFirst() {
             let upperLastCharacter = NSMaxRange(blocks[index - 1].range) - 1
             let upperBottom = glyphTopAndBottom(atCharacter: upperLastCharacter).bottom + top
-            centers[blocks[index].id] = (upperBottom + glyphTops[index]) / 2
+            boundaries[blocks[index].id] = (upperBottom + glyphTops[index]) / 2
         }
         // 一番上のブロックには上のブロックがないので、2番目のブロックと同じだけ文字の上端から離す
         if let first = blocks.first {
             let halfGap = blocks.count > 1
-                ? glyphTops[1] - (centers[blocks[1].id] ?? glyphTops[1])
-                : RailLayout.singleBlockCircleGap
-            centers[first.id] = glyphTops[0] - halfGap
+                ? glyphTops[1] - (boundaries[blocks[1].id] ?? glyphTops[1])
+                : RailLayout.singleBlockBoundaryGap
+            boundaries[first.id] = glyphTops[0] - halfGap
         }
-        circleCenterYs = centers
+        boundaryYs = boundaries
     }
 
     // 文字の上端・下端（行高やブロック間隔の余白を含まない、フォントの ascender・descender の範囲）
@@ -622,13 +679,13 @@ private final class MemoDocumentView: UITextView, UITextViewDelegate {
         return (baseline - font.ascender, baseline - font.descender)
     }
 
-    private func circleCenterY(_ block: MemoBlock) -> CGFloat {
-        circleCenterYs[block.id] ?? textContainerInset.top
+    private func boundaryY(_ block: MemoBlock) -> CGFloat {
+        boundaryYs[block.id] ?? textContainerInset.top
     }
 
-    // 高さ y（文書の座標）より上で、一番近い丸を持つブロック（どの丸よりも上なら nil）
-    private func blockWithCircleAbove(_ y: CGFloat) -> MemoBlock? {
-        blocks.last(where: { circleCenterY($0) <= y })
+    // 高さ y（文書の座標）より上で、一番近い区切りを持つブロック（どの区切りよりも上なら nil）
+    private func blockWithBoundaryAbove(_ y: CGFloat) -> MemoBlock? {
+        blocks.last(where: { boundaryY($0) <= y })
     }
 
     // ---------------------------------
@@ -651,7 +708,7 @@ private final class MemoDocumentView: UITextView, UITextViewDelegate {
     // 行の上端から文字のベースラインまで
     private var lastLineBaselineOffset: CGFloat {
         guard textStorage.length > 0 else {
-            let font = bodyFont(selected: false)
+            let font = bodyFont
             return (bodySize * BodyLayout.emptyLineHeightRatio - font.lineHeight) / 2 + font.ascender
         }
         let glyph = layoutManager.glyphIndexForCharacter(at: textStorage.length - 1)
@@ -678,7 +735,7 @@ private final class MemoDocumentView: UITextView, UITextViewDelegate {
             speakingDotsView.place(x: textContainerInset.left + textRight,
                                    baseline: textContainerInset.top + lineRect.minY + lastLineBaselineOffset,
                                    availableWidth: containerWidth - textRight,
-                                   font: bodyFont(selected: latestBlock.selected), color: bodyColor)
+                                   font: bodyFont, color: bodyColor)
         case .newBlock:
             let lineTop = textStorage.length > 0
                 ? textContainerInset.top + lineRect.maxY + BodyLayout.blockSpacing
@@ -686,43 +743,35 @@ private final class MemoDocumentView: UITextView, UITextViewDelegate {
             speakingDotsView.place(x: textContainerInset.left,
                                    baseline: lineTop + lastLineBaselineOffset,
                                    availableWidth: containerWidth,
-                                   font: bodyFont(selected: false), color: bodyColor)
+                                   font: bodyFont, color: bodyColor)
         }
         // 文字選択中は本文の表示を止めているので、「.」も出さない
         speakingDotsView.isHidden = selectedRange.length > 0
     }
 
     // ---------------------------------
-    // 右の縦線と丸
+    // 右の縦線と、日付の区切りの横線
     // ---------------------------------
-    @objc private func didTapRail(_ recognizer: UITapGestureRecognizer) {
-        let y = recognizer.location(in: rail).y + contentOffset.y
-        guard let block = blockWithCircleAbove(y) else { return }
-        onToggleBlock?(block.id)
-    }
-
-    // 選択中のブロックは太い線と大きな丸にする（縦線の View の上に、見えている区間だけを描く）
+    // 縦線・横線の View の上に描く
     fileprivate func drawRail() {
-        guard let context = UIGraphicsGetCurrentContext() else { return }
+        guard let context = UIGraphicsGetCurrentContext(), let firstBlock = blocks.first else { return }
         context.saveGState()
         defer { context.restoreGState() }
         // 文書の座標で描けるよう、表示範囲の上端の分だけずらす
         context.translateBy(x: 0, y: -contentOffset.y)
-        bodyColor.setStroke()
-        bodyColor.setFill()
-        let x = RailLayout.touchWidth - RailLayout.xFromRight
-        for index in blocks.indices {
-            let block = blocks[index]
-            let top = circleCenterY(block)
-            let bottom = index + 1 < blocks.count ? circleCenterY(blocks[index + 1]) : contentSize.height
-            guard bottom >= contentOffset.y, top <= contentOffset.y + bounds.height else { continue }
-            context.setLineWidth(block.selected ? RailLayout.selectedLineWidth : RailLayout.lineWidth)
-            context.move(to: CGPoint(x: x, y: top))
-            context.addLine(to: CGPoint(x: x, y: bottom))
-            context.strokePath()
-            let radius = block.selected ? RailLayout.selectedCircleRadius : RailLayout.circleRadius
-            context.fillEllipse(in: CGRect(x: x - radius, y: top - radius, width: radius * 2, height: radius * 2))
+        railColor.setStroke()
+        context.setLineWidth(RailLayout.lineWidth)
+        // 縦線は、一番上のブロックの区切りから文書の下端まで1本で引く
+        let x = bounds.width - RailLayout.xFromRight
+        context.move(to: CGPoint(x: x, y: boundaryY(firstBlock)))
+        context.addLine(to: CGPoint(x: x, y: contentSize.height))
+        // 横線は、その日の最初のブロックの区切りに、画面の端から端まで引く（一番上のブロックには引かない）
+        for block in blocks.dropFirst() where block.startsDay {
+            let y = boundaryY(block)
+            context.move(to: CGPoint(x: 0, y: y))
+            context.addLine(to: CGPoint(x: bounds.width, y: y))
         }
+        context.strokePath()
     }
 
     // ---------------------------------
@@ -732,8 +781,8 @@ private final class MemoDocumentView: UITextView, UITextViewDelegate {
 
     // 下端がホームインジケーターに重なるときは、その上に広めの余白をとる（ホームへ戻る操作の受付領域では掴みにくいため）
     private var scrollThumbTrack: ClosedRange<CGFloat> {
-        // 上端は、一番上までスクロールしたときの線の始まり（一番上のブロックの丸）にそろえる
-        let top = blocks.first.map { circleCenterY($0) } ?? ScrollThumbLayout.trackMargin
+        // 上端は、一番上までスクロールしたときの縦線の始まり（一番上のブロックの区切り）にそろえる
+        let top = blocks.first.map { boundaryY($0) } ?? ScrollThumbLayout.trackMargin
         let bottomMargin = safeAreaInsets.bottom > 0
             ? ScrollThumbLayout.trackMarginAboveHomeIndicator
             : ScrollThumbLayout.trackMargin
@@ -752,17 +801,18 @@ private final class MemoDocumentView: UITextView, UITextViewDelegate {
 
     fileprivate func scrollThumbContains(_ point: CGPoint) -> Bool {
         let y = point.y - contentOffset.y
-        return showsScrollThumb && point.x >= bounds.width - RailLayout.touchWidth
+        return showsScrollThumb && point.x >= bounds.width - ScrollThumbLayout.touchWidth
             && abs(y - scrollThumbCenterY) <= ScrollThumbLayout.touchHeight / 2
     }
 
     // 縦線の View の上に描く
     fileprivate func drawScrollThumb() {
         guard showsScrollThumb else { return }
-        let centerX = RailLayout.touchWidth - RailLayout.xFromRight
+        let centerX = bounds.width - RailLayout.xFromRight
         let rect = CGRect(x: centerX - ScrollThumbLayout.width / 2,
                           y: scrollThumbCenterY - ScrollThumbLayout.thickness / 2,
                           width: ScrollThumbLayout.width, height: ScrollThumbLayout.thickness)
+        // つまみは本文と同じ色
         bodyColor.setFill()
         UIRectFill(rect)
     }
@@ -787,7 +837,7 @@ private final class MemoDocumentView: UITextView, UITextViewDelegate {
 }
 
 // ---------------------------------
-// 右の縦線・丸とスクロールつまみを描き、タップとドラッグを受け取る View
+// 縦線・横線とスクロールつまみを描く View（触れても反応せず、操作は本文が受け取る）
 // ---------------------------------
 private final class MemoRailView: UIView {
     weak var document: MemoDocumentView?
@@ -796,7 +846,7 @@ private final class MemoRailView: UIView {
         super.init(frame: frame)
         backgroundColor = .clear
         isOpaque = false
-        accessibilityLabel = "メモのブロック選択"
+        isUserInteractionEnabled = false
     }
 
     required init?(coder: NSCoder) { fatalError("ストーリーボードからは生成しません") }
@@ -808,9 +858,9 @@ private final class MemoRailView: UIView {
 }
 
 // ---------------------------------
-// つまみの上で指が動いたときだけ、一覧のスクロールより先にドラッグとして受け取る
+// つまみの上で指を置いてすぐ動かしたときだけ、一覧のスクロールより先にドラッグとして受け取る
 // ---------------------------------
-// 動かさずに離したときは失敗するので、下の丸・線のタップ（ブロック選択）に届く
+// 動かさずに待てば OS の長押しが先に成立し、文字選択になる
 private final class MemoScrollThumbPan: UIPanGestureRecognizer, UIGestureRecognizerDelegate {
     private weak var document: MemoDocumentView?
     // 指を置いた位置（表示範囲の上端から測る）。パンが始まるまでに動いた分も、つまみに反映するために使う
@@ -827,7 +877,8 @@ private final class MemoScrollThumbPan: UIPanGestureRecognizer, UIGestureRecogni
         guard let document else { return false }
         let point = touch.location(in: document)
         touchDownY = point.y - document.contentOffset.y
-        return document.scrollThumbContains(point)
+        // 文字選択の端（OS のつまみ）を掴んだときは、そちらを優先する
+        return document.scrollThumbContains(point) && !document.selectionEdgeContains(point)
     }
 
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
