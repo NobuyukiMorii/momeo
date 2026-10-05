@@ -17,7 +17,6 @@ const _updateMethod = 'update';
 const _clearSelectionMethod = 'clearSelection';
 
 // ネイティブ側から届くメソッド
-const _toggleBlockMethod = 'toggleBlock';
 const _thumbMethod = 'thumb';
 
 // 本文の文字サイズ（端末の文字サイズの設定で拡大する前の値）
@@ -48,9 +47,7 @@ class NativeMemoList extends StatefulWidget {
   const NativeMemoList({
     super.key,
     required this.memos,
-    required this.selectedIds,
     required this.controller,
-    required this.onToggleSelection,
     required this.onTypingComplete,
     required this.onThumbChanged,
     this.typingMemoId,
@@ -60,11 +57,7 @@ class NativeMemoList extends StatefulWidget {
 
   // 確定済みメモ一覧（新しい順）
   final List<VoiceMemo> memos;
-  // 丸で選ばれているメモの id
-  final Set<int> selectedIds;
   final NativeMemoListController controller;
-  // 丸が押されたとき
-  final ValueChanged<int> onToggleSelection;
   // 打ち出しの演出を使い切ったとき
   final ValueChanged<int> onTypingComplete;
   // スクロールつまみの高さ、またはその高さにあるメモが変わったとき
@@ -143,8 +136,6 @@ class _NativeMemoListState extends State<NativeMemoList> {
   Future<void> _onNativeCall(MethodCall call) async {
     if (!mounted) return;
     switch (call.method) {
-      case _toggleBlockMethod:
-        widget.onToggleSelection(call.arguments as int);
       case _thumbMethod:
         final thumb = call.arguments as Map;
         widget.onThumbChanged((
@@ -165,7 +156,6 @@ class _NativeMemoListState extends State<NativeMemoList> {
           'id': memo.id,
           // 打ち出し中のメモは、表示途中の本文を出す
           'text': memo.id == widget.typingMemoId ? typingText : memo.content,
-          'selected': widget.selectedIds.contains(memo.id),
           // 打ち出し中のメモは、打ち終わるまで文字選択の対象にしない
           'selectable': memo.id != widget.typingMemoId,
         },
@@ -200,7 +190,7 @@ class _NativeMemoListState extends State<NativeMemoList> {
   // ネイティブ View
   // ---------------------------------
   Widget _buildPlatformView() {
-    // 一覧の上の操作（スクロール・文字選択・丸のタップ）は、Flutter 側で取り合わずにすべて渡す
+    // 一覧の上の操作（スクロール・文字選択・つまみのドラッグ）は、Flutter 側で取り合わずにすべて渡す
     final gestures = <Factory<OneSequenceGestureRecognizer>>{
       Factory<EagerGestureRecognizer>(EagerGestureRecognizer.new),
     };
