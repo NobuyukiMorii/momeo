@@ -137,23 +137,6 @@ class ListeningState {
     );
   }
 
-  // メモの削除
-  ListeningState withMemosRemoved(Set<int> removedIds) {
-    return ListeningState(
-      memos: [
-        for (final memo in memos)
-          if (!removedIds.contains(memo.id)) memo,
-      ],
-      speechActive: speechActive,
-      awaitingTranscription: awaitingTranscription,
-      // 追記先が消えていたら、追記先も手放す
-      appendTargetId: removedIds.contains(appendTargetId) ? null : appendTargetId,
-      // 演出の対象が消えていたら、対象ごと下ろす
-      typeInMemoId: removedIds.contains(typeInMemoId) ? null : typeInMemoId,
-      typeInFrom: typeInFrom,
-    );
-  }
-
   // タイピング演出を使い切った
   ListeningState withTypeInConsumed() {
     return ListeningState(
@@ -528,22 +511,6 @@ class ListeningNotifier extends AsyncNotifier<ListeningState> {
       // 新しく足した分だけ1文字ずつ表示する（前からある本文はそのまま）
       typeInFrom: appended.length - content.length,
     ));
-  }
-
-  // ---------------------------------
-  // 選択中のメモを DB ごと削除する（元に戻す手段は持たない）
-  // ---------------------------------
-  Future<void> deleteMemos(Set<int> memoIds) async {
-    if (memoIds.isEmpty) return;
-    await _repository.deleteByIds(memoIds.toList());
-
-    // 追記先ごと消えたら終了
-    if (memoIds.contains(_appendTarget?.id)) _endCurrentBlock();
-
-    if (_disposed) return;
-    final current = state.value;
-    if (current == null) return;
-    state = AsyncData(current.withMemosRemoved(memoIds));
   }
 
   // タイピング演出を使い切ったときにページから呼ばれる（再表示時の再再生を防ぐ）
