@@ -61,6 +61,7 @@ private const val METHOD_THUMB = "thumb"
 // Dart から値が届かなかったときの既定値
 private const val DEFAULT_FONT_SIZE = 18f
 private val DEFAULT_TEXT_COLOR = 0xff111827.toInt()
+private val DEFAULT_RAIL_COLOR = 0xffcfd1d4.toInt()
 private const val DEFAULT_COPY_SEPARATOR = "\n\n"
 
 // ---------------------------------
@@ -249,7 +250,7 @@ private class MemoDocumentView(context: Context, private val scroll: MemoScrollV
     // --- 行高と、右の縦線・丸
     // ブロックごとに付けている行高の span（メモ id → span）
     private val lineHeightSpans = mutableMapOf<Long, MemoLineHeightSpan>()
-    // 縦線と丸を描く絵の具
+    // 縦線と丸を描く絵の具（背景の波線と同じ色）
     private val railPaint = Paint(Paint.ANTI_ALIAS_FLAG)
 
     // --- 発話中の「.」
@@ -346,6 +347,7 @@ private class MemoDocumentView(context: Context, private val scroll: MemoScrollV
         // --- 文字の大きさ・色
         fontPixels = ((data["fontSize"] as? Number)?.toFloat() ?: DEFAULT_FONT_SIZE) * density
         val textColor = (data["textColor"] as? Number)?.toInt() ?: DEFAULT_TEXT_COLOR
+        val railColor = (data["railColor"] as? Number)?.toInt() ?: DEFAULT_RAIL_COLOR
         changeSpeakingDotsPlace(SpeakingDotsPlace.fromKey(data["speakingDots"]))
 
         // --- 文字選択中のメモは、選択を始めた時点の本文のまま出す（その間の追記は、選択を解除すると出る）
@@ -359,7 +361,7 @@ private class MemoDocumentView(context: Context, private val scroll: MemoScrollV
 
         // --- 文書を差し替え、文字選択を置き直す
         updating = true
-        applyTextSizeAndColor(textColor)
+        applyTextSizeAndColor(textColor, railColor)
         val document = text as SpannableStringBuilder
         replaceChangedTail(document, newText)
         syncBlockSpans(document)
@@ -404,12 +406,12 @@ private class MemoDocumentView(context: Context, private val scroll: MemoScrollV
     }
 
     // 本文・縦線・丸・「.」・つまみの色と、本文の文字サイズ
-    private fun applyTextSizeAndColor(color: Int) {
+    private fun applyTextSizeAndColor(textColor: Int, railColor: Int) {
         setTextSize(TypedValue.COMPLEX_UNIT_PX, fontPixels)
-        setTextColor(color)
-        railPaint.color = color
-        speakingDotsPaint.color = color
-        scroll.thumbColor = color
+        setTextColor(textColor)
+        railPaint.color = railColor
+        speakingDotsPaint.color = textColor
+        scroll.thumbColor = textColor
     }
 
     // 前と同じ先頭部分は置き直さず、変わったところから後ろだけを差し替える

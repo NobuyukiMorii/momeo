@@ -10,6 +10,7 @@ abstract final class AppColors {
   static const onSurface = AppPalette.gray900; // 背景の上の文字・アイコン・輪郭線
   static const onSurfaceVariant = AppPalette.gray500; // 背景の上の、控えめな文字
   static const outline = AppPalette.gray200; // 主張させたくない区切り線
+  static const onSurfaceFaint = AppPalette.gray300; // 背景に溶け込ませる線や飾りの文字（リスニング画面の波線・縦線・日付）
 
   // ---------------------------------
   // 主役のアクション
@@ -42,6 +43,7 @@ abstract final class AppColors {
     ('onSurface', onSurface),
     ('onSurfaceVariant', onSurfaceVariant),
     ('outline', outline),
+    ('onSurfaceFaint', onSurfaceFaint),
     ('primary', primary),
     ('onPrimary', onPrimary),
     ('error', error),

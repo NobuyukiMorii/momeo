@@ -24,6 +24,7 @@ private enum ChannelMethod {
 private enum DefaultValue {
     static let fontSize: Double = 18
     static let textColor: UInt32 = 0xff111827
+    static let railColor: UInt32 = 0xffcfd1d4
     static let copySeparator = "\n\n"
 }
 
@@ -186,6 +187,8 @@ private final class MemoDocumentView: UITextView, UITextViewDelegate {
     // 本文の文字サイズと色
     private var bodySize = CGFloat(DefaultValue.fontSize)
     private var bodyColor = UIColor.label
+    // 縦線と丸の色（背景の波線と同じ色）
+    private var railColor = UIColor.label
     // まだ一度もレイアウトしていないか（最初の表示では、一番下（最新）までスクロールする）
     private var isFirstLayout = true
     // 前回のレイアウトでの大きさ
@@ -281,6 +284,7 @@ private final class MemoDocumentView: UITextView, UITextViewDelegate {
         copySeparator = data["copySeparator"] as? String ?? DefaultValue.copySeparator
         bodySize = CGFloat((data["fontSize"] as? NSNumber)?.doubleValue ?? DefaultValue.fontSize)
         bodyColor = Self.opaqueColor(argb: (data["textColor"] as? NSNumber)?.uint32Value ?? DefaultValue.textColor)
+        railColor = Self.opaqueColor(argb: (data["railColor"] as? NSNumber)?.uint32Value ?? DefaultValue.railColor)
 
         // --- 文字選択中のメモは、選択を始めた時点の本文のまま出す（その間の追記は、選択を解除すると出る）
         blocks = incoming.map { block in
@@ -686,8 +690,8 @@ private final class MemoDocumentView: UITextView, UITextViewDelegate {
         defer { context.restoreGState() }
         // 文書の座標で描けるよう、表示範囲の上端の分だけずらす
         context.translateBy(x: 0, y: -contentOffset.y)
-        bodyColor.setStroke()
-        bodyColor.setFill()
+        railColor.setStroke()
+        railColor.setFill()
         context.setLineWidth(RailLayout.lineWidth)
         let x = RailLayout.viewWidth - RailLayout.xFromRight
         let radius = RailLayout.circleRadius

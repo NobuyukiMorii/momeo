@@ -10,9 +10,6 @@ const String _fontFamily = 'Dancing Script';
 // 日付の文字サイズ
 const double _fontSize = 48;
 
-// 本文の後ろで邪魔にならない薄さ（onSurface に対する透過）
-const double _textOpacity = 0.1;
-
 // 数字の高さ（文字サイズに対する比。Dancing Script の数字は 0.72）
 const double _digitHeightRatio = 0.72;
 
@@ -31,7 +28,7 @@ class ListeningMemoDateBackdrop extends StatelessWidget {
       TextStyle(
         fontFamily: _fontFamily,
         fontSize: _fontSize,
-        color: AppColors.onSurface.withValues(alpha: _textOpacity),
+        color: AppColors.onSurfaceFaint,
       ),
     );
     final text = _dateFormat.format(dateTime);

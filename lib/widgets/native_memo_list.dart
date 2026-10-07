@@ -164,6 +164,7 @@ class _NativeMemoListState extends State<NativeMemoList> {
       'blocks': blocks,
       'fontSize': MediaQuery.textScalerOf(context).scale(_bodyFontSize),
       'textColor': AppColors.onSurface.toARGB32(),
+      'railColor': AppColors.onSurfaceFaint.toARGB32(),
       'copySeparator': _copySeparator,
       'speakingDots': widget.speakingDots == MemoSpeakingDots.hidden
           ? null
