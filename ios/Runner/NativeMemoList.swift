@@ -32,9 +32,9 @@ private enum DefaultValue {
 // 定数: 本文（pt。Android 側の dp とそろえる）
 // ---------------------------------
 private enum BodyLayout {
-    // 本文の左右の余白（右は縦線の領域を含む）
-    static let paddingLeft: CGFloat = 12
-    static let paddingRight: CGFloat = 34
+    // 本文の左右の余白（右も左と同じ。縦線は本文の後ろを通す）
+    static let paddingLeft: CGFloat = 8
+    static let paddingRight: CGFloat = 8
     // 本文の上の余白の下限（メモが少ないうちは、残りを上に空けて一覧を下に寄せる）
     static let minPaddingTop: CGFloat = 24
     // 本文の下の余白（ホームインジケーターに重なる分は、これに足す）
@@ -240,7 +240,8 @@ private final class MemoDocumentView: UITextView, UITextViewDelegate {
         delegate = self
         addSubview(speakingDotsView)
         rail.document = self
-        addSubview(rail)
+        // 縦線・横線とつまみは本文の後ろに描く
+        insertSubview(rail, at: 0)
         rail.addGestureRecognizer(MemoScrollThumbPan(document: self))
         addGestureRecognizer(MemoSelectionDismissTap(document: self))
     }
@@ -571,10 +572,10 @@ private final class MemoDocumentView: UITextView, UITextViewDelegate {
         offsetYSeenByReport = contentOffset.y
     }
 
-    // 縦線・横線の View は、スクロールしても表示範囲に重ねたまま留め、一番手前に置く
+    // 縦線・横線の View は、スクロールしても表示範囲に重ねたまま留め、本文より後ろに置く
     private func layoutRail() {
         rail.frame = CGRect(x: 0, y: contentOffset.y, width: bounds.width, height: bounds.height)
-        bringSubviewToFront(rail)
+        sendSubviewToBack(rail)
         rail.setNeedsDisplay()
     }
 

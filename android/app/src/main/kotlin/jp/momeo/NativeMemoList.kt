@@ -68,9 +68,9 @@ private const val DEFAULT_COPY_SEPARATOR = "\n\n"
 // 定数: 本文（dp。iOS 側の pt とそろえる）
 // ---------------------------------
 
-// 本文の左右と上の余白（右は縦線の領域を含む）
-private const val BODY_PADDING_LEFT_DP = 12
-private const val BODY_PADDING_RIGHT_DP = 34
+// 本文の左右と上の余白（右も左と同じ。縦線は本文の後ろを通す）
+private const val BODY_PADDING_LEFT_DP = 8
+private const val BODY_PADDING_RIGHT_DP = 8
 private const val BODY_PADDING_TOP_DP = 24
 
 // 本文の下の余白（ナビゲーションバーに重なる分は、これに足す）
@@ -735,8 +735,9 @@ private class MemoDocumentView(context: Context, private val scroll: MemoScrollV
     // 描画
     // ---------------------------------
     override fun onDraw(canvas: Canvas) {
-        super.onDraw(canvas)
+        // 縦線と横線は本文の後ろに描く
         drawRail(canvas)
+        super.onDraw(canvas)
         drawSpeakingDots(canvas)
     }
 
@@ -969,8 +970,13 @@ private class MemoScrollView(context: Context) : ScrollView(context) {
     // ---------------------------------
     // つまみの描画
     // ---------------------------------
+    // つまみは本文の後ろに描くため、文書（子の View）より先に描く
     override fun dispatchDraw(canvas: Canvas) {
+        drawThumb(canvas)
         super.dispatchDraw(canvas)
+    }
+
+    private fun drawThumb(canvas: Canvas) {
         if (scrollRange == 0) return
         // canvas は文書の座標なので、表示範囲の上端（scrollY）を足す
         val centerX = width - dp(RAIL_X_FROM_RIGHT_DP)
