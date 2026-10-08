@@ -17,7 +17,7 @@ const _thumbDateHideDelay = Duration(milliseconds: 600);
 const _thumbDateFadeDuration = Duration(milliseconds: 200);
 
 // スクロールつまみの横棒の太さ（ネイティブ側の描画とそろえる）
-const _thumbThickness = 1.5;
+const _thumbThickness = 0.5;
 
 // =====================================================================
 // リスニング画面

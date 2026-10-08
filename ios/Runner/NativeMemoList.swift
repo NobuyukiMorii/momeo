@@ -60,7 +60,7 @@ private enum RailLayout {
     // 縦線の位置（一覧の右端から）
     static let xFromRight: CGFloat = 18
     // 縦線と横線の太さ
-    static let lineWidth: CGFloat = 1.5
+    static let lineWidth: CGFloat = 0.5
     // ブロックが1つだけのときに、区切りを1行目の文字の上端から離す距離
     static let singleBlockBoundaryGap: CGFloat = 12
 }
@@ -71,7 +71,7 @@ private enum RailLayout {
 private enum ScrollThumbLayout {
     // 横棒の幅と太さ
     static let width: CGFloat = 24
-    static let thickness: CGFloat = 1.5
+    static let thickness: CGFloat = 0.5
     // つまみを掴める幅（一覧の右端から）と高さ。細い横棒でも掴めるよう、当たり判定は見た目より上下に広げる
     static let touchWidth: CGFloat = 40
     static let touchHeight: CGFloat = 44

@@ -99,7 +99,7 @@ private const val REGULAR_FONT_ASSET = "assets/fonts/NotoSansJP-Regular.otf"
 private const val RAIL_X_FROM_RIGHT_DP = 18
 
 // 縦線と横線の太さ
-private const val RAIL_WIDTH_DP = 1.5f
+private const val RAIL_WIDTH_DP = 0.5f
 
 // ブロックが1つだけのときに、区切りを1行目の文字の上端から離す距離
 private const val SINGLE_BLOCK_BOUNDARY_GAP_DP = 12
@@ -110,7 +110,7 @@ private const val SINGLE_BLOCK_BOUNDARY_GAP_DP = 12
 
 // 横棒の幅と太さ
 private const val THUMB_WIDTH_DP = 24
-private const val THUMB_THICKNESS_DP = 1.5f
+private const val THUMB_THICKNESS_DP = 0.5f
 
 // つまみを掴める幅（一覧の右端から）と高さ。細い横棒でも掴めるよう、当たり判定は見た目より上下に広げる
 private const val THUMB_TOUCH_WIDTH_DP = 40
