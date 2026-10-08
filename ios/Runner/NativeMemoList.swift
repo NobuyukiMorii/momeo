@@ -75,6 +75,8 @@ private enum ScrollThumbLayout {
     // つまみを掴める幅（一覧の右端から）と高さ。細い横棒でも掴めるよう、当たり判定は見た目より上下に広げる
     static let touchWidth: CGFloat = 40
     static let touchHeight: CGFloat = 44
+    // 文字選択の両端の、OS のつまみを掴めるとみなす広さ（ここではスクロールつまみより OS のつまみを優先する）
+    static let selectionEdgeTouchMargin: CGFloat = 22
     // つまみが動く範囲の上下の余白（下端がホームインジケーターに重なるときは広めにとる）
     static let trackMargin: CGFloat = 12
     static let trackMarginAboveHomeIndicator: CGFloat = 24
@@ -242,7 +244,7 @@ private final class MemoDocumentView: UITextView, UITextViewDelegate {
         rail.document = self
         // 縦線・横線とつまみは本文の後ろに描く
         insertSubview(rail, at: 0)
-        rail.addGestureRecognizer(MemoScrollThumbPan(document: self))
+        addGestureRecognizer(MemoScrollThumbPan(document: self))
         addGestureRecognizer(MemoSelectionDismissTap(document: self))
     }
 
@@ -434,6 +436,15 @@ private final class MemoDocumentView: UITextView, UITextViewDelegate {
     fileprivate func selectionContains(_ point: CGPoint) -> Bool {
         guard let range = selectedTextRange, !range.isEmpty else { return false }
         return selectionRects(for: range).contains { $0.rect.contains(point) }
+    }
+
+    // 文字選択の両端（OS のつまみが出るところ）の近くに、点が入っているか
+    fileprivate func selectionEdgeContains(_ point: CGPoint) -> Bool {
+        guard let range = selectedTextRange, !range.isEmpty else { return false }
+        return [range.start, range.end].contains { position in
+            caretRect(for: position).insetBy(dx: -ScrollThumbLayout.selectionEdgeTouchMargin,
+                                             dy: -ScrollThumbLayout.selectionEdgeTouchMargin).contains(point)
+        }
     }
 
     // OS の操作で文字選択が変わったとき
@@ -768,7 +779,7 @@ private final class MemoDocumentView: UITextView, UITextViewDelegate {
 }
 
 // ---------------------------------
-// 縦線・横線とスクロールつまみを描き、つまみのドラッグだけを受け取る View
+// 縦線・横線とスクロールつまみを描く View（触れても反応せず、操作は本文が受け取る）
 // ---------------------------------
 private final class MemoRailView: UIView {
     weak var document: MemoDocumentView?
@@ -777,15 +788,10 @@ private final class MemoRailView: UIView {
         super.init(frame: frame)
         backgroundColor = .clear
         isOpaque = false
+        isUserInteractionEnabled = false
     }
 
     required init?(coder: NSCoder) { fatalError("ストーリーボードからは生成しません") }
-
-    // つまみ以外の場所に触れたときは、下の本文（文字選択）へ届ける
-    override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
-        guard let document else { return false }
-        return document.scrollThumbContains(convert(point, to: document))
-    }
 
     override func draw(_ rect: CGRect) {
         document?.drawRail()
@@ -794,8 +800,9 @@ private final class MemoRailView: UIView {
 }
 
 // ---------------------------------
-// つまみの上で指が動いたときだけ、一覧のスクロールより先にドラッグとして受け取る
+// つまみの上で指を置いてすぐ動かしたときだけ、一覧のスクロールより先にドラッグとして受け取る
 // ---------------------------------
+// 動かさずに待てば OS の長押しが先に成立し、文字選択になる
 private final class MemoScrollThumbPan: UIPanGestureRecognizer, UIGestureRecognizerDelegate {
     private weak var document: MemoDocumentView?
     // 指を置いた位置（表示範囲の上端から測る）。パンが始まるまでに動いた分も、つまみに反映するために使う
@@ -812,7 +819,8 @@ private final class MemoScrollThumbPan: UIPanGestureRecognizer, UIGestureRecogni
         guard let document else { return false }
         let point = touch.location(in: document)
         touchDownY = point.y - document.contentOffset.y
-        return document.scrollThumbContains(point)
+        // 文字選択の端（OS のつまみ）を掴んだときは、そちらを優先する
+        return document.scrollThumbContains(point) && !document.selectionEdgeContains(point)
     }
 
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,

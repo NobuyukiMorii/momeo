@@ -773,10 +773,11 @@ private class MemoDocumentView(context: Context, private val scroll: MemoScrollV
 // ---------------------------------
 // 文書をスクロールし、右の縦線の上にスクロールつまみを重ねる。下端ではナビゲーションバーを避ける
 // ---------------------------------
-// つまみの上で指が動いたときだけドラッグとして奪う。動かさずに離したときは、文書側の文字選択の操作になる
+// つまみの上で指を置いてすぐ動かしたときだけドラッグとして奪う。それ以外（長押し・タップなど）は、文書側の文字選択の操作になる
 private class MemoScrollView(context: Context) : ScrollView(context) {
     private val density = resources.displayMetrics.density
     private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
+    private val longPressTimeout = ViewConfiguration.getLongPressTimeout()
     private val thumbPaint = Paint(Paint.ANTI_ALIAS_FLAG)
 
     // --- つまみのドラッグ
@@ -926,9 +927,14 @@ private class MemoScrollView(context: Context) : ScrollView(context) {
         }
         val downY = thumbTouchDownY ?: return super.onInterceptTouchEvent(event)
         when (event.actionMasked) {
-            MotionEvent.ACTION_MOVE -> if (abs(event.y - downY) > touchSlop) {
-                startThumbDrag(event, downY)
-                return true
+            // 指を置いてすぐ動かしたときだけ掴む（動かさずに待てば、本文の長押しとして文字選択になる）
+            MotionEvent.ACTION_MOVE -> {
+                val moved = abs(event.y - downY) > touchSlop
+                val beforeLongPress = event.eventTime - event.downTime < longPressTimeout
+                if (moved && beforeLongPress) {
+                    startThumbDrag(event, downY)
+                    return true
+                }
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> thumbTouchDownY = null
         }
