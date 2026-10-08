@@ -48,7 +48,7 @@ class ListeningMemoDateBackdrop extends StatelessWidget {
 
     return IgnorePointer(
       child: Padding(
-        // 本文の左右余白（左12、右は丸と縦線の領域を含めて34）にそろえる
+        // 本文の左右余白（左12、右は縦線の領域を含めて34）にそろえる
         padding: const EdgeInsets.only(left: 12, right: 34),
         // 画面が狭いときや文字サイズの設定が大きいときも、はみ出さずに縮める（ずらす量も一緒に縮む）
         child: FittedBox(

@@ -150,14 +150,22 @@ class _NativeMemoListState extends State<NativeMemoList> {
   // ネイティブ側へ渡す文書（ブロックは古い順）
   // ---------------------------------
   Map<String, Object?> _buildDocument(String typingText) {
+    final oldestFirst = widget.memos.reversed.toList();
     final blocks = [
-      for (final memo in widget.memos.reversed)
+      for (final (index, memo) in oldestFirst.indexed)
         {
           'id': memo.id,
           // 打ち出し中のメモは、表示途中の本文を出す
           'text': memo.id == widget.typingMemoId ? typingText : memo.content,
           // 打ち出し中のメモは、打ち終わるまで文字選択の対象にしない
           'selectable': memo.id != widget.typingMemoId,
+          // その日の最初のメモか（日付の区切りの横線は、その日の最初のメモの上にだけ引く）
+          'startsDay':
+              index == 0 ||
+              !DateUtils.isSameDay(
+                oldestFirst[index - 1].createdAt,
+                memo.createdAt,
+              ),
         },
     ];
     return {

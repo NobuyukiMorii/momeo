@@ -43,7 +43,7 @@ import kotlin.math.roundToInt
 // NativeMemoList — リスニング画面のメモ一覧（Android）
 //
 //   メモ全件を時系列順に並べた1つの TextView にし、文字選択・つまみ・メニュー・スクロールは OS に任せる。
-//   右の縦線と丸、スクロールつまみ、発話中の「.」はアプリ側で描く。
+//   右の縦線と日付の区切りの横線、スクロールつまみ、発話中の「.」はアプリ側で描く。
 //   Dart 側は lib/widgets/native_memo_list.dart。
 // ============================================================
 
@@ -68,7 +68,7 @@ private const val DEFAULT_COPY_SEPARATOR = "\n\n"
 // 定数: 本文（dp。iOS 側の pt とそろえる）
 // ---------------------------------
 
-// 本文の左右と上の余白（右は丸と縦線の領域を含む）
+// 本文の左右と上の余白（右は縦線の領域を含む）
 private const val BODY_PADDING_LEFT_DP = 12
 private const val BODY_PADDING_RIGHT_DP = 34
 private const val BODY_PADDING_TOP_DP = 24
@@ -82,7 +82,7 @@ private const val LINE_HEIGHT_RATIO = 2f
 // ブロックとブロックの間の余白
 private const val BLOCK_SPACING_DP = 24
 
-// 空のメモにも丸と1行分の高さを持たせるために置く、幅の無い文字
+// 空のメモにも区切りと1行分の高さを持たせるために置く、幅の無い文字
 private const val EMPTY_BLOCK_TEXT = "​"
 
 // 一番下からこの距離までにいれば、一番下を見ているとみなす
@@ -92,18 +92,17 @@ private const val AT_BOTTOM_TOLERANCE_DP = 32
 private const val REGULAR_FONT_ASSET = "assets/fonts/NotoSansJP-Regular.otf"
 
 // ---------------------------------
-// 定数: 右の縦線と丸（dp）
+// 定数: 右の縦線と、日付の区切りの横線（dp）
 // ---------------------------------
 
 // 縦線の位置（一覧の右端から）
 private const val RAIL_X_FROM_RIGHT_DP = 18
 
-// 縦線の太さと丸の半径
+// 縦線と横線の太さ
 private const val RAIL_WIDTH_DP = 1.5f
-private const val CIRCLE_RADIUS_DP = 4f
 
-// ブロックが1つだけのときに、丸を1行目の文字の上端から離す距離
-private const val SINGLE_BLOCK_CIRCLE_GAP_DP = 12
+// ブロックが1つだけのときに、区切りを1行目の文字の上端から離す距離
+private const val SINGLE_BLOCK_BOUNDARY_GAP_DP = 12
 
 // ---------------------------------
 // 定数: スクロールつまみ（dp）
@@ -150,6 +149,8 @@ private data class MemoBlock(
     var text: String,
     // 文字選択の対象にするか（打ち出し中は対象にしない）
     var selectable: Boolean,
+    // その日の最初のメモか（日付の区切りの横線は、その日の最初のメモの上にだけ引く）
+    val startsDay: Boolean,
     // 文書の中での本文の範囲（start 以上 end 未満）
     var start: Int = 0,
     var end: Int = 0,
@@ -218,7 +219,7 @@ private class NativeMemoList(context: Context, viewId: Int, messenger: BinaryMes
 }
 
 // ---------------------------------
-// 本文（メモ全件を1つにした文書）と、右の縦線・丸、発話中の「.」
+// 本文（メモ全件を1つにした文書）と、右の縦線・日付の区切りの横線、発話中の「.」
 // ---------------------------------
 private class MemoDocumentView(context: Context, private val scroll: MemoScrollView) : TextView(context) {
     private val density = resources.displayMetrics.density
@@ -247,10 +248,10 @@ private class MemoDocumentView(context: Context, private val scroll: MemoScrollV
     // ブロックをまたいでコピーしたときの区切り
     private var copySeparator = DEFAULT_COPY_SEPARATOR
 
-    // --- 行高と、右の縦線・丸
+    // --- 行高と、縦線・横線
     // ブロックごとに付けている行高の span（メモ id → span）
     private val lineHeightSpans = mutableMapOf<Long, MemoLineHeightSpan>()
-    // 縦線と丸を描く絵の具（背景の波線と同じ色）
+    // 縦線と横線を描く絵の具（背景の波線と同じ色）
     private val railPaint = Paint(Paint.ANTI_ALIAS_FLAG)
 
     // --- 発話中の「.」
@@ -390,6 +391,7 @@ private class MemoDocumentView(context: Context, private val scroll: MemoScrollV
             id = id,
             text = item["text"] as? String ?: "",
             selectable = item["selectable"] != false,
+            startsDay = item["startsDay"] != false,
         )
     }
 
@@ -405,7 +407,7 @@ private class MemoDocumentView(context: Context, private val scroll: MemoScrollV
         return builder.toString()
     }
 
-    // 本文・縦線・丸・「.」・つまみの色と、本文の文字サイズ
+    // 本文・縦線・横線・「.」・つまみの色と、本文の文字サイズ
     private fun applyTextSizeAndColor(textColor: Int, railColor: Int) {
         setTextSize(TypedValue.COMPLEX_UNIT_PX, fontPixels)
         setTextColor(textColor)
@@ -605,16 +607,16 @@ private class MemoDocumentView(context: Context, private val scroll: MemoScrollV
     }
 
     // ---------------------------------
-    // 丸の位置（上のブロックの最後の行の文字の下端と、このブロックの1行目の文字の上端のちょうど間）
+    // ブロックの区切りの位置（上のブロックの最後の行の文字の下端と、このブロックの1行目の文字の上端のちょうど間）
     // ---------------------------------
     // 文字の上端・下端は、行高やブロック間隔の余白を含まない、フォントの ascent・descent の範囲
-    private fun circleCenterYs(): List<Float> {
+    private fun boundaryYs(): List<Float> {
         val textLayout = layout ?: return blocks.map { totalPaddingTop.toFloat() }
         val metrics = paint.fontMetrics
         fun baselineAt(offset: Int) =
             totalPaddingTop + textLayout.getLineBaseline(textLayout.getLineForOffset(offset)).toFloat()
         val glyphTops = blocks.map { baselineAt(it.start) + metrics.ascent }
-        val centers = blocks.indices.map { index ->
+        val boundaries = blocks.indices.map { index ->
             if (index == 0) {
                 0f
             } else {
@@ -624,29 +626,29 @@ private class MemoDocumentView(context: Context, private val scroll: MemoScrollV
         }.toMutableList()
         // 一番上のブロックには上のブロックがないので、2番目のブロックと同じだけ文字の上端から離す
         if (blocks.isNotEmpty()) {
-            val halfGap = if (blocks.size > 1) glyphTops[1] - centers[1] else dp(SINGLE_BLOCK_CIRCLE_GAP_DP).toFloat()
-            centers[0] = glyphTops[0] - halfGap
+            val halfGap = if (blocks.size > 1) glyphTops[1] - boundaries[1] else dp(SINGLE_BLOCK_BOUNDARY_GAP_DP).toFloat()
+            boundaries[0] = glyphTops[0] - halfGap
         }
-        return centers
+        return boundaries
     }
 
-    // 線の始まり（一番上のブロックの丸の中心）
+    // 縦線の始まり（一番上のブロックの区切り）
     val railTop: Float?
-        get() = circleCenterYs().firstOrNull()
+        get() = boundaryYs().firstOrNull()
 
-    // 高さ y より上で、一番近い丸を持つブロック（どの丸よりも上なら null）
-    private fun blockWithCircleAbove(y: Float): MemoBlock? {
-        val circleCenters = circleCenterYs()
-        return blocks.indices.lastOrNull { circleCenters[it] <= y }?.let { blocks[it] }
+    // 高さ y より上で、一番近い区切りを持つブロック（どの区切りよりも上なら null）
+    private fun blockWithBoundaryAbove(y: Float): MemoBlock? {
+        val boundaries = boundaryYs()
+        return blocks.indices.lastOrNull { boundaries[it] <= y }?.let { blocks[it] }
     }
 
-    // 文書の高さ y にあるブロック（一番上の丸より上なら、一番上のブロック）
-    fun blockIdAt(y: Float): Long? = (blockWithCircleAbove(y) ?: blocks.firstOrNull())?.id
+    // 文書の高さ y にあるブロック（一番上の区切りより上なら、一番上のブロック）
+    fun blockIdAt(y: Float): Long? = (blockWithBoundaryAbove(y) ?: blocks.firstOrNull())?.id
 
-    // 最新のブロックと、その丸の高さ（文書の座標）
-    fun latestBlockCircle(): Pair<Long, Float>? {
+    // 最新のブロックと、その区切りの高さ（文書の座標）
+    fun latestBlockBoundary(): Pair<Long, Float>? {
         val block = blocks.lastOrNull() ?: return null
-        return block.id to circleCenterYs().last()
+        return block.id to boundaryYs().last()
     }
 
     // ---------------------------------
@@ -738,18 +740,19 @@ private class MemoDocumentView(context: Context, private val scroll: MemoScrollV
         drawSpeakingDots(canvas)
     }
 
-    // 右の縦線と丸
+    // 右の縦線と、日付の区切りの横線
     private fun drawRail(canvas: Canvas) {
-        val x = width - dp(RAIL_X_FROM_RIGHT_DP).toFloat()
-        val radius = CIRCLE_RADIUS_DP * density
+        if (blocks.isEmpty()) return
         railPaint.strokeWidth = RAIL_WIDTH_DP * density
-        // 親のスクロールでは描画が再実行されないため、全区間を記録する
-        val circleCenters = circleCenterYs()
-        for (index in blocks.indices) {
-            val top = circleCenters[index]
-            val bottom = if (index + 1 < blocks.size) circleCenters[index + 1] else height.toFloat()
-            canvas.drawLine(x, top, x, bottom, railPaint)
-            canvas.drawCircle(x, top, radius, railPaint)
+        // 親のスクロールでは描画が再実行されないため、見えていない部分も含めて全体を描く
+        val boundaries = boundaryYs()
+        // 縦線は、一番上のブロックの区切りから文書の下端まで1本で引く
+        val x = width - dp(RAIL_X_FROM_RIGHT_DP).toFloat()
+        canvas.drawLine(x, boundaries.first(), x, height.toFloat(), railPaint)
+        // 横線は、その日の最初のブロックの区切りに、画面の端から端まで引く（一番上のブロックには引かない）
+        for ((index, block) in blocks.withIndex()) {
+            if (index == 0 || !block.startsDay) continue
+            canvas.drawLine(0f, boundaries[index], width.toFloat(), boundaries[index], railPaint)
         }
     }
 
@@ -817,7 +820,7 @@ private class MemoScrollView(context: Context) : ScrollView(context) {
     // ---------------------------------
     // つまみの位置（y は表示範囲の上端から測る）
     // ---------------------------------
-    // 上端は、一番上までスクロールしたときの線の始まり（一番上のブロックの丸）にそろえる
+    // 上端は、一番上までスクロールしたときの縦線の始まり（一番上のブロックの区切り）にそろえる
     private val trackTop: Float
         get() = documentView?.railTop ?: dp(THUMB_TRACK_MARGIN_DP)
 
@@ -886,7 +889,7 @@ private class MemoScrollView(context: Context) : ScrollView(context) {
         reportThumb()
     }
 
-    // スクロールできないほど短いとき（つまみを出さないとき）は、最新のブロックの丸の高さとする
+    // スクロールできないほど短いとき（つまみを出さないとき）は、最新のブロックの区切りの高さとする
     fun reportThumb(force: Boolean = false) {
         // 前回から表示位置が動いていれば、指やつまみの操作でスクロールしている
         val scrolling = !scrollingByApp && scrollY != scrollYSeenByReport
@@ -896,7 +899,7 @@ private class MemoScrollView(context: Context) : ScrollView(context) {
             val thumbY = scrollY + thumbCenterY()
             (document.blockIdAt(thumbY) ?: return) to thumbY
         } else {
-            document.latestBlockCircle() ?: return
+            document.latestBlockBoundary() ?: return
         }
         val y = ((documentY - scrollY) / density).toDouble()
         val reported = reportedThumb
