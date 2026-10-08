@@ -18,6 +18,7 @@ const _clearSelectionMethod = 'clearSelection';
 
 // ネイティブ側から届くメソッド
 const _thumbMethod = 'thumb';
+const _deleteTextMethod = 'deleteText';
 
 // 本文の文字サイズ（端末の文字サイズの設定で拡大する前の値）
 const _bodyFontSize = 18.0;
@@ -28,6 +29,9 @@ const _copySeparator = '\n\n';
 // スクロールつまみの高さ（一覧の上端から測る）と、その高さにあるメモ
 // scrolling は、指やつまみの操作でスクロールしたときだけ true（新しいメモで末尾へ移るときは false）
 typedef MemoListThumb = ({int memoId, double y, bool scrolling});
+
+// 文字選択のメニューの「削除」で消す、1つのメモの部分（本文の中の start 以上 end 未満）
+typedef MemoTextRange = ({int memoId, int start, int end});
 
 // 発話中の気配として「.」を出す場所
 // append: 最新のブロックの本文の続き / newBlock: 次のブロックの1行目
@@ -50,6 +54,7 @@ class NativeMemoList extends StatefulWidget {
     required this.controller,
     required this.onTypingComplete,
     required this.onThumbChanged,
+    required this.onDeleteText,
     this.typingMemoId,
     this.typeFrom = 0,
     this.speakingDots = MemoSpeakingDots.hidden,
@@ -62,6 +67,8 @@ class NativeMemoList extends StatefulWidget {
   final ValueChanged<int> onTypingComplete;
   // スクロールつまみの高さ、またはその高さにあるメモが変わったとき
   final ValueChanged<MemoListThumb> onThumbChanged;
+  // 文字選択のメニューで「削除」が押されたとき（選択範囲に掛かるメモごとの部分）
+  final ValueChanged<List<MemoTextRange>> onDeleteText;
   // 打ち出し中のメモの id と、打ち出しを始める文字数
   final int? typingMemoId;
   final int typeFrom;
@@ -143,6 +150,16 @@ class _NativeMemoListState extends State<NativeMemoList> {
           y: (thumb['y'] as num).toDouble(),
           scrolling: thumb['scrolling'] == true,
         ));
+      case _deleteTextMethod:
+        final ranges = call.arguments as List;
+        widget.onDeleteText([
+          for (final range in ranges.cast<Map>())
+            (
+              memoId: range['id'] as int,
+              start: range['start'] as int,
+              end: range['end'] as int,
+            ),
+        ]);
     }
   }
 

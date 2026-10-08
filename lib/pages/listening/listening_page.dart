@@ -73,9 +73,15 @@ class _ListeningPageState extends ConsumerState<ListeningPage> {
         typeFrom: listening.typeInFrom,
         speakingDots: _speakingDots(listening),
         onThumbChanged: _onThumbChanged,
+        onDeleteText: _onDeleteText,
         onTypingComplete: _onTypingComplete,
       ),
     );
+  }
+
+  // 文字選択のメニューで「削除」が押されたら、選んだ範囲の文字をメモから消す
+  void _onDeleteText(List<MemoTextRange> ranges) {
+    unawaited(ref.read(listeningProvider.notifier).deleteTextRanges(ranges));
   }
 
   // 打ち出しの演出を使い切ったら、再表示で打ち直さないように知らせる

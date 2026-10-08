@@ -18,6 +18,7 @@ private enum ChannelMethod {
     static let clearSelection = "clearSelection"
     // Dart へ知らせるメソッド
     static let thumb = "thumb"
+    static let deleteText = "deleteText"
 }
 
 // Dart から値が届かなかったときの既定値
@@ -146,6 +147,9 @@ private final class NativeMemoList: NSObject, FlutterPlatformView {
         documentView.frame = container.bounds
         documentView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         container.addSubview(documentView)
+        documentView.onDeleteText = { [weak self] ranges in
+            self?.channel.invokeMethod(ChannelMethod.deleteText, arguments: ranges)
+        }
         documentView.onThumbChanged = { [weak self] blockId, y, scrolling in
             self?.channel.invokeMethod(ChannelMethod.thumb, arguments: ["id": blockId, "y": y, "scrolling": scrolling])
         }
@@ -179,6 +183,8 @@ private final class MemoDocumentView: UITextView, UITextViewDelegate {
     // つまみの高さと、その高さにあるブロックが変わったときに知らせる（背景の日付表示に使う。y は表示範囲の上端から測る）
     // scrolling は、指やつまみの操作でスクロールしたときだけ true
     var onThumbChanged: ((_ blockId: Int64, _ y: CGFloat, _ scrolling: Bool) -> Void)?
+    // メニューの「削除」で消す範囲を知らせる（メモ id と、そのメモの本文の中の start 以上 end 未満）
+    var onDeleteText: (([[String: Any]]) -> Void)?
 
     // --- 文書
     // 表示中のブロック（古い順）
@@ -246,6 +252,10 @@ private final class MemoDocumentView: UITextView, UITextViewDelegate {
         insertSubview(rail, at: 0)
         addGestureRecognizer(MemoScrollThumbPan(document: self))
         addGestureRecognizer(MemoSelectionDismissTap(document: self))
+        // iOS 15 以前は、文字選択のメニューに「削除」をここで足す（iOS 16 以降は textView(_:editMenuForTextIn:suggestedActions:) で足す）
+        if #unavailable(iOS 16) {
+            UIMenuController.shared.menuItems = [UIMenuItem(title: Self.deleteMenuTitle, action: #selector(deleteSelectedText(_:)))]
+        }
     }
 
     required init?(coder: NSCoder) { fatalError("ストーリーボードからは生成しません") }
@@ -494,15 +504,61 @@ private final class MemoDocumentView: UITextView, UITextViewDelegate {
         return NSRange(location: first.range.location, length: NSMaxRange(last.range) - first.range.location)
     }
 
-    // 選択範囲に掛かる各メモの部分を取り出し、区切りでつないでクリップボードへ入れる
-    override func copy(_ sender: Any?) {
-        let pieces = copyableBlocks.compactMap { block -> String? in
+    // 選択範囲に掛かる各メモの部分（メモの本文の中での範囲）
+    private var selectedPieces: [(block: MemoBlock, rangeInBlock: NSRange)] {
+        copyableBlocks.compactMap { block in
             let intersection = NSIntersectionRange(block.range, selectedRange)
             guard intersection.length > 0 else { return nil }
-            return (block.text as NSString).substring(with: NSRange(
-                location: intersection.location - block.range.location, length: intersection.length))
+            return (block, NSRange(location: intersection.location - block.range.location, length: intersection.length))
         }
+    }
+
+    // 選択範囲に掛かる各メモの部分を取り出し、区切りでつないでクリップボードへ入れる
+    override func copy(_ sender: Any?) {
+        let pieces = selectedPieces.map { ($0.block.text as NSString).substring(with: $0.rangeInBlock) }
         if !pieces.isEmpty { UIPasteboard.general.string = pieces.joined(separator: copySeparator) }
+    }
+
+    // 選択範囲に掛かる各メモの部分を消すよう Dart へ知らせ、文字選択を外す（本文の書き換えと保存は Dart 側が行う）
+    @objc private func deleteSelectedText(_ sender: Any?) {
+        let ranges = selectedPieces.map { piece -> [String: Any] in
+            ["id": piece.block.id, "start": piece.rangeInBlock.location, "end": NSMaxRange(piece.rangeInBlock)]
+        }
+        guard !ranges.isEmpty else { return }
+        clearTextSelection()
+        onDeleteText?(ranges)
+    }
+
+    // メニューの「削除」の文言（OS のメニューと同じく、端末の言語に合わせる）
+    private static var deleteMenuTitle: String {
+        Locale.preferredLanguages.first?.hasPrefix("ja") == true ? "削除" : "Delete"
+    }
+
+    // iOS 16 以降: OS が用意したメニューの「コピー」のすぐ後ろに「削除」を差し込む
+    @available(iOS 16.0, *)
+    func textView(_ textView: UITextView, editMenuForTextIn range: NSRange,
+                  suggestedActions: [UIMenuElement]) -> UIMenu? {
+        guard range.length > 0 else { return nil }
+        let deleteAction = UIAction(title: Self.deleteMenuTitle) { [weak self] _ in self?.deleteSelectedText(nil) }
+        return UIMenu(children: Self.inserting(deleteAction, afterCopyIn: suggestedActions))
+    }
+
+    // メニューの中を入れ子までたどり、「コピー」の後ろに差し込む（見つからなければ末尾に足す）
+    @available(iOS 16.0, *)
+    private static func inserting(_ action: UIAction, afterCopyIn elements: [UIMenuElement]) -> [UIMenuElement] {
+        var inserted = false
+        func insert(into elements: [UIMenuElement]) -> [UIMenuElement] {
+            elements.flatMap { element -> [UIMenuElement] in
+                if let command = element as? UICommand, command.action == #selector(UIResponderStandardEditActions.copy(_:)) {
+                    inserted = true
+                    return [command, action]
+                }
+                if let menu = element as? UIMenu { return [menu.replacingChildren(insert(into: menu.children))] }
+                return [element]
+            }
+        }
+        let result = insert(into: elements)
+        return inserted ? result : result + [action]
     }
 
     // 文字選択の対象になるメモ全件を選ぶ（選んだ後のメニューは OS の全選択に出させ、範囲は本文の端までに収める）
@@ -513,6 +569,7 @@ private final class MemoDocumentView: UITextView, UITextViewDelegate {
 
     override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
         if action == #selector(copy(_:)) { return selectedRange.length > 0 }
+        if action == #selector(deleteSelectedText(_:)) { return selectedRange.length > 0 }
         // すでに全件を選んでいるときは「すべてを選択」を出さない
         if action == #selector(selectAll(_:)) {
             guard let range = allCopyableRange else { return false }

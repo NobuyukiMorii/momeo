@@ -17,9 +17,12 @@ import android.text.Spanned
 import android.text.style.LineHeightSpan
 import android.text.style.UpdateLayout
 import android.util.TypedValue
+import android.view.ActionMode
 import android.view.ContextThemeWrapper
 import android.view.GestureDetector
 import android.view.Gravity
+import android.view.Menu
+import android.view.MenuItem
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewConfiguration
@@ -34,6 +37,7 @@ import io.flutter.plugin.common.MethodChannel
 import io.flutter.plugin.common.StandardMessageCodec
 import io.flutter.plugin.platform.PlatformView
 import io.flutter.plugin.platform.PlatformViewFactory
+import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
@@ -57,6 +61,7 @@ private const val METHOD_CLEAR_SELECTION = "clearSelection"
 
 // Dart へ知らせるメソッド
 private const val METHOD_THUMB = "thumb"
+private const val METHOD_DELETE_TEXT = "deleteText"
 
 // Dart から値が届かなかったときの既定値
 private const val DEFAULT_FONT_SIZE = 18f
@@ -90,6 +95,16 @@ private const val AT_BOTTOM_TOLERANCE_DP = 32
 
 // 本文の書体（Flutter 側の pubspec.yaml で同梱している Noto Sans JP）
 private const val REGULAR_FONT_ASSET = "assets/fonts/NotoSansJP-Regular.otf"
+
+// ---------------------------------
+// 定数: 文字選択のメニュー
+// ---------------------------------
+
+// メニューに足す「削除」の識別子
+private const val MENU_ITEM_DELETE_ID = 1
+
+// 「削除」の並び順（OS の「コピー」が 5、「すべて選択」が 8 なので、その間に置く）
+private const val MENU_ITEM_ORDER_DELETE = 6
 
 // ---------------------------------
 // 定数: 右の縦線と、日付の区切りの横線（dp）
@@ -169,6 +184,12 @@ private enum class SpeakingDotsPlace(val key: String) {
     }
 }
 
+// 文字選択の範囲に掛かる、1つのメモの部分（メモの本文の中の start 以上 end 未満）
+private class SelectedPiece(val block: MemoBlock, val start: Int, val end: Int) {
+    val text: String
+        get() = block.text.substring(start, end)
+}
+
 // 文書の中の位置を、どのブロックの何文字目かで表したもの（本文を差し替えても選択範囲を置き直せるようにする）
 private data class BlockPosition(val blockId: Long, val offsetInBlock: Int)
 
@@ -191,6 +212,7 @@ private class NativeMemoList(context: Context, viewId: Int, messenger: BinaryMes
         scroll.onThumbChanged = { blockId, y, scrolling ->
             channel.invokeMethod(METHOD_THUMB, mapOf("id" to blockId, "y" to y, "scrolling" to scrolling))
         }
+        document.onDeleteText = { ranges -> channel.invokeMethod(METHOD_DELETE_TEXT, ranges) }
         channel.setMethodCallHandler { call, result ->
             when (call.method) {
                 METHOD_UPDATE -> {
@@ -213,6 +235,7 @@ private class NativeMemoList(context: Context, viewId: Int, messenger: BinaryMes
 
     override fun dispose() {
         channel.setMethodCallHandler(null)
+        document.onDeleteText = null
         scroll.onThumbChanged = null
         document.clearFocus()
     }
@@ -222,6 +245,9 @@ private class NativeMemoList(context: Context, viewId: Int, messenger: BinaryMes
 // 本文（メモ全件を1つにした文書）と、右の縦線・日付の区切りの横線、発話中の「.」
 // ---------------------------------
 private class MemoDocumentView(context: Context, private val scroll: MemoScrollView) : TextView(context) {
+    // メニューの「削除」で消す範囲を知らせる（メモ id と、そのメモの本文の中の start 以上 end 未満）
+    var onDeleteText: ((List<Map<String, Any>>) -> Unit)? = null
+
     private val density = resources.displayMetrics.density
 
     // --- 文書
@@ -299,6 +325,25 @@ private class MemoDocumentView(context: Context, private val scroll: MemoScrollV
             override fun newSpannable(source: CharSequence): Spannable = SpannableStringBuilder(source)
         })
         setText("", BufferType.SPANNABLE)
+        // 文字選択のメニューに「削除」を足す
+        customSelectionActionModeCallback = object : ActionMode.Callback {
+            override fun onCreateActionMode(mode: ActionMode, menu: Menu): Boolean {
+                menu.add(Menu.NONE, MENU_ITEM_DELETE_ID, MENU_ITEM_ORDER_DELETE, deleteMenuTitle())
+                    .setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS)
+                return true
+            }
+
+            override fun onPrepareActionMode(mode: ActionMode, menu: Menu): Boolean = false
+
+            override fun onActionItemClicked(mode: ActionMode, item: MenuItem): Boolean {
+                if (item.itemId != MENU_ITEM_DELETE_ID) return false
+                deleteSelection()
+                mode.finish()
+                return true
+            }
+
+            override fun onDestroyActionMode(mode: ActionMode) {}
+        }
         initialized = true
     }
 
@@ -546,16 +591,33 @@ private class MemoDocumentView(context: Context, private val scroll: MemoScrollV
         return true
     }
 
-    // 選択範囲に掛かる各メモの部分を取り出し、区切りでつないでクリップボードへ入れる
-    private fun copySelection() {
+    // 選択範囲に掛かる各メモの部分（メモの本文の中での範囲）
+    private fun selectedPieces(): List<SelectedPiece> {
         val from = selectionFrom
         val to = selectionTo
-        val pieces = copyableBlocksIn(from, to)
-            .map { it.text.substring(max(from, it.start) - it.start, min(to, it.end) - it.start) }
+        return copyableBlocksIn(from, to).map { block ->
+            SelectedPiece(block, start = max(from, block.start) - block.start, end = min(to, block.end) - block.start)
+        }
+    }
+
+    // 選択範囲に掛かる各メモの部分を取り出し、区切りでつないでクリップボードへ入れる
+    private fun copySelection() {
+        val pieces = selectedPieces().map { it.text }
         if (pieces.isEmpty()) return
         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         clipboard.setPrimaryClip(ClipData.newPlainText("", pieces.joinToString(copySeparator)))
     }
+
+    // 選択範囲に掛かる各メモの部分を消すよう Dart へ知らせ、文字選択を外す（本文の書き換えと保存は Dart 側が行う）
+    private fun deleteSelection() {
+        val ranges = selectedPieces().map { mapOf("id" to it.block.id, "start" to it.start, "end" to it.end) }
+        if (ranges.isEmpty()) return
+        clearTextSelection()
+        onDeleteText?.invoke(ranges)
+    }
+
+    // メニューの「削除」の文言（OS のメニューと同じく、端末の言語に合わせる）
+    private fun deleteMenuTitle(): String = if (Locale.getDefault().language == "ja") "削除" else "Delete"
 
     // 文字選択の対象になるメモ全件を、表示位置を保ったまま選ぶ
     private fun selectAllCopyableBlocks() {
