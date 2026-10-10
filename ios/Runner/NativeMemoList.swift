@@ -754,17 +754,17 @@ private final class MemoDocumentView: UITextView, UITextViewDelegate {
     // ---------------------------------
     // 縦線・横線の View の上に描く
     fileprivate func drawRail() {
-        guard let context = UIGraphicsGetCurrentContext(), let firstBlock = blocks.first else { return }
+        guard let context = UIGraphicsGetCurrentContext() else { return }
         context.saveGState()
         defer { context.restoreGState() }
-        // 文書の座標で描けるよう、表示範囲の上端の分だけずらす
-        context.translateBy(x: 0, y: -contentOffset.y)
         railColor.setStroke()
         context.setLineWidth(RailLayout.lineWidth)
-        // 縦線は、一番上のブロックの区切りから文書の下端まで1本で引く
+        // 縦線は一覧の枠の一部として、スクロールしても動かさず、一覧の上端から下端まで引く（メモが無くても出す）
         let x = bounds.width - RailLayout.xFromRight
-        context.move(to: CGPoint(x: x, y: boundaryY(firstBlock)))
-        context.addLine(to: CGPoint(x: x, y: contentSize.height))
+        context.move(to: CGPoint(x: x, y: 0))
+        context.addLine(to: CGPoint(x: x, y: bounds.height))
+        // 横線は文書の座標で描けるよう、表示範囲の上端の分だけずらす
+        context.translateBy(x: 0, y: -contentOffset.y)
         // 横線は、その日の最初のブロックの区切りに、画面の端から端まで引く（一番上のブロックには引かない）
         for block in blocks.dropFirst() where block.startsDay {
             let y = boundaryY(block)
@@ -781,8 +781,7 @@ private final class MemoDocumentView: UITextView, UITextViewDelegate {
 
     // 下端がホームインジケーターに重なるときは、その上に広めの余白をとる（ホームへ戻る操作の受付領域では掴みにくいため）
     private var scrollThumbTrack: ClosedRange<CGFloat> {
-        // 上端は、一番上までスクロールしたときの縦線の始まり（一番上のブロックの区切り）にそろえる
-        let top = blocks.first.map { boundaryY($0) } ?? ScrollThumbLayout.trackMargin
+        let top = ScrollThumbLayout.trackMargin
         let bottomMargin = safeAreaInsets.bottom > 0
             ? ScrollThumbLayout.trackMarginAboveHomeIndicator
             : ScrollThumbLayout.trackMargin

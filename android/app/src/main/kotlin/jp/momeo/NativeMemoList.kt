@@ -279,7 +279,7 @@ private class MemoDocumentView(context: Context, private val scroll: MemoScrollV
     // ブロックごとに付けている行高の span（メモ id → span）
     private val lineHeightSpans = mutableMapOf<Long, MemoLineHeightSpan>()
     // 縦線と横線を描く絵の具（背景の波線と同じ色）
-    private val railPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val dayDividerPaint = Paint(Paint.ANTI_ALIAS_FLAG)
 
     // --- 発話中の「.」
     // 出す場所（出さないときは null）と、今の数・行に収まる数
@@ -466,8 +466,9 @@ private class MemoDocumentView(context: Context, private val scroll: MemoScrollV
     private fun applyTextSizeAndColor(textColor: Int, railColor: Int) {
         setTextSize(TypedValue.COMPLEX_UNIT_PX, fontPixels)
         setTextColor(textColor)
-        railPaint.color = railColor
+        dayDividerPaint.color = railColor
         speakingDotsPaint.color = textColor
+        scroll.railColor = railColor
         scroll.thumbColor = textColor
     }
 
@@ -704,10 +705,6 @@ private class MemoDocumentView(context: Context, private val scroll: MemoScrollV
         return boundaries
     }
 
-    // 縦線の始まり（一番上のブロックの区切り）
-    val railTop: Float?
-        get() = boundaryYs().firstOrNull()
-
     // 高さ y より上で、一番近い区切りを持つブロック（どの区切りよりも上なら null）
     private fun blockWithBoundaryAbove(y: Float): MemoBlock? {
         val boundaries = boundaryYs()
@@ -807,25 +804,21 @@ private class MemoDocumentView(context: Context, private val scroll: MemoScrollV
     // 描画
     // ---------------------------------
     override fun onDraw(canvas: Canvas) {
-        // 縦線と横線は本文の後ろに描く
-        drawRail(canvas)
+        // 横線は本文の後ろに描く（縦線は一覧の枠の一部なので、スクロール側が描く）
+        drawDayDividers(canvas)
         super.onDraw(canvas)
         drawSpeakingDots(canvas)
     }
 
-    // 右の縦線と、日付の区切りの横線
-    private fun drawRail(canvas: Canvas) {
+    // 日付の区切りの横線（その日の最初のブロックの区切りに、画面の端から端まで引く。一番上のブロックには引かない）
+    private fun drawDayDividers(canvas: Canvas) {
         if (blocks.isEmpty()) return
-        railPaint.strokeWidth = RAIL_WIDTH_DP * density
+        dayDividerPaint.strokeWidth = RAIL_WIDTH_DP * density
         // 親のスクロールでは描画が再実行されないため、見えていない部分も含めて全体を描く
         val boundaries = boundaryYs()
-        // 縦線は、一番上のブロックの区切りから文書の下端まで1本で引く
-        val x = width - dp(RAIL_X_FROM_RIGHT_DP).toFloat()
-        canvas.drawLine(x, boundaries.first(), x, height.toFloat(), railPaint)
-        // 横線は、その日の最初のブロックの区切りに、画面の端から端まで引く（一番上のブロックには引かない）
         for ((index, block) in blocks.withIndex()) {
             if (index == 0 || !block.startsDay) continue
-            canvas.drawLine(0f, boundaries[index], width.toFloat(), boundaries[index], railPaint)
+            canvas.drawLine(0f, boundaries[index], width.toFloat(), boundaries[index], dayDividerPaint)
         }
     }
 
@@ -843,13 +836,14 @@ private class MemoDocumentView(context: Context, private val scroll: MemoScrollV
 }
 
 // ---------------------------------
-// 文書をスクロールし、右の縦線の上にスクロールつまみを重ねる。下端ではナビゲーションバーを避ける
+// 文書をスクロールし、右の縦線（つまみのレール）とスクロールつまみを描く。下端ではナビゲーションバーを避ける
 // ---------------------------------
 // つまみの上で指を置いてすぐ動かしたときだけドラッグとして奪う。それ以外（長押し・タップなど）は、文書側の文字選択の操作になる
 private class MemoScrollView(context: Context) : ScrollView(context) {
     private val density = resources.displayMetrics.density
     private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
     private val longPressTimeout = ViewConfiguration.getLongPressTimeout()
+    private val railPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val thumbPaint = Paint(Paint.ANTI_ALIAS_FLAG)
 
     // --- つまみのドラッグ
@@ -869,6 +863,14 @@ private class MemoScrollView(context: Context) : ScrollView(context) {
     private var scrollYSeenByReport = 0
     // アプリ側がスクロールを動かしている最中か
     private var scrollingByApp = false
+
+    // 縦線の色（背景の波線と同じ色）
+    var railColor: Int = 0
+        set(value) {
+            field = value
+            railPaint.color = value
+            invalidate()
+        }
 
     // つまみの色（本文と同じ色）
     var thumbColor: Int = 0
@@ -894,9 +896,8 @@ private class MemoScrollView(context: Context) : ScrollView(context) {
     // ---------------------------------
     // つまみの位置（y は表示範囲の上端から測る）
     // ---------------------------------
-    // 上端は、一番上までスクロールしたときの縦線の始まり（一番上のブロックの区切り）にそろえる
     private val trackTop: Float
-        get() = documentView?.railTop ?: dp(THUMB_TRACK_MARGIN_DP)
+        get() = dp(THUMB_TRACK_MARGIN_DP)
 
     private val trackBottom: Float
         get() {
@@ -1046,12 +1047,21 @@ private class MemoScrollView(context: Context) : ScrollView(context) {
     }
 
     // ---------------------------------
-    // つまみの描画
+    // 縦線とつまみの描画
     // ---------------------------------
-    // つまみは本文の後ろに描くため、文書（子の View）より先に描く
+    // 本文の後ろに描くため、文書（子の View）より先に描く
     override fun dispatchDraw(canvas: Canvas) {
+        drawRail(canvas)
         drawThumb(canvas)
         super.dispatchDraw(canvas)
+    }
+
+    // 縦線は一覧の枠の一部として、スクロールしても動かさず、一覧の上端から下端まで引く（メモが無くても出す）
+    private fun drawRail(canvas: Canvas) {
+        railPaint.strokeWidth = RAIL_WIDTH_DP * density
+        // canvas は文書の座標なので、表示範囲の上端（scrollY）を足す
+        val x = width - dp(RAIL_X_FROM_RIGHT_DP)
+        canvas.drawLine(x, scrollY.toFloat(), x, (scrollY + height).toFloat(), railPaint)
     }
 
     private fun drawThumb(canvas: Canvas) {
