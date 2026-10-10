@@ -27,6 +27,7 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.ViewConfiguration
 import android.view.ViewGroup
+import android.view.ViewTreeObserver
 import android.view.WindowInsets
 import android.widget.FrameLayout
 import android.widget.ScrollView
@@ -421,11 +422,20 @@ private class MemoDocumentView(context: Context, private val scroll: MemoScrollV
         invalidate()
 
         // --- 組み直した後の高さで、スクロール位置を決める（最初と、一番下を見ていたときは最新へ。文字選択中は動かさない）
-        post {
-            val scrollsToLatest = initialScrollPending || (wasAtBottom && !hadSelection)
-            scroll.scrollToByApp(if (scrollsToLatest) max(0, height - scroll.height) else oldScrollY)
-            initialScrollPending = false
-        }
+        val scrollsToLatest = initialScrollPending || (wasAtBottom && !hadSelection)
+        initialScrollPending = false
+        scrollBeforeNextDraw(toLatest = scrollsToLatest, keptScrollY = oldScrollY)
+    }
+
+    // 新しい高さを測り終えて描く直前にスクロールする（post だと測る前の高さで位置を決めてしまい、一度ずれて描かれてから跳ねる）
+    private fun scrollBeforeNextDraw(toLatest: Boolean, keptScrollY: Int) {
+        scroll.viewTreeObserver.addOnPreDrawListener(object : ViewTreeObserver.OnPreDrawListener {
+            override fun onPreDraw(): Boolean {
+                scroll.viewTreeObserver.removeOnPreDrawListener(this)
+                scroll.scrollToByApp(if (toLatest) max(0, height - scroll.height) else keptScrollY)
+                return true
+            }
+        })
     }
 
     // Dart から届いたブロックの一覧（形の合わないものは飛ばす）
