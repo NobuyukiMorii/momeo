@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:momeo/foundation/app_colors.dart';
+import 'package:momeo/foundation/app_text_styles.dart';
 import 'package:momeo/pages/permissions/permission_controller.dart';
 import 'package:momeo/pages/permissions/permission_page.dart';
+import 'package:momeo/pages/splash_page.dart';
+import 'package:momeo/widgets/intro_setting_layout.dart';
 
 // ---------------------------------
 // PermissionFlowPage — 権限フロー制御（Stateful + WidgetsBindingObserver）
@@ -194,7 +198,22 @@ class _PermissionFlowPageState extends State<PermissionFlowPage> with WidgetsBin
   @override
   Widget build(BuildContext context) {
     // ---------------------------------
-    // 初期化中は背景色のみ表示
+    // 最初の権限チェック中は、直前のスプラッシュと同じ位置にアプリ名を出し続ける
+    // （背景だけにすると、後ろの準備待ち画面のアプリ名と合わせて一瞬消えたように見えるため）
+    // ---------------------------------
+    if (_currentState == null && _currentIndex == 0) {
+      return Scaffold(
+        body: IntroSettingLayout(
+          title: DefaultTextStyle(
+            style: AppTextStyles.headline.copyWith(color: AppColors.onSurface),
+            child: const Text(splashAppName),
+          ),
+        ),
+      );
+    }
+
+    // ---------------------------------
+    // 次の権限の状態を読み込み中は背景色のみ表示
     // ---------------------------------
     if (_currentState == null) return const Scaffold();
 
