@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:collection' show ListQueue;
 import 'dart:isolate';
 import 'dart:typed_data';
 
@@ -20,11 +21,19 @@ const int _kVadWindow = 512; // VAD に1回で渡すサンプル数（16kHz の 
 const double _kVadBufferSeconds = 60; // VAD 内部バッファ（秒）。maxSpeechDuration を余裕で収める
 
 const double _kMinSilenceDuration = 3.0;
-const double _kMinSpeechDuration = 1.0;
+// 「.」を早く出すため短めにする。判定前に話した分は _SpeechHeadKeeper が区切りの頭へ補う
+const double _kMinSpeechDuration = 0.5;
 const double _kMaxSpeechDuration = 30.0;
 
 // どれくらいの音を「声」とみなすか。既定の 0.5 では語頭を取りこぼす
 const double _kVadThreshold = 0.35;
+
+// 発話と判定される前の声を、区切りの頭へ補うときにさかのぼれる上限（区切りの開始から何秒前まで）
+const int _kHeadLookbackSeconds = 10;
+
+// 音を覚えておく長さ（秒）。区切りを文字化するのは最長の発話と3秒の無音の後なので、そのぶんも足す
+const int _kHeadHistorySeconds =
+    _kHeadLookbackSeconds + _kMaxSpeechDuration ~/ 1 + _kMinSilenceDuration ~/ 1 + 1;
 
 // 認識する言語。空文字は自動判定。日本語に固定すると普通話が崩れ、日本語側の利得も無い
 const String _kRecognitionLanguage = '';
@@ -368,6 +377,9 @@ class _AudioEngine {
 
   bool _speechActive = false;
 
+  // 発話と判定される前の声を、区切りの頭へ補う係
+  final _SpeechHeadKeeper _headKeeper = _SpeechHeadKeeper();
+
   // SenseVoice の枠にモデル本体のパスを入れることで読み方が決まる
   static sherpa.OfflineRecognizer _createRecognizer({
     required String modelPath,
@@ -413,10 +425,14 @@ class _AudioEngine {
     // 同じモデルなら作り直さず、中身を空にして使い回す
     if (_vad != null && sileroPath == _sileroPath) {
       _vad!.clear();
+      // 録音の切れ目より前の音は補わない
+      _headKeeper.markBoundary();
     } else {
       _vad?.free();
       _vad = _createVad(sileroPath);
       _sileroPath = sileroPath;
+      // VAD を作り直すと位置が0から数え直しになるため、補う係も作り直す
+      _headKeeper.start(sileroPath);
     }
     _floatBuffer.clear();
     _speechActive = false;
@@ -434,6 +450,7 @@ class _AudioEngine {
   void releaseListening() {
     _vad?.free();
     _vad = null;
+    _headKeeper.release();
     _sileroPath = null;
     _floatBuffer.clear();
     _speechActive = false;
@@ -460,6 +477,8 @@ class _AudioEngine {
       final window = Float32List.fromList(_floatBuffer.sublist(0, _kVadWindow));
       _floatBuffer.removeRange(0, _kVadWindow);
       vad.acceptWaveform(window);
+      // 本番の VAD と同じ窓を、補う係にも渡す（声らしかったかを覚えておく）
+      _headKeeper.acceptWindow(window);
     }
 
     // 発話中かどうかの変化は、確定テキストより先に知らせる
@@ -480,13 +499,16 @@ class _AudioEngine {
       final segment = vad.front();
       vad.pop();
 
+      // 発話と判定される前に話していた分を、区切りの頭へ補う
+      final samples = _headKeeper.prependHead(segment);
+
       final stopwatch = Stopwatch()..start();
-      final text = _transcribe(segment.samples);
+      final text = _transcribe(samples);
       stopwatch.stop();
 
       onEvent(SttTranscribed(
         text: text,
-        durationSec: segment.samples.length / _kSampleRate,
+        durationSec: samples.length / _kSampleRate,
         elapsedMs: stopwatch.elapsedMilliseconds,
       ));
     }
@@ -525,4 +547,175 @@ class _AudioEngine {
     }
     return maxAbs;
   }
+}
+
+// ============================================================
+// _SpeechHeadKeeper — 発話と判定される前の声を、区切りの頭へ補う
+//
+//   本番の VAD は判定前の音を約1秒しか残さず、間を挟んだ話し始めが落ちるため、
+//   3秒未満の間でつながる声らしい区間の先頭まで、覚えておいた音を足す。
+// ============================================================
+class _SpeechHeadKeeper {
+  // 声らしいかを見る補助の VAD。発話とみなす最短の長さをほぼ0にして、窓ごとの判定をそのまま使う
+  sherpa.VoiceActivityDetector? _voiceProbe;
+
+  // 直近の窓（古い順）。位置は _historyStartPosition から窓の長さずつ進む
+  final ListQueue<_HistoryWindow> _history = ListQueue<_HistoryWindow>();
+  int _historyStartPosition = 0;
+
+  // 本番の VAD に渡したサンプル数（＝次の窓の開始位置）
+  int _position = 0;
+
+  // これより前にはさかのぼらない位置（前の区切りの終わり・録音の切れ目）
+  int _lookbackFloor = 0;
+
+  static const int _maxHistoryWindows =
+      _kHeadHistorySeconds * _kSampleRate ~/ _kVadWindow;
+  static const int _maxLookbackSamples = _kHeadLookbackSeconds * _kSampleRate;
+  static const int _minSilenceSamples =
+      (_kMinSilenceDuration * _kSampleRate) ~/ 1;
+  // 補助の VAD は声らしいと判定するまでに1窓ぶん遅れるため、先頭の手前にも少し余白を足す
+  static const int _paddingSamples = 2 * _kVadWindow;
+
+  // ---------------------------------
+  // 始める・切れ目を入れる・片付ける
+  // ---------------------------------
+
+  // 本番の VAD を作り直したとき（位置が0から数え直しになる）
+  void start(String sileroPath) {
+    _voiceProbe?.free();
+    _voiceProbe = sherpa.VoiceActivityDetector(
+      config: sherpa.VadModelConfig(
+        sileroVad: sherpa.SileroVadModelConfig(
+          model: sileroPath,
+          threshold: _kVadThreshold,
+          minSilenceDuration: 0.001,
+          minSpeechDuration: 0.001,
+          maxSpeechDuration: _kMaxSpeechDuration,
+        ),
+        sampleRate: _kSampleRate,
+        numThreads: 1,
+      ),
+      bufferSizeInSeconds: _kVadBufferSeconds,
+    );
+    _history.clear();
+    _historyStartPosition = 0;
+    _position = 0;
+    _lookbackFloor = 0;
+  }
+
+  // 本番の VAD を使い回して録音をやり直したとき。前の録音の音は補わない
+  void markBoundary() {
+    _lookbackFloor = _position;
+  }
+
+  void release() {
+    _voiceProbe?.free();
+    _voiceProbe = null;
+    _history.clear();
+  }
+
+  // ---------------------------------
+  // 窓ごとの記録（音と、声らしかったか）
+  // ---------------------------------
+  void acceptWindow(Float32List window) {
+    final probe = _voiceProbe;
+    if (probe == null) return;
+
+    probe.acceptWaveform(window);
+    final voiced = probe.isDetected();
+    // 補助の VAD が区切った発話は使わないので捨てる
+    probe.clear();
+
+    _history.addLast(_HistoryWindow(samples: window, voiced: voiced));
+    _position += window.length;
+    // 上限を超えた古い窓から捨てる
+    while (_history.length > _maxHistoryWindows) {
+      _historyStartPosition += _history.removeFirst().samples.length;
+    }
+  }
+
+  // ---------------------------------
+  // 区切りの頭へ、判定前の声を足したサンプルを返す
+  // ---------------------------------
+  Float32List prependHead(sherpa.SpeechSegment segment) {
+    final segmentStart = segment.start;
+    final headStart = _findHeadStart(segmentStart);
+
+    // 次の区切りが、この区切りと重なる音を補わないようにする
+    _lookbackFloor = segmentStart + segment.samples.length;
+
+    if (headStart == null || headStart >= segmentStart) return segment.samples;
+
+    final head = _collectSamples(from: headStart, to: segmentStart);
+    final combined = Float32List(head.length + segment.samples.length);
+    combined.setAll(0, head);
+    combined.setAll(head.length, segment.samples);
+    return combined;
+  }
+
+  // 区切りの開始位置から過去へさかのぼり、つながっている声らしい区間の先頭を探す
+  int? _findHeadStart(int segmentStart) {
+    // 前の区切り・録音の切れ目・覚えている範囲・さかのぼれる上限のうち、いちばん新しい位置より前には行かない
+    final floor = [
+      _lookbackFloor,
+      _historyStartPosition,
+      segmentStart - _maxLookbackSamples,
+    ].reduce((latest, position) => position > latest ? position : latest);
+
+    int? earliestVoicedStart;
+    // 直近で声らしかった位置（区切りの開始は声の続きとして扱う）
+    var nearestVoicedStart = segmentStart;
+
+    var windowEnd = _position;
+    for (final window in _history.toList().reversed) {
+      final windowStart = windowEnd - window.samples.length;
+      windowEnd = windowStart;
+
+      // 区切りの中の窓は見ない
+      if (windowStart >= segmentStart) continue;
+      // さかのぼってよい位置より前には行かない
+      if (windowStart < floor) break;
+      // 無音が本番の基準（3秒）以上続いたら、別の発話とみなして止める
+      if (nearestVoicedStart - windowStart >= _minSilenceSamples) break;
+
+      if (window.voiced) {
+        earliestVoicedStart = windowStart;
+        nearestVoicedStart = windowStart;
+      }
+    }
+
+    if (earliestVoicedStart == null) return null;
+    final padded = earliestVoicedStart - _paddingSamples;
+    return padded > floor ? padded : floor;
+  }
+
+  // 覚えている窓から [from, to) の音を取り出す
+  Float32List _collectSamples({required int from, required int to}) {
+    final out = Float32List(to - from);
+    var windowStart = _historyStartPosition;
+    for (final window in _history) {
+      final windowEnd = windowStart + window.samples.length;
+      final copyStart = from > windowStart ? from : windowStart;
+      final copyEnd = to < windowEnd ? to : windowEnd;
+      if (copyStart < copyEnd) {
+        out.setRange(
+          copyStart - from,
+          copyEnd - from,
+          window.samples,
+          copyStart - windowStart,
+        );
+      }
+      if (windowEnd >= to) break;
+      windowStart = windowEnd;
+    }
+    return out;
+  }
+}
+
+// 覚えておく1窓ぶんの音と、声らしかったか
+class _HistoryWindow {
+  const _HistoryWindow({required this.samples, required this.voiced});
+  final Float32List samples;
+  final bool voiced;
 }
