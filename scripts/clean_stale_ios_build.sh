@@ -85,8 +85,12 @@ detect_binary_platform() {
   # ---- 調べる Mach-O バイナリ
   local binary_path="$1"
 
-  otool -l "$binary_path" 2>/dev/null \
-    | awk '/LC_BUILD_VERSION/ { in_build_version = 1; next } in_build_version && /platform/ { print $2; exit }'
+  # ---- 出力を先に受け切る。パイプで awk に渡すと、途中で exit した awk の後に otool が SIGPIPE で落ち、pipefail で失敗扱いになる
+  local load_commands
+  load_commands="$(otool -l "$binary_path" 2>/dev/null || true)"
+
+  awk '/LC_BUILD_VERSION/ { in_build_version = 1; next } in_build_version && /platform/ { print $2; exit }' \
+    <<< "$load_commands"
 }
 
 # ---------------------------------
@@ -96,7 +100,11 @@ is_adhoc_signed() {
   # ---- 調べる Mach-O バイナリ
   local binary_path="$1"
 
-  codesign -dv "$binary_path" 2>&1 | grep -q "^Signature=adhoc$"
+  # ---- 出力を先に受け切る。パイプで grep -q に渡すと、一致後に codesign が SIGPIPE で落ち、pipefail で「adhoc ではない」と誤判定する
+  local signature_info
+  signature_info="$(codesign -dv "$binary_path" 2>&1 || true)"
+
+  grep -q "^Signature=adhoc$" <<< "$signature_info"
 }
 
 # ---------------------------------
