@@ -7,6 +7,7 @@ import 'package:momeo/foundation/app_radius.dart';
 import 'package:momeo/foundation/app_spacing.dart';
 import 'package:momeo/foundation/app_text_styles.dart';
 import 'package:momeo/models/recording_scope.dart';
+import 'package:momeo/providers/listening_providers.dart';
 import 'package:momeo/providers/settings_providers.dart';
 import 'package:momeo/widgets/dot.dart';
 import 'package:momeo/widgets/recording_option_cards.dart';
@@ -39,6 +40,9 @@ final _stateTextStyle = AppTextStyles.caption.copyWith(
   fontWeight: FontWeight.w700,
   height: 1,
 );
+
+// 録音が一時的に中断されている間に、状態行へ出す文言
+const _pausedStateText = '録音が一時的に中断されています';
 
 // 状態行の高さの下限（ふつうの文字サイズで、文言の行の高さ 12 と上下の余白がぎりぎり収まる）
 const _stateRowMinHeight = 12.0 + _stateRowPaddingTop + _stateRowPaddingBottom;
@@ -228,12 +232,18 @@ class _ListeningRecordingSettingsPanelState
 
   // ---------------------------------
   // 状態行（いつ録音するかを、点滅するドットと文言で示す）
+  //   録音が一時的に中断されている間（他のアプリが鳴っている・OS に中断されている）は、
+  //   ドットを薄い色で点けたままにし、文言も中断中のものに替える
   // ---------------------------------
   Widget _buildStateRow() {
     // --- 今どの範囲で録音する設定か
     final backgroundRecording = ref.watch(backgroundRecordingProvider).value;
     final scope = RecordingScope.of(
       isBackgroundRecordingEnabled: backgroundRecording?.isEnabled ?? false,
+    );
+    // --- 録音が一時的に中断されているか
+    final isPaused = ref.watch(
+      listeningProvider.select((listening) => listening.value?.recordingPaused ?? false),
     );
 
     return GestureDetector(
@@ -249,13 +259,16 @@ class _ListeningRecordingSettingsPanelState
         ),
         child: Row(
           children: [
-            // --- ドット（どちらの範囲でも録音は続くので点滅させる）
-            Dot(color: scope.dotColor),
+            // --- ドット（録音している間は点滅させ、中断中は線と同じ薄い色で点けたままにする）
+            Dot(
+              color: isPaused ? AppColors.onSurfaceFaint : scope.dotColor,
+              isBlinking: !isPaused,
+            ),
             const SizedBox(width: AppSpacing.s),
-            // --- 今選んでいる範囲の文言
+            // --- 今選んでいる範囲の文言（中断中は中断していることを伝える）
             Expanded(
               child: Text(
-                scope.title,
+                isPaused ? _pausedStateText : scope.title,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: _stateTextStyle,

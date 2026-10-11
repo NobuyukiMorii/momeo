@@ -25,6 +25,7 @@
 		D54D3CD22DF370F5EE28D154 /* SttModelChannel.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACC68584E009F98472B27DB8 /* SttModelChannel.swift */; };
 		E91A885820E74219A34FA001 /* NativeMemoList.swift in Sources */ = {isa = PBXBuildFile; fileRef = E91A885820E74219A34FA002 /* NativeMemoList.swift */; };
 		F3AE6B0EBFD4F47463C3A900 /* ListeningActivityWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = A26AB548A63D27F550654B95 /* ListeningActivityWidget.swift */; };
+		FA86B42C48E9BC77111E506C /* AudioSessionChannel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 909BA209ADAA3DCBBD27CE6D /* AudioSessionChannel.swift */; };
 		FB26AA39AAA90698BD254909 /* model.int8.onnx in Resources */ = {isa = PBXBuildFile; fileRef = C28B7368AF28AB3E04473CEE /* model.int8.onnx */; };
 /* End PBXBuildFile section */
 
@@ -83,6 +84,7 @@
 		74858FAE1ED2DC5600515810 /* AppDelegate.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		7884E8672EC3CC0400C636F2 /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
 		7AFA3C8E1D35360C0083082E /* Release.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = Release.xcconfig; path = Flutter/Release.xcconfig; sourceTree = "<group>"; };
+		909BA209ADAA3DCBBD27CE6D /* AudioSessionChannel.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AudioSessionChannel.swift; sourceTree = "<group>"; };
 		9125AD7F4045AE74E37B037C /* Pods-RunnerTests.profile.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-RunnerTests.profile.xcconfig"; path = "Target Support Files/Pods-RunnerTests/Pods-RunnerTests.profile.xcconfig"; sourceTree = "<group>"; };
 		951870F64F2E6F7E10E2E29B /* Pods-RunnerTests.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-RunnerTests.debug.xcconfig"; path = "Target Support Files/Pods-RunnerTests/Pods-RunnerTests.debug.xcconfig"; sourceTree = "<group>"; };
 		9740EEB21CF90195004384FC /* Debug.xcconfig */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.xcconfig; name = Debug.xcconfig; path = Flutter/Debug.xcconfig; sourceTree = "<group>"; };
@@ -236,6 +238,7 @@
 				ACC68584E009F98472B27DB8 /* SttModelChannel.swift */,
 				E91A885820E74219A34FA002 /* NativeMemoList.swift */,
 				A83FF56E2C466BAC6391BBF6 /* Runner.entitlements */,
+				909BA209ADAA3DCBBD27CE6D /* AudioSessionChannel.swift */,
 			);
 			path = Runner;
 			sourceTree = "<group>";
@@ -518,6 +521,7 @@
 				7884E8682EC3CC0700C636F2 /* SceneDelegate.swift in Sources */,
 				D54D3CD22DF370F5EE28D154 /* SttModelChannel.swift in Sources */,
 				E91A885820E74219A34FA001 /* NativeMemoList.swift in Sources */,
+				FA86B42C48E9BC77111E506C /* AudioSessionChannel.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
