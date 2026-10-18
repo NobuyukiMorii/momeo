@@ -6,6 +6,7 @@ import 'dart:typed_data';
 import 'package:flutter/foundation.dart' show debugPrint, kDebugMode;
 import 'package:record/record.dart';
 
+import 'package:momeo/platform/audio_session_channel.dart';
 import 'package:momeo/stt/stt_audio_worker.dart';
 import 'package:momeo/stt/stt_downsampler.dart';
 
@@ -153,6 +154,8 @@ class SttListeningPipeline {
     } catch (_) {
       // 停止時の例外は致命的でないため無視
     }
+    // イヤホンを手放す。録音を閉じただけでは通話用（HFP）につかんだままになり、他のアプリの音がこもる
+    await _releaseAudioSessionOnIos();
 
     // 末尾に残った発話を押し出す。確定テキストは通知で戻ってくるため、
     // それを受け取り終えてから購読を切る
@@ -163,6 +166,19 @@ class SttListeningPipeline {
     }
     await _eventSubscription?.cancel();
     _eventSubscription = null;
+  }
+
+  // ---------------------------------
+  // イヤホンを手放す（iOS）
+  // ---------------------------------
+  // 失敗してもログだけ残して止めきる
+  Future<void> _releaseAudioSessionOnIos() async {
+    if (!Platform.isIOS) return;
+    try {
+      await AudioSessionChannel.releaseAudioSession();
+    } catch (error) {
+      debugPrint('[sttPipeline] イヤホンを手放せませんでした: $error');
+    }
   }
 
   // ---------------------------------

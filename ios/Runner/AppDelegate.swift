@@ -24,6 +24,11 @@ import UIKit
     if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "SttModelChannel") {
       SttModelChannel.register(with: registrar.messenger())
     }
+
+    // 他のアプリの音に録音を合わせるための AVAudioSession の窓口を登録
+    if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "AudioSessionChannel") {
+      AudioSessionChannel.register(with: registrar.messenger())
+    }
   }
 
   // ---------------------------------
