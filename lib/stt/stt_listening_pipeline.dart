@@ -55,7 +55,11 @@ final RecordConfig _kRecordConfig = RecordConfig(
   encoder: AudioEncoder.pcm16bits,
   sampleRate: _kRecordSampleRate,
   numChannels: 1,
-  audioInterruption: AudioInterruptionMode.pauseResume,
+  // Android は中断を扱わない。扱うと録音がオーディオフォーカスを独占して他のアプリの再生を止め、
+  // 他のアプリに奪われると戻ってこない。他のアプリの音は「他のアプリの音に譲る」で捨てる
+  audioInterruption: Platform.isIOS
+      ? AudioInterruptionMode.pauseResume
+      : AudioInterruptionMode.none,
   iosConfig: const IosRecordConfig(
     categoryOptions: [
       IosAudioCategoryOption.mixWithOthers,
