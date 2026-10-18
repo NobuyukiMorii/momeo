@@ -124,13 +124,13 @@ class SttListeningPipeline {
   // 仕事をまたいで読み書きされる状態の印（直すときは、ここに挙げた読み手への影響も確かめる）
   //
   //   _interrupted          立てる: 録音状態の購読（OS の中断で pause）
-  //                         下ろす: 録音状態の購読（record）・停止
-  //                         読む  : 見張り（作り直さない）
+  //                         下ろす: 録音状態の購読（record）・取り戻す・停止
+  //                         読む  : 見張り（作り直さない）、取り戻す（開き直すか）、前面復帰
   //   _restarting           立てる: 作り直し・録音を止めて手放す
   //                         読む  : 見張り・他のアプリの見張り（重ねて走らせない）
   //   _otherAudioPlaying    立てる: 開始（鳴っている中で始めたとき）・鳴り始めた
   //                         下ろす: 取り戻す・停止
-  //                         読む  : 音の流し込み（捨てる）、録音を開く（設定を選ぶ）
+  //                         読む  : 音の流し込み（捨てる）、録音を開く（設定を選ぶ）、前面復帰
   //   _bluetoothMicReleased 立てる: 録音を開く（Bluetooth なしの設定のとき）・Bluetooth のマイクを手放す・録音を止めて手放す
   //                         下ろす: 録音を開く（ふつうの設定のとき）・停止
   //                         読む  : 取り戻す（開き直して Bluetooth のマイクに戻すか）
@@ -138,7 +138,7 @@ class SttListeningPipeline {
   //                         下ろす: 取り戻す・停止
   //                         読む  : 見張り（作り直さない）
   //   _otherAudioSettlesAt  立てる: 録音を開く・Bluetooth のマイクを手放す（経路が組み直されるため）
-  //                         読む  : 他のアプリの見張り（この間は鳴り止んだと数えない）
+  //                         読む  : 他のアプリの見張り・前面復帰（この間は鳴り止んだと数えない）
   // ---------------------------------
 
   // 見張りが使う状態
@@ -262,6 +262,13 @@ class SttListeningPipeline {
       await start();
       // 生死の確認は要らない
       return;
+    }
+    // 譲ったまま・中断の終わりが届かないまま戻ってきた場合、他のアプリが鳴っていなければ取り戻す
+    if ((_otherAudioPlaying || _interrupted) && !_isOtherAudioSettling) {
+      if (!await _isOtherAudioPlaying()) {
+        await _takeBackFromOtherAudio();
+        return;
+      }
     }
     // 続けていた場合は、待たずに生死を確かめる
     await _restartIfAudioStalled(ignoresDelay: true);
@@ -558,11 +565,13 @@ class SttListeningPipeline {
   // 他のアプリが鳴り止んだとき
   // ---------------------------------
   Future<void> _takeBackFromOtherAudio() async {
-    // Bluetooth のマイクを手放している・録音を止めているなら、開き直しが要る
-    final needsReopen = _bluetoothMicReleased;
+    // Bluetooth のマイクを手放している・録音を止めている・中断されたままなら、開き直しが要る
+    // （中断の終わりを知らせないアプリもあるので、知らせを待たずに自分で再開する）
+    final needsReopen = _bluetoothMicReleased || _interrupted;
     _otherAudioPlaying = false;
     _otherAudioSilentChecks = 0;
     _releasedForOtherAudio = false;
+    _interrupted = false;
     if (!needsReopen) return;
 
     // 設定の差し替えだけだと録音エンジンが黙って止まるため、待たずにその場で開き直す。
