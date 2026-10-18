@@ -17,7 +17,6 @@ const _updateMethod = 'update';
 const _clearSelectionMethod = 'clearSelection';
 
 // ネイティブ側から届くメソッド
-const _thumbMethod = 'thumb';
 const _deleteTextMethod = 'deleteText';
 
 // 本文の文字サイズ（端末の文字サイズの設定で拡大する前の値）
@@ -25,10 +24,6 @@ const _bodyFontSize = 18.0;
 
 // 文字選択をブロックをまたいでコピーしたときの、ブロック同士の区切り
 const _copySeparator = '\n\n';
-
-// スクロールつまみの高さ（一覧の上端から測る）と、その高さにあるメモ
-// scrolling は、指やつまみの操作でスクロールしたときだけ true（新しいメモで末尾へ移るときは false）
-typedef MemoListThumb = ({int memoId, double y, bool scrolling});
 
 // 文字選択のメニューの「削除」で消す、1つのメモの部分（本文の中の start 以上 end 未満）
 typedef MemoTextRange = ({int memoId, int start, int end});
@@ -53,7 +48,6 @@ class NativeMemoList extends StatefulWidget {
     required this.memos,
     required this.controller,
     required this.onTypingComplete,
-    required this.onThumbChanged,
     required this.onDeleteText,
     this.typingMemoId,
     this.typeFrom = 0,
@@ -65,8 +59,6 @@ class NativeMemoList extends StatefulWidget {
   final NativeMemoListController controller;
   // 打ち出しの演出を使い切ったとき
   final ValueChanged<int> onTypingComplete;
-  // スクロールつまみの高さ、またはその高さにあるメモが変わったとき
-  final ValueChanged<MemoListThumb> onThumbChanged;
   // 文字選択のメニューで「削除」が押されたとき（選択範囲に掛かるメモごとの部分）
   final ValueChanged<List<MemoTextRange>> onDeleteText;
   // 打ち出し中のメモの id と、打ち出しを始める文字数
@@ -143,13 +135,6 @@ class _NativeMemoListState extends State<NativeMemoList> {
   Future<void> _onNativeCall(MethodCall call) async {
     if (!mounted) return;
     switch (call.method) {
-      case _thumbMethod:
-        final thumb = call.arguments as Map;
-        widget.onThumbChanged((
-          memoId: thumb['id'] as int,
-          y: (thumb['y'] as num).toDouble(),
-          scrolling: thumb['scrolling'] == true,
-        ));
       case _deleteTextMethod:
         final ranges = call.arguments as List;
         widget.onDeleteText([

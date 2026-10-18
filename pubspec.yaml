@@ -94,10 +94,6 @@ flutter:
         - asset: assets/fonts/NotoSansJP-Regular.otf
         - asset: assets/fonts/NotoSansJP-Bold.otf
           weight: 700
-    # リスニング画面の背景に出す日付の書体
-    - family: Dancing Script
-      fonts:
-        - asset: assets/fonts/DancingScript-Regular.ttf
 
   # To add assets to your application, add an assets section, like this:
   # assets:

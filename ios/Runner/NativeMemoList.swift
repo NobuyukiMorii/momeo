@@ -17,7 +17,6 @@ private enum ChannelMethod {
     static let update = "update"
     static let clearSelection = "clearSelection"
     // Dart へ知らせるメソッド
-    static let thumb = "thumb"
     static let deleteText = "deleteText"
 }
 
@@ -150,16 +149,11 @@ private final class NativeMemoList: NSObject, FlutterPlatformView {
         documentView.onDeleteText = { [weak self] ranges in
             self?.channel.invokeMethod(ChannelMethod.deleteText, arguments: ranges)
         }
-        documentView.onThumbChanged = { [weak self] blockId, y, scrolling in
-            self?.channel.invokeMethod(ChannelMethod.thumb, arguments: ["id": blockId, "y": y, "scrolling": scrolling])
-        }
         channel.setMethodCallHandler { [weak self] call, result in
             guard let self else { result(nil); return }
             switch call.method {
             case ChannelMethod.update:
                 self.documentView.update(call.arguments)
-                // 表示を作り直したときも、Flutter 側が日付を取りこぼさないように知らせ直す
-                self.documentView.reportThumb(force: true)
                 result(nil)
             case ChannelMethod.clearSelection:
                 self.documentView.clearTextSelection()
@@ -180,9 +174,6 @@ private final class NativeMemoList: NSObject, FlutterPlatformView {
 // 本文（メモ全件を1つにした文書）と、右の縦線・日付の区切りの横線、スクロールつまみ、発話中の「.」
 // ---------------------------------
 private final class MemoDocumentView: UITextView, UITextViewDelegate {
-    // つまみの高さと、その高さにあるブロックが変わったときに知らせる（背景の日付表示に使う。y は表示範囲の上端から測る）
-    // scrolling は、指やつまみの操作でスクロールしたときだけ true
-    var onThumbChanged: ((_ blockId: Int64, _ y: CGFloat, _ scrolling: Bool) -> Void)?
     // メニューの「削除」で消す範囲を知らせる（メモ id と、そのメモの本文の中の start 以上 end 未満）
     var onDeleteText: (([[String: Any]]) -> Void)?
 
@@ -217,10 +208,6 @@ private final class MemoDocumentView: UITextView, UITextViewDelegate {
     private var boundaryYs: [Int64: CGFloat] = [:]
     // ドラッグ中の、指の位置とつまみの中心のずれ
     private var scrollThumbGrabOffset: CGFloat = 0
-    // 最後に知らせたブロックと高さ（変わっていなければ知らせ直さない）
-    private var reportedThumb: (id: Int64, y: CGFloat)?
-    // 最後に知らせたときのスクロール位置
-    private var offsetYSeenByReport: CGFloat = 0
 
     // --- 発話中の「.」
     private let speakingDotsView = MemoSpeakingDotsView()
@@ -326,9 +313,9 @@ private final class MemoDocumentView: UITextView, UITextViewDelegate {
         setNeedsLayout()
         layoutIfNeeded()
         if isFirstLayout || (wasAtBottom && !hadSelection && !isDragging) {
-            setContentOffsetByApp(scrollableHeight)
+            contentOffset = CGPoint(x: 0, y: scrollableHeight)
         } else {
-            setContentOffsetByApp(min(oldOffsetY, scrollableHeight))
+            contentOffset = CGPoint(x: 0, y: min(oldOffsetY, scrollableHeight))
         }
         rail.setNeedsDisplay()
     }
@@ -599,12 +586,11 @@ private final class MemoDocumentView: UITextView, UITextViewDelegate {
         layoutSpeakingDots()
         // 最初と、一番下を見ている間に一覧の高さが変わったときは、一番下へ（文字選択中は動かさない）
         if isFirstLayout || (oldSize != bounds.size && wasAtBottom && selectedRange.length == 0) {
-            setContentOffsetByApp(scrollableHeight)
+            contentOffset = CGPoint(x: 0, y: scrollableHeight)
         }
         layoutRail()
         isFirstLayout = false
         lastLayoutSize = bounds.size
-        reportThumb()
     }
 
     // メモが少ないうちは上の余白を広げて一覧を下に寄せ、ブロックの区切りの位置を求め直す
@@ -614,30 +600,6 @@ private final class MemoDocumentView: UITextView, UITextViewDelegate {
         let topInset = max(BodyLayout.minPaddingTop, bounds.height - documentHeight - textContainerInset.bottom)
         if abs(textContainerInset.top - topInset) > 0.5 { textContainerInset.top = topInset }
         layoutBoundaries(top: topInset)
-    }
-
-    // ---------------------------------
-    // つまみの位置を Dart へ知らせる
-    // ---------------------------------
-    // スクロールできないほど短いとき（つまみを出さないとき）は、最新のブロックの区切りの高さとする
-    func reportThumb(force: Bool = false) {
-        // 前回から表示位置が動いていれば、指やつまみの操作でスクロールしている
-        let scrolling = abs(contentOffset.y - offsetYSeenByReport) > 0.5
-        offsetYSeenByReport = contentOffset.y
-        let thumbBlock = showsScrollThumb
-            ? blockWithBoundaryAbove(contentOffset.y + scrollThumbCenterY) ?? blocks.first
-            : blocks.last
-        guard let block = thumbBlock else { return }
-        let y = showsScrollThumb ? scrollThumbCenterY : boundaryY(block) - contentOffset.y
-        if !force, !scrolling, let reportedThumb, reportedThumb.id == block.id, abs(reportedThumb.y - y) < 0.5 { return }
-        reportedThumb = (block.id, y)
-        onThumbChanged?(block.id, y, scrolling)
-    }
-
-    // アプリ側が動かすスクロール（新しいメモで末尾へ移るときなど）は、スクロール中の日付表示の対象にしない
-    private func setContentOffsetByApp(_ y: CGFloat) {
-        contentOffset = CGPoint(x: 0, y: y)
-        offsetYSeenByReport = contentOffset.y
     }
 
     // 縦線・横線の View は、スクロールしても表示範囲に重ねたまま留め、本文より後ろに置く
@@ -681,11 +643,6 @@ private final class MemoDocumentView: UITextView, UITextViewDelegate {
 
     private func boundaryY(_ block: MemoBlock) -> CGFloat {
         boundaryYs[block.id] ?? textContainerInset.top
-    }
-
-    // 高さ y（文書の座標）より上で、一番近い区切りを持つブロック（どの区切りよりも上なら nil）
-    private func blockWithBoundaryAbove(_ y: CGFloat) -> MemoBlock? {
-        blocks.last(where: { boundaryY($0) <= y })
     }
 
     // ---------------------------------
