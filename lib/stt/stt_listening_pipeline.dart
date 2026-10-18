@@ -332,7 +332,11 @@ class SttListeningPipeline {
   void _observeRecorderState() {
     // 中断されると pause が届く
     _stateSubscription = _recorder.onStateChanged().listen(
-      (state) => _interrupted = state == RecordState.pause,
+      (state) {
+        _interrupted = state == RecordState.pause;
+        // 中断から戻った直後は音がまだ届いていないので、見張りの起点を今にする
+        if (state == RecordState.record) _lastAudioAt = DateTime.now();
+      },
       onError: (Object error) => debugPrint('[sttPipeline] 録音状態のエラー: $error'),
     );
   }
