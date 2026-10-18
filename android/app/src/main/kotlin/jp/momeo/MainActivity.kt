@@ -10,6 +10,9 @@ class MainActivity : FlutterActivity() {
     //   プロパティとして持ち続ける。
     private var assetPackDelivery: AssetPackDeliveryChannel? = null
 
+    // 他のアプリが鳴っているかを Flutter から問い合わせるための橋渡し（同じ理由で保持する）。
+    private var audioSession: AudioSessionChannel? = null
+
     // Flutter エンジンの準備ができたタイミングで、橋渡しを有効化する。
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -20,6 +23,10 @@ class MainActivity : FlutterActivity() {
         )
         // applicationContext を渡す（アプリ全体で1つの AssetPackManager を使うため）。
         assetPackDelivery = AssetPackDeliveryChannel(
+            applicationContext,
+            flutterEngine.dartExecutor.binaryMessenger,
+        )
+        audioSession = AudioSessionChannel(
             applicationContext,
             flutterEngine.dartExecutor.binaryMessenger,
         )

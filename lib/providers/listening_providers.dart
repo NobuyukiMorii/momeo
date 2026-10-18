@@ -88,6 +88,19 @@ class ListeningState {
     );
   }
 
+  // 発話が文字化されずに捨てられた（他のアプリが鳴り始めたときなど）。
+  // 文字化の結果は届かないので、発話中も結果待ちも解く
+  ListeningState withSpeechDiscarded() {
+    return ListeningState(
+      memos: memos,
+      speechActive: false,
+      awaitingTranscription: false,
+      appendTargetId: appendTargetId,
+      typeInMemoId: typeInMemoId,
+      typeInFrom: typeInFrom,
+    );
+  }
+
   // メモが1件確定した（先頭に差し、タイピング演出の対象にする）。
   // このメモを次の追記先にする
   ListeningState withMemoAdded(VoiceMemo memo) {
@@ -252,6 +265,7 @@ class ListeningNotifier extends AsyncNotifier<ListeningState> {
         onTranscribed: _onTranscribed,
         onSpeechActiveChanged: _onSpeechActiveChanged,
         onLevelChanged: (level) => _latestLevel = level,
+        onSpeechDiscarded: _onSpeechDiscarded,
       );
 
       // 録音を始める前にバックグラウンドでも続ける状態を作る
@@ -394,6 +408,14 @@ class ListeningNotifier extends AsyncNotifier<ListeningState> {
       // バックグラウンド中の権限取り消しなどはログのみ。権限の取り直しは RootView が担う
       debugPrint('[listening] リスニングを再開できませんでした: $error');
     }
+  }
+
+  // 発話が文字化されずに捨てられたら、「.」の結果待ちを解く（結果は届かないため）
+  void _onSpeechDiscarded() {
+    if (_disposed) return;
+    final current = state.value;
+    if (current == null) return;
+    state = AsyncData(current.withSpeechDiscarded());
   }
 
   // VAD の発話開始・終了の通知を状態へ写す

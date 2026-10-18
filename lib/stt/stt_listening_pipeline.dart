@@ -20,6 +20,8 @@ import 'package:momeo/stt/stt_downsampler.dart';
 //   録音は黙って止まることがあるため、音のチャンクが届き続けているかを
 //   見張り、途絶えたら録音を作り直す（→ 後半の「録音の見張り」）。
 //
+//   他のアプリが鳴っている間は届いた音を捨てる（→ 後半の「他のアプリの音に譲る」）。
+//
 //   所有するのは AudioRecorder だけ。SttAudioWorker は借り物で、
 //   dispose では区切り役の解放だけを頼み、認識器には触れない。
 // ============================================================
@@ -37,6 +39,14 @@ final int _kRecordSampleRate =
 const Duration _kWatchdogInterval = Duration(seconds: 2); // 録音の生死を確かめる間隔
 const Duration _kAudioStallLimit = Duration(seconds: 5); // これだけ音が届かなければ止まったとみなす
 const List<int> _kRestartDelaySeconds = [2, 4, 8, 16, 30]; // 作り直しの失敗が続いたときの待ち時間
+
+// ---------------------------------
+// 他のアプリの音に譲る設定
+// ---------------------------------
+
+const Duration _kOtherAudioCheckInterval = Duration(milliseconds: 500); // 他のアプリが鳴っているかを確かめる間隔
+// 鳴り止んだとみなすまでに、鳴っていない判定が続く回数（一瞬途切れただけで書き留めを再開しない）
+const int _kOtherAudioSilentChecksToTakeBack = 4;
 
 // ---------------------------------
 // 録音の設定
@@ -64,6 +74,7 @@ class SttListeningPipeline {
     required this.onTranscribed,
     this.onSpeechActiveChanged,
     this.onLevelChanged,
+    this.onSpeechDiscarded,
   })  : _worker = worker,
         _sileroPath = sileroPath;
 
@@ -79,6 +90,10 @@ class SttListeningPipeline {
   // マイク音量メーター用に、チャンクごとのピーク音量を渡す通知先（任意）
   final void Function(double level)? onLevelChanged;
 
+  // 区切りの途中の発話を、文字化せずに捨てたときに呼ばれる通知先（任意）。
+  // 捨てた発話の文字化結果は届かないので、受け取る側はこれで結果待ちを解く
+  final void Function()? onSpeechDiscarded;
+
   final AudioRecorder _recorder = AudioRecorder();
   // iOS だけ、48kHz で届く音を 16kHz へ落とす係を持つ
   final SttDownsampler? _downsampler = Platform.isIOS ? SttDownsampler() : null;
@@ -88,6 +103,19 @@ class SttListeningPipeline {
 
   bool _running = false;
 
+  // ---------------------------------
+  // 仕事をまたいで読み書きされる状態の印（直すときは、ここに挙げた読み手への影響も確かめる）
+  //
+  //   _interrupted          立てる: 録音状態の購読（OS の中断で pause）
+  //                         下ろす: 録音状態の購読（record）・停止
+  //                         読む  : 見張り（作り直さない）
+  //   _restarting           立てる: 作り直し
+  //                         読む  : 見張り・他のアプリの見張り（重ねて走らせない）
+  //   _otherAudioPlaying    立てる: 開始（鳴っている中で始めたとき）・鳴り始めた
+  //                         下ろす: 取り戻す・停止
+  //                         読む  : 音の流し込み（捨てる）
+  // ---------------------------------
+
   // 見張りが使う状態
   Timer? _watchdog;
   DateTime _lastAudioAt = DateTime.now(); // 最後に音のチャンクが届いた時刻
@@ -95,6 +123,12 @@ class SttListeningPipeline {
   bool _restarting = false; // 作り直しの最中（多重に走らせない）
   int _restartFailures = 0; // 作り直しに連続で失敗した回数
   DateTime? _restartNotBefore; // 次に作り直しを試してよい時刻
+
+  // 他のアプリの音に譲るための状態
+  Timer? _otherAudioTimer;
+  bool _otherAudioPlaying = false; // 鳴っている間は届いた音を捨てる
+  int _otherAudioSilentChecks = 0; // 鳴っていない判定が続いた回数
+  bool _checkingOtherAudio = false; // 確かめている最中（多重に走らせない）
 
   // ---------------------------------
   // リスニングの開始 / 停止
@@ -110,6 +144,10 @@ class SttListeningPipeline {
     }
 
     await _worker.startListening(sileroPath: _sileroPath);
+
+    // 他のアプリが鳴っているなら、最初から音を捨てる
+    _otherAudioPlaying = await _isOtherAudioPlaying();
+    _otherAudioSilentChecks = 0;
 
     // 録音を開くのはここまで。失敗しても後片付けの要る購読はまだ無い
     final stream = await _recorder.startStream(_kRecordConfig);
@@ -127,6 +165,8 @@ class SttListeningPipeline {
     _running = true;
     // 音が途絶えていないか見張り始める
     _startWatchdog();
+    // 他のアプリが鳴り始めないか見張り始める
+    _startOtherAudioWatch();
   }
 
   Future<void> stop() async {
@@ -134,6 +174,8 @@ class SttListeningPipeline {
     _running = false;
     // 意図した停止なので、見張りを先に下ろす
     _stopWatchdog();
+    // 他のアプリの見張りも下ろす
+    _stopOtherAudioWatch();
     // 録音状態の購読を切る
     await _stateSubscription?.cancel();
     // 次の start で貼り直せるようにする
@@ -231,6 +273,8 @@ class SttListeningPipeline {
   void _onAudioChunk(Uint8List pcm16Bytes) {
     // 届いた時刻を残す（見張りが見る）
     _lastAudioAt = DateTime.now();
+    // 他のアプリが鳴っている間は、その音を拾っているので捨てる
+    if (_otherAudioPlaying) return;
     // iOS は 48kHz で届くので、16kHz へ落としてから音声 isolate へ渡す
     final downsampler = _downsampler;
     _worker.pushAudio(
@@ -363,6 +407,83 @@ class SttListeningPipeline {
       // 段に応じた待ち時間
       Duration(seconds: _kRestartDelaySeconds[delayIndex]),
     );
+  }
+
+  // ---------------------------------
+  // 他のアプリの音に譲る
+  //   鳴っている間は届いた音を捨て、鳴り止んだら書き留めを再開する。マイクは開いたままにする
+  //   （閉じると iOS が背面で momeo を眠らせ、鳴り止んでも再開できなくなる）
+  // ---------------------------------
+
+  // 確かめられないときは鳴っていない扱いにする（録音は止めない）
+  Future<bool> _isOtherAudioPlaying() async {
+    try {
+      return await AudioSessionChannel.isOtherAudioPlaying();
+    } catch (error) {
+      debugPrint('[sttPipeline] 他のアプリの音を確かめられませんでした: $error');
+      return false;
+    }
+  }
+
+  void _startOtherAudioWatch() {
+    // 二重に走らせない
+    _otherAudioTimer?.cancel();
+    // 一定間隔で、他のアプリが鳴っているかを確かめる
+    _otherAudioTimer = Timer.periodic(
+      _kOtherAudioCheckInterval,
+      (_) => _checkOtherAudio(),
+    );
+  }
+
+  void _stopOtherAudioWatch() {
+    _otherAudioTimer?.cancel();
+    _otherAudioTimer = null;
+    // 次に始めるときへ持ち越さない
+    _otherAudioPlaying = false;
+    _otherAudioSilentChecks = 0;
+  }
+
+  Future<void> _checkOtherAudio() async {
+    // 止まっている・作り直しの最中・確かめている最中なら何もしない
+    if (!_running || _restarting || _checkingOtherAudio) return;
+    _checkingOtherAudio = true;
+    try {
+      final isPlaying = await AudioSessionChannel.isOtherAudioPlaying();
+      if (isPlaying) {
+        _otherAudioSilentChecks = 0;
+        if (!_otherAudioPlaying) await _yieldToOtherAudio();
+      } else if (_otherAudioPlaying) {
+        // 鳴っていない判定がしばらく続いてから取り戻す
+        _otherAudioSilentChecks++;
+        if (_otherAudioSilentChecks >= _kOtherAudioSilentChecksToTakeBack) {
+          _takeBackFromOtherAudio();
+        }
+      }
+    } catch (error) {
+      debugPrint('[sttPipeline] 他のアプリの音を確かめられませんでした: $error');
+    } finally {
+      _checkingOtherAudio = false;
+    }
+  }
+
+  // ---------------------------------
+  // 他のアプリが鳴り始めたとき
+  // ---------------------------------
+  Future<void> _yieldToOtherAudio() async {
+    // 先に捨て始める（ここから届く音は音声 isolate へ渡さない）
+    _otherAudioPlaying = true;
+    // 途中まで拾っていた発話は他のアプリの音が混ざっているので、文字化せずに捨てる
+    await _worker.startListening(sileroPath: _sileroPath);
+    onSpeechDiscarded?.call();
+  }
+
+  // ---------------------------------
+  // 他のアプリが鳴り止んだとき
+  // ---------------------------------
+  void _takeBackFromOtherAudio() {
+    // 印を下ろせば、次に届いた音から書き留めを再開する
+    _otherAudioPlaying = false;
+    _otherAudioSilentChecks = 0;
   }
 
   // ---------------------------------
