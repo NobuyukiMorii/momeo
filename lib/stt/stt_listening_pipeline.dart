@@ -20,7 +20,8 @@ import 'package:momeo/stt/stt_downsampler.dart';
 //   録音は黙って止まることがあるため、音のチャンクが届き続けているかを
 //   見張り、途絶えたら録音を作り直す（→ 後半の「録音の見張り」）。
 //
-//   他のアプリが鳴っている間は届いた音を捨てる（→ 後半の「他のアプリの音に譲る」）。
+//   他のアプリが鳴っている間は届いた音を捨てる。iOS ではさらに Bluetooth の
+//   マイクを手放してイヤホンを音楽用に戻す（→ 後半の「他のアプリの音に譲る」）。
 //
 //   所有するのは AudioRecorder だけ。SttAudioWorker は借り物で、
 //   dispose では区切り役の解放だけを頼み、認識器には触れない。
@@ -47,29 +48,41 @@ const List<int> _kRestartDelaySeconds = [2, 4, 8, 16, 30]; // 作り直しの失
 const Duration _kOtherAudioCheckInterval = Duration(milliseconds: 500); // 他のアプリが鳴っているかを確かめる間隔
 // 鳴り止んだとみなすまでに、鳴っていない判定が続く回数（一瞬途切れただけで書き留めを再開しない）
 const int _kOtherAudioSilentChecksToTakeBack = 4;
+// 録音を開いた・Bluetooth のマイクを手放した直後は、経路の組み直しで他のアプリの再生が途切れ、
+// 鳴っていないと出ることがある。この間は鳴り止んだと数えない（数えると開き直しで相手の再生を止めてしまう）
+const Duration _kOtherAudioSettleTime = Duration(seconds: 3);
 
 // ---------------------------------
 // 録音の設定
 // ---------------------------------
-final RecordConfig _kRecordConfig = RecordConfig(
-  encoder: AudioEncoder.pcm16bits,
-  sampleRate: _kRecordSampleRate,
-  numChannels: 1,
-  // Android は中断を扱わない。扱うと録音がオーディオフォーカスを独占して他のアプリの再生を止め、
-  // 他のアプリに奪われると戻ってこない。他のアプリの音は「他のアプリの音に譲る」で捨てる
-  audioInterruption: Platform.isIOS
-      ? AudioInterruptionMode.pauseResume
-      : AudioInterruptionMode.none,
-  iosConfig: const IosRecordConfig(
-    categoryOptions: [
-      IosAudioCategoryOption.mixWithOthers,
-      IosAudioCategoryOption.defaultToSpeaker,
-      IosAudioCategoryOption.allowBluetooth,
-      IosAudioCategoryOption.allowBluetoothA2DP,
-    ],
-    allowHapticsAndSystemSoundsDuringRecording: true,
-  ),
-);
+final RecordConfig _kRecordConfig = _buildRecordConfig(allowsBluetoothMic: true);
+
+// 他のアプリが鳴っている間の設定。Bluetooth のマイクを使わないことで、
+// イヤホンが通話用（HFP）に切り替わらず、音楽用（A2DP）のままになる
+final RecordConfig _kRecordConfigWhileOtherAudio =
+    _buildRecordConfig(allowsBluetoothMic: false);
+
+RecordConfig _buildRecordConfig({required bool allowsBluetoothMic}) {
+  return RecordConfig(
+    encoder: AudioEncoder.pcm16bits,
+    sampleRate: _kRecordSampleRate,
+    numChannels: 1,
+    // Android は中断を扱わない。扱うと録音がオーディオフォーカスを独占して他のアプリの再生を止め、
+    // 他のアプリに奪われると戻ってこない。他のアプリの音は「他のアプリの音に譲る」で捨てる
+    audioInterruption: Platform.isIOS
+        ? AudioInterruptionMode.pauseResume
+        : AudioInterruptionMode.none,
+    iosConfig: IosRecordConfig(
+      categoryOptions: [
+        IosAudioCategoryOption.mixWithOthers,
+        IosAudioCategoryOption.defaultToSpeaker,
+        if (allowsBluetoothMic) IosAudioCategoryOption.allowBluetooth,
+        IosAudioCategoryOption.allowBluetoothA2DP,
+      ],
+      allowHapticsAndSystemSoundsDuringRecording: true,
+    ),
+  );
+}
 
 class SttListeningPipeline {
   SttListeningPipeline({
@@ -113,11 +126,19 @@ class SttListeningPipeline {
   //   _interrupted          立てる: 録音状態の購読（OS の中断で pause）
   //                         下ろす: 録音状態の購読（record）・停止
   //                         読む  : 見張り（作り直さない）
-  //   _restarting           立てる: 作り直し
+  //   _restarting           立てる: 作り直し・録音を止めて手放す
   //                         読む  : 見張り・他のアプリの見張り（重ねて走らせない）
   //   _otherAudioPlaying    立てる: 開始（鳴っている中で始めたとき）・鳴り始めた
   //                         下ろす: 取り戻す・停止
-  //                         読む  : 音の流し込み（捨てる）
+  //                         読む  : 音の流し込み（捨てる）、録音を開く（設定を選ぶ）
+  //   _bluetoothMicReleased 立てる: 録音を開く（Bluetooth なしの設定のとき）・Bluetooth のマイクを手放す・録音を止めて手放す
+  //                         下ろす: 録音を開く（ふつうの設定のとき）・停止
+  //                         読む  : 取り戻す（開き直して Bluetooth のマイクに戻すか）
+  //   _releasedForOtherAudio 立てる: 録音を止めて手放す
+  //                         下ろす: 取り戻す・停止
+  //                         読む  : 見張り（作り直さない）
+  //   _otherAudioSettlesAt  立てる: 録音を開く・Bluetooth のマイクを手放す（経路が組み直されるため）
+  //                         読む  : 他のアプリの見張り（この間は鳴り止んだと数えない）
   // ---------------------------------
 
   // 見張りが使う状態
@@ -132,6 +153,10 @@ class SttListeningPipeline {
   Timer? _otherAudioTimer;
   bool _otherAudioPlaying = false; // 鳴っている間は届いた音を捨てる
   int _otherAudioSilentChecks = 0; // 鳴っていない判定が続いた回数
+  // 今の録音が Bluetooth のマイクを手放している（iOS のみ。取り戻すときに開き直して戻す）
+  bool _bluetoothMicReleased = false;
+  bool _releasedForOtherAudio = false; // 譲るために録音を止めてイヤホンを手放している
+  DateTime? _otherAudioSettlesAt; // この時刻までは、鳴っていない判定を数えない
   bool _checkingOtherAudio = false; // 確かめている最中（多重に走らせない）
 
   // ---------------------------------
@@ -149,12 +174,12 @@ class SttListeningPipeline {
 
     await _worker.startListening(sileroPath: _sileroPath);
 
-    // 他のアプリが鳴っているなら、最初から音を捨てる
+    // 他のアプリが鳴っているなら、最初から音を捨て、Bluetooth のマイクを使わない設定で開く
     _otherAudioPlaying = await _isOtherAudioPlaying();
     _otherAudioSilentChecks = 0;
 
     // 録音を開くのはここまで。失敗しても後片付けの要る購読はまだ無い
-    final stream = await _recorder.startStream(_kRecordConfig);
+    final stream = await _openRecordingStream();
 
     // 通知の購読を先に始めてから音声を流す（順番が逆だと最初の通知を取りこぼす）
     _eventSubscription = _worker.events.listen(
@@ -243,15 +268,23 @@ class SttListeningPipeline {
   }
 
   // ---------------------------------
-  // 録音ストリームの受け取り
+  // 録音を開く（開始と作り直しの両方がここを通る）
   // ---------------------------------
+  Future<Stream<Uint8List>> _openRecordingStream() {
+    // 他のアプリが鳴っている間は Bluetooth のマイクを使わない設定で開くので、
+    // 鳴り止んだときに開き直して戻せるよう覚えておく
+    _bluetoothMicReleased = Platform.isIOS && _otherAudioPlaying;
+    // 開くと経路が組み直されるので、しばらくは鳴り止んだと数えない
+    _waitForOtherAudioToSettle();
+    return _recorder.startStream(_currentRecordConfig);
+  }
 
   // ---------------------------------
   // 録音の開き直し
   // ---------------------------------
   Future<void> _reopenRecordingStream() async {
     // 録音エンジンごと作り直し、流し込みを繋ぎ直す
-    _listenToAudio(await _recorder.startStream(_kRecordConfig));
+    _listenToAudio(await _openRecordingStream());
   }
 
   // ---------------------------------
@@ -331,12 +364,14 @@ class SttListeningPipeline {
     if (!_running || _restarting) return;
     // 中断中は途絶えていて当たり前
     if (_interrupted) return;
+    // 他のアプリのために手放している間も途絶えていて当たり前（背面では作り直せず、経路の組み直しで相手の音が途切れる）
+    if (_releasedForOtherAudio) return;
     // まだ音が届いているなら何もしない
     if (DateTime.now().difference(_lastAudioAt) < _kAudioStallLimit) return;
     // 失敗の直後は待ち時間を置く
     if (!ignoresDelay && !_canRetryRestart()) return;
     // 止まっているので作り直す
-    await _restartRecording();
+    await _restartRecording(reason: '音が途絶えました');
   }
 
   // ---------------------------------
@@ -349,10 +384,11 @@ class SttListeningPipeline {
     return notBefore == null || !DateTime.now().isBefore(notBefore);
   }
 
-  Future<void> _restartRecording() async {
+  // reason は作り直すきっかけ（ログに残す）
+  Future<void> _restartRecording({required String reason}) async {
     // 見張りが重ねて走らないようにする
     _restarting = true;
-    debugPrint('[sttPipeline] 音が途絶えました。録音を作り直します');
+    debugPrint('[sttPipeline] $reason。録音を作り直します');
 
     // 失敗しても待ち時間を置いて次に繋ぐ
     try {
@@ -415,9 +451,14 @@ class SttListeningPipeline {
 
   // ---------------------------------
   // 他のアプリの音に譲る
-  //   鳴っている間は届いた音を捨て、鳴り止んだら書き留めを再開する。マイクは開いたままにする
-  //   （閉じると iOS が背面で momeo を眠らせ、鳴り止んでも再開できなくなる）
+  //   鳴っている間は届いた音を捨てる。iOS で Bluetooth のマイクを使っていれば手放し、
+  //   イヤホンを音楽用に戻す。背面では設定の差し替えも録音の開き直しも iOS に
+  //   拒否されるため、そのときは録音を止めてイヤホンごと手放し、前面で再開する
   // ---------------------------------
+
+  // 他のアプリが鳴っている間は、Bluetooth のマイクを使わない設定で開く
+  RecordConfig get _currentRecordConfig =>
+      _otherAudioPlaying ? _kRecordConfigWhileOtherAudio : _kRecordConfig;
 
   // 確かめられないときは鳴っていない扱いにする（録音は止めない）
   Future<bool> _isOtherAudioPlaying() async {
@@ -439,12 +480,24 @@ class SttListeningPipeline {
     );
   }
 
+  // 経路の組み直しの直後か（この間は鳴っていない判定を数えない）
+  bool get _isOtherAudioSettling {
+    final settlesAt = _otherAudioSettlesAt;
+    return settlesAt != null && DateTime.now().isBefore(settlesAt);
+  }
+
+  void _waitForOtherAudioToSettle() {
+    _otherAudioSettlesAt = DateTime.now().add(_kOtherAudioSettleTime);
+  }
+
   void _stopOtherAudioWatch() {
     _otherAudioTimer?.cancel();
     _otherAudioTimer = null;
     // 次に始めるときへ持ち越さない
     _otherAudioPlaying = false;
     _otherAudioSilentChecks = 0;
+    _bluetoothMicReleased = false;
+    _releasedForOtherAudio = false;
   }
 
   Future<void> _checkOtherAudio() async {
@@ -457,10 +510,15 @@ class SttListeningPipeline {
         _otherAudioSilentChecks = 0;
         if (!_otherAudioPlaying) await _yieldToOtherAudio();
       } else if (_otherAudioPlaying) {
+        // 経路の組み直しの直後は、一瞬途切れているだけかもしれないので数えない
+        if (_isOtherAudioSettling) {
+          _otherAudioSilentChecks = 0;
+          return;
+        }
         // 鳴っていない判定がしばらく続いてから取り戻す
         _otherAudioSilentChecks++;
         if (_otherAudioSilentChecks >= _kOtherAudioSilentChecksToTakeBack) {
-          _takeBackFromOtherAudio();
+          await _takeBackFromOtherAudio();
         }
       }
     } catch (error) {
@@ -479,15 +537,64 @@ class SttListeningPipeline {
     // 途中まで拾っていた発話は他のアプリの音が混ざっているので、文字化せずに捨てる
     await _worker.startListening(sileroPath: _sileroPath);
     onSpeechDiscarded?.call();
+
+    // Android と iOS の本体マイクは捨てるだけでよい。設定を替えなければ背面でも録音が続き、
+    // 鳴り止めばそのまま再開できる
+    if (!Platform.isIOS || !await AudioSessionChannel.isBluetoothMicInUse()) return;
+
+    try {
+      // 録音を止めずに Bluetooth のマイクを手放し、イヤホンを音楽用に戻す（前面でだけ通る）
+      await AudioSessionChannel.releaseBluetoothMic();
+      _bluetoothMicReleased = true;
+      // 手放すと経路が組み直されるので、しばらくは鳴り止んだと数えない
+      _waitForOtherAudioToSettle();
+    } catch (error) {
+      // 背面で拒否されたときは、録音を止めてイヤホンごと手放す（再開は前面に戻ったとき）
+      await _releaseRecordingForOtherAudio();
+    }
   }
 
   // ---------------------------------
   // 他のアプリが鳴り止んだとき
   // ---------------------------------
-  void _takeBackFromOtherAudio() {
-    // 印を下ろせば、次に届いた音から書き留めを再開する
+  Future<void> _takeBackFromOtherAudio() async {
+    // Bluetooth のマイクを手放している・録音を止めているなら、開き直しが要る
+    final needsReopen = _bluetoothMicReleased;
     _otherAudioPlaying = false;
     _otherAudioSilentChecks = 0;
+    _releasedForOtherAudio = false;
+    if (!needsReopen) return;
+
+    // 設定の差し替えだけだと録音エンジンが黙って止まるため、待たずにその場で開き直す。
+    // 開き直しで Bluetooth のマイクを使える設定に戻る（_bluetoothMicReleased も下りる）。
+    // 背面で失敗しても、見張りが作り直しを続け、前面に戻れば再開できる
+    await _restartRecording(reason: '他のアプリが鳴り止みました');
+  }
+
+  // ---------------------------------
+  // 録音を止めてイヤホンごと手放す（見張りの作り直しとは重ねない）
+  // ---------------------------------
+  Future<void> _releaseRecordingForOtherAudio() async {
+    _restarting = true;
+    try {
+      // 録音からの流し込みを切る
+      await _audioSubscription?.cancel();
+      _audioSubscription = null;
+      try {
+        // 録音を閉じる
+        await _recorder.stop();
+      } catch (_) {
+        // 既に止まっている場合の例外は無視して手放しへ進む
+      }
+      // 取り戻すまで、見張りに作り直しをさせない
+      _bluetoothMicReleased = true;
+      _releasedForOtherAudio = true;
+      await AudioSessionChannel.releaseAudioSession();
+    } catch (error) {
+      debugPrint('[sttPipeline] イヤホンを手放せませんでした: $error');
+    } finally {
+      _restarting = false;
+    }
   }
 
   // ---------------------------------
