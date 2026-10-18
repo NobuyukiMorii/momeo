@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io' show Platform;
 import 'dart:math' show min;
 import 'dart:typed_data';
 
@@ -6,6 +7,7 @@ import 'package:flutter/foundation.dart' show debugPrint, kDebugMode;
 import 'package:record/record.dart';
 
 import 'package:momeo/stt/stt_audio_worker.dart';
+import 'package:momeo/stt/stt_downsampler.dart';
 
 // ============================================================
 // リスニングの録音パイプライン（録音 → 音声 isolate → 通知）
@@ -21,7 +23,11 @@ import 'package:momeo/stt/stt_audio_worker.dart';
 //   dispose では区切り役の解放だけを頼み、認識器には触れない。
 // ============================================================
 
-const int _kSampleRate = 16000; // 録音のサンプリングレート（VAD・認識モデルの前提）
+const int _kSampleRate = 16000; // 音声 isolate へ渡すサンプリングレート（VAD・認識モデルの前提）
+
+// iOS は録音のレートが他のアプリの再生音にも効くため 48kHz で録り、16kHz へは自前で落とす
+final int _kRecordSampleRate =
+    Platform.isIOS ? SttDownsampler.inputSampleRate : _kSampleRate;
 
 // ---------------------------------
 // 録音の見張りの設定
@@ -34,12 +40,12 @@ const List<int> _kRestartDelaySeconds = [2, 4, 8, 16, 30]; // 作り直しの失
 // ---------------------------------
 // 録音の設定
 // ---------------------------------
-const RecordConfig _kRecordConfig = RecordConfig(
+final RecordConfig _kRecordConfig = RecordConfig(
   encoder: AudioEncoder.pcm16bits,
-  sampleRate: _kSampleRate,
+  sampleRate: _kRecordSampleRate,
   numChannels: 1,
   audioInterruption: AudioInterruptionMode.pauseResume,
-  iosConfig: IosRecordConfig(
+  iosConfig: const IosRecordConfig(
     categoryOptions: [
       IosAudioCategoryOption.mixWithOthers,
       IosAudioCategoryOption.defaultToSpeaker,
@@ -73,6 +79,8 @@ class SttListeningPipeline {
   final void Function(double level)? onLevelChanged;
 
   final AudioRecorder _recorder = AudioRecorder();
+  // iOS だけ、48kHz で届く音を 16kHz へ落とす係を持つ
+  final SttDownsampler? _downsampler = Platform.isIOS ? SttDownsampler() : null;
   StreamSubscription<Uint8List>? _audioSubscription;
   StreamSubscription<SttAudioEvent>? _eventSubscription;
   StreamSubscription<RecordState>? _stateSubscription;
@@ -190,6 +198,8 @@ class SttListeningPipeline {
   void _listenToAudio(Stream<Uint8List> stream) {
     // 見張りの起点を今にする
     _lastAudioAt = DateTime.now();
+    // 前の録音の音を持ち越さない
+    _downsampler?.reset();
     // 届いたチャンクを音声 isolate へ渡す
     _audioSubscription = stream.listen(
       // 1チャンクぶんの受け取り
@@ -205,8 +215,11 @@ class SttListeningPipeline {
   void _onAudioChunk(Uint8List pcm16Bytes) {
     // 届いた時刻を残す（見張りが見る）
     _lastAudioAt = DateTime.now();
-    // 音声 isolate へ渡す
-    _worker.pushAudio(pcm16Bytes);
+    // iOS は 48kHz で届くので、16kHz へ落としてから音声 isolate へ渡す
+    final downsampler = _downsampler;
+    _worker.pushAudio(
+      downsampler == null ? pcm16Bytes : downsampler.convert(pcm16Bytes),
+    );
   }
 
   // ---------------------------------
