@@ -93,6 +93,7 @@ class SttListeningPipeline {
     required this.onTranscribed,
     this.onSpeechActiveChanged,
     this.onLevelChanged,
+    this.onPausedChanged,
     this.onSpeechDiscarded,
   })  : _worker = worker,
         _sileroPath = sileroPath;
@@ -108,6 +109,10 @@ class SttListeningPipeline {
 
   // マイク音量メーター用に、チャンクごとのピーク音量を渡す通知先（任意）
   final void Function(double level)? onLevelChanged;
+
+  // 録音が一時的に中断されているか（他のアプリが鳴っている・OS に中断されている）が
+  // 切り替わるたびに呼ばれる通知先（任意）
+  final void Function(bool isPaused)? onPausedChanged;
 
   // 区切りの途中の発話を、文字化せずに捨てたときに呼ばれる通知先（任意）。
   // 捨てた発話の文字化結果は届かないので、受け取る側はこれで結果待ちを解く
@@ -128,12 +133,12 @@ class SttListeningPipeline {
   //
   //   _interrupted          立てる: 録音状態の購読（OS の中断で pause）
   //                         下ろす: 録音状態の購読（record）・取り戻す・停止
-  //                         読む  : 見張り・抜き差しの見張り（作り直さない）、取り戻す（開き直すか）、前面復帰
+  //                         読む  : 見張り・抜き差しの見張り（作り直さない）、取り戻す（開き直すか）、前面復帰、中断の通知
   //   _restarting           立てる: 作り直し・録音を止めて手放す
   //                         読む  : 見張り・抜き差しの見張り・他のアプリの見張り（重ねて走らせない）
   //   _otherAudioPlaying    立てる: 開始（鳴っている中で始めたとき）・鳴り始めた
   //                         下ろす: 取り戻す・停止
-  //                         読む  : 音の流し込み（捨てる）、録音を開く（設定を選ぶ）、前面復帰
+  //                         読む  : 音の流し込み（捨てる）、録音を開く（設定を選ぶ）、前面復帰、中断の通知
   //   _bluetoothMicReleased 立てる: 録音を開く（Bluetooth なしの設定のとき）・Bluetooth のマイクを手放す・録音を止めて手放す
   //                         下ろす: 録音を開く（ふつうの設定のとき）・停止
   //                         読む  : 取り戻す（開き直して Bluetooth のマイクに戻すか）
@@ -162,6 +167,8 @@ class SttListeningPipeline {
   bool _releasedForOtherAudio = false; // 譲るために録音を止めてイヤホンを手放している
   DateTime? _otherAudioSettlesAt; // この時刻までは、鳴っていない判定を数えない
   bool _checkingOtherAudio = false; // 確かめている最中（多重に走らせない）
+
+  bool _notifiedPaused = false; // 最後に知らせた「一時的に中断されているか」
 
   // ---------------------------------
   // リスニングの開始 / 停止
@@ -196,6 +203,8 @@ class SttListeningPipeline {
     _listenToAudio(stream);
     // ここから先はリスニング中として扱う
     _running = true;
+    // 他のアプリが鳴っている中で始めたなら、中断中だと知らせる
+    _notifyPausedIfChanged();
     // 音が途絶えていないか見張り始める
     _startWatchdog();
     // 機器の抜き差しで録音が止まっていないかも見張る
@@ -219,6 +228,8 @@ class SttListeningPipeline {
     _stateSubscription = null;
     // 中断中かどうかの記憶を持ち越さない
     _interrupted = false;
+    // 止めたので、中断中の表示も解く
+    _notifyPausedIfChanged();
     // 作り直しの失敗回数を持ち越さない
     _restartFailures = 0;
     // 次は待たずに作り直せる状態に戻す
@@ -342,6 +353,7 @@ class SttListeningPipeline {
     _stateSubscription = _recorder.onStateChanged().listen(
       (state) {
         _interrupted = state == RecordState.pause;
+        _notifyPausedIfChanged();
         // 中断から戻った直後は音がまだ届いていないので、見張りの起点を今にする
         if (state == RecordState.record) _lastAudioAt = DateTime.now();
       },
@@ -590,6 +602,7 @@ class SttListeningPipeline {
   Future<void> _yieldToOtherAudio() async {
     // 先に捨て始める（ここから届く音は音声 isolate へ渡さない）
     _otherAudioPlaying = true;
+    _notifyPausedIfChanged();
     // 途中まで拾っていた発話は他のアプリの音が混ざっているので、文字化せずに捨てる
     await _worker.startListening(sileroPath: _sileroPath);
     onSpeechDiscarded?.call();
@@ -621,6 +634,7 @@ class SttListeningPipeline {
     _otherAudioSilentChecks = 0;
     _releasedForOtherAudio = false;
     _interrupted = false;
+    _notifyPausedIfChanged();
     if (!needsReopen) return;
 
     // 設定の差し替えだけだと録音エンジンが黙って止まるため、待たずにその場で開き直す。
@@ -653,6 +667,17 @@ class SttListeningPipeline {
     } finally {
       _restarting = false;
     }
+  }
+
+  // ---------------------------------
+  // 一時的に中断されているかの通知
+  //   他のアプリが鳴っていて音を捨てている間と、OS に録音を中断されている間
+  // ---------------------------------
+  void _notifyPausedIfChanged() {
+    final isPaused = _running && (_otherAudioPlaying || _interrupted);
+    if (isPaused == _notifiedPaused) return;
+    _notifiedPaused = isPaused;
+    onPausedChanged?.call(isPaused);
   }
 
   // ---------------------------------

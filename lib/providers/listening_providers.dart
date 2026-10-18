@@ -47,6 +47,7 @@ class ListeningState {
     this.memos = const [],
     this.speechActive = false,
     this.awaitingTranscription = false,
+    this.recordingPaused = false,
     this.appendTargetId,
     this.typeInMemoId,
     this.typeInFrom = 0,
@@ -60,6 +61,9 @@ class ListeningState {
 
   // 発話が終わり、文字化の結果（空の結果も含む）を待っているか
   final bool awaitingTranscription;
+
+  // 録音が一時的に中断されているか（他のアプリが鳴っている・OS に中断されている）
+  final bool recordingPaused;
 
   // 次の発話を書き足すメモの id
   final int? appendTargetId;
@@ -82,6 +86,7 @@ class ListeningState {
       // 発話が終わったら、結果が届くまで待ちに入る
       awaitingTranscription:
           awaitingTranscription || (speechActive && !isActive),
+      recordingPaused: recordingPaused,
       appendTargetId: appendTargetId,
       typeInMemoId: typeInMemoId,
       typeInFrom: typeInFrom,
@@ -95,6 +100,20 @@ class ListeningState {
       memos: memos,
       speechActive: false,
       awaitingTranscription: false,
+      recordingPaused: recordingPaused,
+      appendTargetId: appendTargetId,
+      typeInMemoId: typeInMemoId,
+      typeInFrom: typeInFrom,
+    );
+  }
+
+  // 録音が一時的に中断された・再開した
+  ListeningState withRecordingPaused(bool isPaused) {
+    return ListeningState(
+      memos: memos,
+      speechActive: speechActive,
+      awaitingTranscription: awaitingTranscription,
+      recordingPaused: isPaused,
       appendTargetId: appendTargetId,
       typeInMemoId: typeInMemoId,
       typeInFrom: typeInFrom,
@@ -108,6 +127,7 @@ class ListeningState {
       memos: [memo, ...memos],
       speechActive: speechActive,
       awaitingTranscription: false,
+      recordingPaused: recordingPaused,
       appendTargetId: memo.id,
       typeInMemoId: memo.id,
       typeInFrom: 0,
@@ -120,6 +140,7 @@ class ListeningState {
       memos: [memo, ...memos.skip(1)],
       speechActive: speechActive,
       awaitingTranscription: false,
+      recordingPaused: recordingPaused,
       appendTargetId: memo.id,
       typeInMemoId: memo.id,
       typeInFrom: typeInFrom,
@@ -132,6 +153,7 @@ class ListeningState {
       memos: memos,
       speechActive: speechActive,
       awaitingTranscription: awaitingTranscription,
+      recordingPaused: recordingPaused,
       appendTargetId: null,
       typeInMemoId: typeInMemoId,
       typeInFrom: typeInFrom,
@@ -144,6 +166,7 @@ class ListeningState {
       memos: memos,
       speechActive: speechActive,
       awaitingTranscription: false,
+      recordingPaused: recordingPaused,
       appendTargetId: appendTargetId,
       typeInMemoId: typeInMemoId,
       typeInFrom: typeInFrom,
@@ -162,6 +185,7 @@ class ListeningState {
       ],
       speechActive: speechActive,
       awaitingTranscription: awaitingTranscription,
+      recordingPaused: recordingPaused,
       // 追記先が消えていたら、追記先も手放す
       appendTargetId: removedIds.contains(appendTargetId) ? null : appendTargetId,
       typeInMemoId: typeInMemoId,
@@ -175,6 +199,7 @@ class ListeningState {
       memos: memos,
       speechActive: speechActive,
       awaitingTranscription: awaitingTranscription,
+      recordingPaused: recordingPaused,
       appendTargetId: appendTargetId,
       typeInMemoId: null,
       typeInFrom: typeInFrom,
@@ -265,6 +290,7 @@ class ListeningNotifier extends AsyncNotifier<ListeningState> {
         onTranscribed: _onTranscribed,
         onSpeechActiveChanged: _onSpeechActiveChanged,
         onLevelChanged: (level) => _latestLevel = level,
+        onPausedChanged: _onRecordingPausedChanged,
         onSpeechDiscarded: _onSpeechDiscarded,
       );
 
@@ -408,6 +434,14 @@ class ListeningNotifier extends AsyncNotifier<ListeningState> {
       // バックグラウンド中の権限取り消しなどはログのみ。権限の取り直しは RootView が担う
       debugPrint('[listening] リスニングを再開できませんでした: $error');
     }
+  }
+
+  // 録音の一時的な中断・再開を状態へ写す（録音設定パネルの状態行が表示を切り替える）
+  void _onRecordingPausedChanged(bool isPaused) {
+    if (_disposed) return;
+    final current = state.value;
+    if (current == null) return;
+    state = AsyncData(current.withRecordingPaused(isPaused));
   }
 
   // 発話が文字化されずに捨てられたら、「.」の結果待ちを解く（結果は届かないため）
