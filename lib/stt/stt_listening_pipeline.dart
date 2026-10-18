@@ -40,6 +40,8 @@ final int _kRecordSampleRate =
 const Duration _kWatchdogInterval = Duration(seconds: 2); // 録音の生死を確かめる間隔
 const Duration _kAudioStallLimit = Duration(seconds: 5); // これだけ音が届かなければ止まったとみなす
 const List<int> _kRestartDelaySeconds = [2, 4, 8, 16, 30]; // 作り直しの失敗が続いたときの待ち時間
+const Duration _kDeviceChangeSettleTime = Duration(seconds: 1); // 機器の抜き差しのあと、経路が落ち着くまで待つ時間
+const Duration _kDeviceChangeStallLimit = Duration(milliseconds: 500); // 抜き差しのあと、これだけ音が届かなければ止まったとみなす
 
 // ---------------------------------
 // 他のアプリの音に譲る設定
@@ -117,6 +119,7 @@ class SttListeningPipeline {
   StreamSubscription<Uint8List>? _audioSubscription;
   StreamSubscription<SttAudioEvent>? _eventSubscription;
   StreamSubscription<RecordState>? _stateSubscription;
+  StreamSubscription<void>? _deviceChangeSubscription;
 
   bool _running = false;
 
@@ -125,9 +128,9 @@ class SttListeningPipeline {
   //
   //   _interrupted          立てる: 録音状態の購読（OS の中断で pause）
   //                         下ろす: 録音状態の購読（record）・取り戻す・停止
-  //                         読む  : 見張り（作り直さない）、取り戻す（開き直すか）、前面復帰
+  //                         読む  : 見張り・抜き差しの見張り（作り直さない）、取り戻す（開き直すか）、前面復帰
   //   _restarting           立てる: 作り直し・録音を止めて手放す
-  //                         読む  : 見張り・他のアプリの見張り（重ねて走らせない）
+  //                         読む  : 見張り・抜き差しの見張り・他のアプリの見張り（重ねて走らせない）
   //   _otherAudioPlaying    立てる: 開始（鳴っている中で始めたとき）・鳴り始めた
   //                         下ろす: 取り戻す・停止
   //                         読む  : 音の流し込み（捨てる）、録音を開く（設定を選ぶ）、前面復帰
@@ -136,7 +139,7 @@ class SttListeningPipeline {
   //                         読む  : 取り戻す（開き直して Bluetooth のマイクに戻すか）
   //   _releasedForOtherAudio 立てる: 録音を止めて手放す
   //                         下ろす: 取り戻す・停止
-  //                         読む  : 見張り（作り直さない）
+  //                         読む  : 見張り・抜き差しの見張り（作り直さない）
   //   _otherAudioSettlesAt  立てる: 録音を開く・Bluetooth のマイクを手放す（経路が組み直されるため）
   //                         読む  : 他のアプリの見張り・前面復帰（この間は鳴り止んだと数えない）
   // ---------------------------------
@@ -148,6 +151,7 @@ class SttListeningPipeline {
   bool _restarting = false; // 作り直しの最中（多重に走らせない）
   int _restartFailures = 0; // 作り直しに連続で失敗した回数
   DateTime? _restartNotBefore; // 次に作り直しを試してよい時刻
+  Timer? _deviceChangeCheck; // 機器の抜き差しのあとの生死確認の予約
 
   // 他のアプリの音に譲るための状態
   Timer? _otherAudioTimer;
@@ -194,6 +198,8 @@ class SttListeningPipeline {
     _running = true;
     // 音が途絶えていないか見張り始める
     _startWatchdog();
+    // 機器の抜き差しで録音が止まっていないかも見張る
+    _watchDeviceChanges();
     // 他のアプリが鳴り始めないか見張り始める
     _startOtherAudioWatch();
   }
@@ -203,6 +209,8 @@ class SttListeningPipeline {
     _running = false;
     // 意図した停止なので、見張りを先に下ろす
     _stopWatchdog();
+    // 機器の抜き差しの見張りも下ろす
+    await _stopWatchingDeviceChanges();
     // 他のアプリの見張りも下ろす
     _stopOtherAudioWatch();
     // 録音状態の購読を切る
@@ -383,6 +391,43 @@ class SttListeningPipeline {
     if (!ignoresDelay && !_canRetryRestart()) return;
     // 止まっているので作り直す
     await _restartRecording(reason: '音が途絶えました');
+  }
+
+  // ---------------------------------
+  // 機器の抜き差しの見張り（iOS のみ）
+  //   Bluetooth イヤホンがつながると録音エンジンが黙って止まることがある。
+  //   ふだんの見張りは5秒待つため、抜き差しを合図にすぐ生死を確かめる
+  // ---------------------------------
+  void _watchDeviceChanges() {
+    if (!Platform.isIOS) return;
+    _deviceChangeSubscription = AudioSessionChannel.deviceChanges.listen(
+      (_) => _scheduleDeviceChangeCheck(),
+      onError: (Object error) => debugPrint('[sttPipeline] 機器の抜き差しの知らせのエラー: $error'),
+    );
+  }
+
+  Future<void> _stopWatchingDeviceChanges() async {
+    _deviceChangeCheck?.cancel();
+    _deviceChangeCheck = null;
+    await _deviceChangeSubscription?.cancel();
+    _deviceChangeSubscription = null;
+  }
+
+  // 経路が落ち着くのを待ってから確かめる（抜き差しの知らせは続けて届くことがあるので、最後の1回から数える）
+  void _scheduleDeviceChangeCheck() {
+    _deviceChangeCheck?.cancel();
+    _deviceChangeCheck = Timer(_kDeviceChangeSettleTime, _restartIfStalledAfterDeviceChange);
+  }
+
+  Future<void> _restartIfStalledAfterDeviceChange() async {
+    // 止まっている・作り直しの最中なら何もしない
+    if (!_running || _restarting) return;
+    // 中断中・他のアプリのために手放している間は途絶えていて当たり前
+    if (_interrupted || _releasedForOtherAudio) return;
+    // 音が届き続けているなら、録音は生きている
+    if (DateTime.now().difference(_lastAudioAt) < _kDeviceChangeStallLimit) return;
+    // 止まっているので、ふだんの見張りを待たずに作り直す
+    await _restartRecording(reason: '機器の抜き差しのあと音が途絶えました');
   }
 
   // ---------------------------------
