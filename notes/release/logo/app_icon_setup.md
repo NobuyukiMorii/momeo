@@ -8,6 +8,8 @@ momeo のアプリアイコンを、Figma での画像作成から端末のホ�
 - **Figma で 1024×1024 の PNG を2枚作るだけでよい**（iOS 用1枚 + Android 用1枚）
 - サイズ違いのファイルを手で量産する必要はない。
   `flutter_launcher_icons` というツールが全サイズを自動生成してくれる
+- ただし iOS の Live Activity のアイコン（`MomeoIcon`）だけは自動生成の対象外。
+  アイコンを差し替えたら、手順4の「Live Activity のアイコンを作り直す」も行う
 
 ---
 
@@ -163,6 +165,29 @@ android/app/src/main/res/
 > アダプティブアイコンになっていない。上の設定で生成すればアダプティブアイコン用の
 > ファイル一式も新しく作られる。
 
+### Live Activity のアイコンを作り直す（iOS・手作業）
+
+バックグラウンド録音中にロック画面と Dynamic Island に出る Live Activity は、
+アプリ本体とは別のバンドル（ウィジェット拡張 `ios/MomeoWidgets`）で描かれる。
+本体の `AppIcon` は読めないため、専用の画像 `MomeoIcon` を別に持っている。
+`flutter_launcher_icons` はここを生成しないので、アイコンを差し替えたら手で作り直す。
+
+表示は 36pt なので、@2x 用の 72px と @3x 用の 108px の2枚を用意する。
+1024px のまま置くと Live Activity の画像サイズの制限を超え、
+アイコンの代わりに灰色の四角が出る。
+
+プロジェクトルートで実行:
+
+```bash
+sips -z 72 72 assets/icon/app_icon_ios.png --out ios/MomeoWidgets/Assets.xcassets/MomeoIcon.imageset/momeo_icon@2x.png
+```
+
+```bash
+sips -z 108 108 assets/icon/app_icon_ios.png --out ios/MomeoWidgets/Assets.xcassets/MomeoIcon.imageset/momeo_icon@3x.png
+```
+
+ファイル名を変えなければ、`MomeoIcon.imageset/Contents.json` は編集しなくてよい。
+
 ---
 
 ## 5. 実機・シミュレータで確認する
@@ -176,6 +201,8 @@ flutter run
 確認ポイント:
 
 - **iOS**: ホーム画面で角丸が正しく付き、ロゴの余白バランスが崩れていないか
+- **iOS（Live Activity）**: バックグラウンド録音を ON にして録音し、
+  ロック画面の Live Activity に新しいアイコンが出ているか（灰色の四角になっていないか）
 - **Android**: ホーム画面でロゴが欠けていないか
   （端末やランチャー設定によって丸・角丸四角など形が変わるので、
   形を変えて見られる環境があれば複数の形で確認する）

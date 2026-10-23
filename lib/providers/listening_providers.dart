@@ -261,6 +261,7 @@ class ListeningNotifier extends AsyncNotifier<ListeningState> {
       _pipeline?.dispose();
       _pipeline = null;
       unawaited(ListeningForegroundService.stop()); // フォアグラウンドサービスを終了
+      unawaited(ListeningLiveActivity.setRecordingPaused(false)); // 中断の記録を次の録音へ持ち越さない
       unawaited(ListeningLiveActivity.dismiss()); // 「録音中」の Live Activity を消す（iOS）
     });
 
@@ -296,6 +297,9 @@ class ListeningNotifier extends AsyncNotifier<ListeningState> {
 
       // 録音を始める前にバックグラウンドでも続ける状態を作る
       _keepsRecordingInBackground = await _prepareBackgroundRecording();
+
+      // iOS の Live Activity に出す経過時間の起点を、録音を始めるこの時刻にする
+      ListeningLiveActivity.markRecordingStarted();
 
       // iOS の Live Activity を表示
       if (_keepsRecordingInBackground) {
@@ -438,6 +442,8 @@ class ListeningNotifier extends AsyncNotifier<ListeningState> {
 
   // 録音の一時的な中断・再開を状態へ写す（録音設定パネルの状態行が表示を切り替える）
   void _onRecordingPausedChanged(bool isPaused) {
+    // iOS の Live Activity の文言を、中断中は「録音が一時的に中断されています」にする
+    unawaited(ListeningLiveActivity.setRecordingPaused(isPaused));
     if (_disposed) return;
     final current = state.value;
     if (current == null) return;
@@ -547,9 +553,6 @@ class ListeningNotifier extends AsyncNotifier<ListeningState> {
     final memo = VoiceMemo(id: id, content: content, createdAt: createdAt);
     // 次の追記先にする
     _appendTarget = memo;
-
-    // ブロックが1つ増えたので、iOS の Live Activity の件数を進める（表示していなければ何もしない）
-    unawaited(ListeningLiveActivity.incrementMemoCount());
 
     if (_disposed) return;
     final current = state.value;

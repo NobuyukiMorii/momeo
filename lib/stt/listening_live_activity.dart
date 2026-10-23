@@ -33,8 +33,11 @@ class ListeningLiveActivity {
   // 出した Live Activity の識別子（null なら出していない）
   static String? _activityId;
 
-  // バックグラウンド録音の状態が続いている間に書き留めたメモの件数
-  static int _memoCount = 0;
+  // 録音画面で録音を始めた時刻（経過時間の起点。Live Activity を出し直しても変えない）
+  static DateTime _recordingStartedAt = DateTime.now();
+
+  // 録音が一時的に中断されているか
+  static bool _isRecordingPaused = false;
 
   // 出し直しのタイマー
   static Timer? _restartTimer;
@@ -102,9 +105,6 @@ class ListeningLiveActivity {
     // 既に_shouldShowActivity が false なら Live Activity を表示しない
     if (!_shouldShowActivity) return;
 
-    // 件数は状態の成立ごとに数え直す
-    _memoCount = 0;
-
     // Live Activity を表示
     _activityId = await _createActivity();
 
@@ -120,17 +120,26 @@ class ListeningLiveActivity {
   }
 
   // ---------------------------------
-  // メモの件数をカウントアップ
+  // 録音を始めた時刻を覚える（経過時間の起点になる）
   // ---------------------------------
-  static Future<void> incrementMemoCount() async {
+  static void markRecordingStarted() {
+    _recordingStartedAt = DateTime.now();
+  }
+
+  // ---------------------------------
+  // 録音の一時的な中断・再開を文言に反映
+  // ---------------------------------
+  static Future<void> setRecordingPaused(bool isPaused) async {
     // iOS でなければ何もしない
     if (!Platform.isIOS) return;
-    // Live Activity を表示していなければ何もしない
+    // 状態が変わらなければ何もしない
+    if (isPaused == _isRecordingPaused) return;
+    // 中断しているかを覚える
+    _isRecordingPaused = isPaused;
+
+    // Live Activity を表示していなければ、覚えるだけで終わる
     final activityId = _activityId;
-    // Live Activity Id が設定されていなければ何もしない
     if (activityId == null) return;
-    // 件数をカウントアップ
-    _memoCount += 1;
     // Live Activity を更新
     await _plugin.updateActivity(activityId, _buildData());
   }
@@ -159,7 +168,11 @@ class ListeningLiveActivity {
   // ---------------------------------
   // Widget Extension へ渡す表示用の値を作成
   // ---------------------------------
-  static Map<String, dynamic> _buildData() => {'memoCount': _memoCount};
+  //   時刻は 1970年からの秒数で渡す
+  static Map<String, dynamic> _buildData() => {
+        'recordingStartedAt': _recordingStartedAt.millisecondsSinceEpoch / 1000,
+        'isRecordingPaused': _isRecordingPaused,
+      };
 
   // ---------------------------------
   // Live Activity を8時間の OS 上限の手前で、一度終了して出し直す
