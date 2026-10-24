@@ -16,7 +16,8 @@ import 'package:momeo/platform/speech_transcriber_channel.dart';
 //   数秒かかる処理で UI スレッドが止まることは構造上起きない。
 //
 //   useOsTranscriber のときは認識器を作らず、区切った発話を UI 側へ戻して
-//   OS 内蔵の文字起こし（iOS の SpeechTranscriber）に頼む（→ 下の「OS の文字起こし」）。
+//   OS 内蔵の文字起こし（iOS: SpeechTranscriber / Android: SpeechRecognizer）に頼む
+//   （→ 下の「OS の文字起こし」）。
 // ============================================================
 
 const int _kSampleRate = 16000; // 1秒あたりのサンプル数
@@ -241,11 +242,11 @@ class SttAudioWorker {
         text = await SpeechTranscriberChannel.transcribe(samples);
       } catch (error) {
         // 失敗しても結果待ちが解けるよう、空のテキストとして知らせる
-        debugPrint('[sttWorker] SpeechTranscriber で文字化できませんでした: $error');
+        debugPrint('[sttWorker] OS の文字起こしで文字化できませんでした: $error');
       }
       stopwatch.stop();
       debugPrint(
-        '[sttWorker] SpeechTranscriber 発話 ${(samples.length / _kSampleRate).toStringAsFixed(1)}s'
+        '[sttWorker] OS の文字起こし 発話 ${(samples.length / _kSampleRate).toStringAsFixed(1)}s'
         ' → 転写 ${stopwatch.elapsedMilliseconds}ms → 「$text」',
       );
 

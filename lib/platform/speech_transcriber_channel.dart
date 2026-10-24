@@ -3,9 +3,11 @@ import 'dart:typed_data';
 import 'package:flutter/services.dart';
 
 // ============================================================
-// OS 内蔵の文字起こし（iOS 26 の SpeechTranscriber）の窓口
+// OS 内蔵の文字起こしの窓口
 //
-//   Swift 側の SpeechTranscriberChannel と対。iOS のみ。
+//   iOS は SpeechTranscriber（iOS 26 以上・Swift 側の SpeechTranscriberChannel）、
+//   Android は端末内の SpeechRecognizer（Android 13 以上・Kotlin 側の SpeechRecognizerChannel）。
+//   どちらも同じチャンネル名・メソッド名で応える。
 //   VAD で区切った1発話ぶんの音（16kHz・Float32）を渡すと、テキストが返る。
 //   言語は OS の「優先する言語」のうち、対応している最初のもの。
 // ============================================================

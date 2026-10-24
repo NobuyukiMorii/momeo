@@ -103,20 +103,21 @@ class SttEngineNotifier extends AsyncNotifier<SttAudioWorker> {
   }
 
   // ---------------------------------
-  // iOS で OS 内蔵の文字起こし（SpeechTranscriber）を使えるか。使えないときは同梱の認識モデルで文字化する
+  // OS 内蔵の文字起こし（iOS: SpeechTranscriber / Android: SpeechRecognizer）を使えるか。
+  // 使えないときは同梱の認識モデルで文字化する
   // ---------------------------------
   Future<bool> _canUseOsTranscriber() async {
-    if (!Platform.isIOS) return false;
+    if (!Platform.isIOS && !Platform.isAndroid) return false;
 
     try {
       final status = await SpeechTranscriberChannel.prepare();
       debugPrint(
-        '[sttEngine] SpeechTranscriber を${status.available ? '使います' : '使いません'}'
+        '[sttEngine] OS の文字起こしを${status.available ? '使います' : '使いません'}'
         '（${status.detail}）',
       );
       return status.available;
     } catch (error) {
-      debugPrint('[sttEngine] SpeechTranscriber を確かめられませんでした: $error');
+      debugPrint('[sttEngine] OS の文字起こしを確かめられませんでした: $error');
       return false;
     }
   }
