@@ -1,10 +1,12 @@
 import 'dart:async';
+import 'dart:io' show Platform;
 import 'dart:math' show min;
 
 import 'package:flutter/foundation.dart' show debugPrint, kDebugMode;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:momeo/platform/asset_pack_delivery.dart';
+import 'package:momeo/platform/speech_transcriber_channel.dart';
 import 'package:momeo/stt/stt_audio_worker.dart';
 import 'package:momeo/stt/stt_model_provisioner.dart';
 
@@ -81,10 +83,12 @@ class SttEngineNotifier extends AsyncNotifier<SttAudioWorker> {
     }
 
     // ③ 音声 isolate を立ち上げる。認識器の生成（数秒）もこの中で済む
+    final useOsTranscriber = await _canUseOsTranscriber();
     final stopwatch = Stopwatch()..start();
     final worker = await SttAudioWorker.spawn(
       modelPath: models.sttModel.path,
       tokensPath: models.sttTokens.path,
+      useOsTranscriber: useOsTranscriber,
     );
     stopwatch.stop();
     ref.onDispose(worker.dispose);
@@ -96,6 +100,25 @@ class SttEngineNotifier extends AsyncNotifier<SttAudioWorker> {
       );
     }
     return worker;
+  }
+
+  // ---------------------------------
+  // iOS で OS 内蔵の文字起こし（SpeechTranscriber）を使えるか。使えないときは同梱の認識モデルで文字化する
+  // ---------------------------------
+  Future<bool> _canUseOsTranscriber() async {
+    if (!Platform.isIOS) return false;
+
+    try {
+      final status = await SpeechTranscriberChannel.prepare();
+      debugPrint(
+        '[sttEngine] SpeechTranscriber を${status.available ? '使います' : '使いません'}'
+        '（${status.detail}）',
+      );
+      return status.available;
+    } catch (error) {
+      debugPrint('[sttEngine] SpeechTranscriber を確かめられませんでした: $error');
+      return false;
+    }
   }
 
   // 認識モデル（本体・tokens）の2ファイルが正しく置いてあるか
