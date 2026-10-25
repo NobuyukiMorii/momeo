@@ -3,7 +3,7 @@
 ## 概要
 権限許可後、アプリは自動的にリスニング状態で開始されます。ユーザーは録音ボタンを探すことなく話し始めることができます。
 
-音声認識はオンデバイス STT（`sherpa_onnx` + SenseVoice Small）で行います。OS の音声認識サービスには依存せず、モデルが端末にあれば実行は完全オフラインです。
+音声認識は OS の文字起こし（iOS は SpeechTranscriber、Android は端末内の SpeechRecognizer）で、端末の中だけで行います。言語のモデルが端末にあれば、実行は完全オフラインです。
 
 > リスニング画面に入る前提として、文字化エンジンの準備完了を待つ「準備ゲート」があります（`notes/specs/preparation_gate.md`）。リスニング画面に到達した時点でエンジンは常に使用可能です。
 
@@ -98,13 +98,15 @@
   ↓ Float32 に変換し、512サンプル窓ごとに供給
 sherpa 内蔵 Silero VAD（発話の開始〜終了を検出）
   ↓ 1発話ぶんの音声チャンク
-sherpa-onnx OfflineRecognizer（SenseVoice Small）でバッチ文字化
+OS の文字起こしで1発話ずつ文字化（iOS は SpeechTranscriber、Android は端末内の SpeechRecognizer）
   ↓
 確定テキスト → メモとして保存・表示
 ```
 
 - iOS を 48kHz で録るのは、録音のサンプリングレートが iPhone 全体の再生にも効くためです。16kHz で録ると、YouTube など他のアプリの音まで 16kHz に落ちてこもります。
 - 文字化エンジンはアプリ全体で1つだけ保持される共有エンジン（`sttEngineProvider`）を借りて使います。
+- 文字にする言語は、端末の「優先する言語」のうち、OS の文字起こしが使える最初のものです。言語の自動判定はしません（優先する言語と違う言語で話すと、崩れた文字になります）。
+- Android の SpeechRecognizer にはマイクを使わせません。マイクは momeo の録音が持ったままにし、区切った音をパイプで渡します。
 - 画面を離れるときはパイプラインを停止し、VAD 内に残った末尾の発話を押し出して文字化してから破棄します。
 - パイプラインは確定テキスト（`onText`）に加えて、VAD の「発話中かどうか」の変化を `onSpeechActiveChanged` で画面へ通知します。発話中の「.」はこの通知で駆動します。
 
@@ -213,7 +215,7 @@ VAD は発話の始まりと判定するまで、その直前の約0.56秒（`mi
 【 確定条件 】
  └─ 無音が 3秒 続き、VAD が発話終了を検出する
 ↓
-1発話ぶんの音声チャンク（判定前の声を頭へ足したもの）を sherpa-onnx（SenseVoice Small）で文字化する（実測 100〜300ms）
+1発話ぶんの音声チャンク（判定前の声を頭へ足したもの）を OS の文字起こしで文字化する（実測 iOS 0.15〜0.5秒・Android 1〜2秒）
 ↓
 確定テキストをメモとして保存し、一覧の末尾（画面の一番下）に表示する（10秒以内なら、最新のメモに書き足す）
 ↓
@@ -222,7 +224,7 @@ VAD は発話の始まりと判定するまで、その直前の約0.56秒（`mi
 
 発話が確定しても認識セッションを再開する必要はなく、録音は画面にいる間ずっと連続しています。
 
-区切りと転写は音声 isolate で動きます。転写の最中に届いた録音チャンクは待ち行列に積まれるため、長い転写中に喋った音声も取りこぼしません。画面の描画も転写に影響されません。
+区切りは音声 isolate で動きます。区切った発話は UI 側から OS の文字起こしに1つずつ順に頼むため、メモの順は話した順のままです。転写の最中も録音と区切りは止まらないので、長い転写中に喋った音声も取りこぼしません。画面の描画も転写に影響されません。
 
 ## 今後の検証項目
 
@@ -239,12 +241,13 @@ VAD は発話の始まりと判定するまで、その直前の約0.56秒（`mi
 ## 関連ドキュメント
 
 - 画面上端の録音設定パネル: `notes/specs/listening_recording_settings_panel.md`
-- 実装計画・採用経緯: `notes/on_device_stt/outline.md`
-- モデルの配布方式: `notes/on_device_stt/model_distribution.md`
+- 実装計画・採用経緯: `notes/on_device_stt/outline.md`、`notes/os_transcription/impl/outline.md`
 - 権限フロー（マイクのみ）: `notes/specs/permission_flow.md`
 
 ## 一次情報・参考リンク
 
-- [sherpa-onnx documentation](https://k2-fsa.github.io/sherpa/onnx/index.html)
+- [SpeechAnalyzer (Apple Developer)](https://developer.apple.com/documentation/speech/speechanalyzer)
+- [SpeechRecognizer (Android Developers)](https://developer.android.com/reference/android/speech/SpeechRecognizer)
+- [sherpa-onnx documentation](https://k2-fsa.github.io/sherpa/onnx/index.html)（VAD に使う）
 - [Silero VAD (GitHub)](https://github.com/snakers4/silero-vad)
 - [record (pub.dev)](https://pub.dev/packages/record)

@@ -2,7 +2,7 @@
 
 momeoはライブ音声入力を前提とする音声ファーストのメモアプリであるため、マイク権限は必須です。
 
-> 要求する権限は **iOS・Android ともマイク権限のみ**です。音声認識はオンデバイス STT（`sherpa_onnx` + VAD）で行うため、OS の音声認識（Speech Recognition）権限は使いません。
+> 要求する権限は **iOS・Android ともマイク権限のみ**です。音声認識は OS の文字起こし（iOS は SpeechTranscriber、Android は端末内の SpeechRecognizer）で行いますが、どちらも momeo が録った音を渡して端末の中だけで文字にするため、OS の音声認識（Speech Recognition）権限は使いません。
 
 ## プラットフォーム別の権限要件
 
