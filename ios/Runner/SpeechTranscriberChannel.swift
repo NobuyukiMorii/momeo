@@ -78,8 +78,11 @@ actor SpeechTranscriberEngine {
   private var locale: Locale?
   private var analyzerFormat: AVAudioFormat?
 
+  // 進行中の言語のモデルのダウンロード（終わると nil に戻る）
+  private var downloadTask: Task<Void, Never>?
+
   // ---------------------------------
-  // 端末・言語の対応確認と、モデルのダウンロード
+  // 端末・言語の対応確認と、モデルのダウンロードの開始
   // ---------------------------------
   func prepare() async -> [String: Any] {
     guard SpeechTranscriber.isAvailable else {
@@ -92,11 +95,17 @@ actor SpeechTranscriberEngine {
       ]
     }
 
+    // ダウンロードの途中なら、始め直さずに終わるのを待ってもらう
+    if downloadTask != nil {
+      return ["state": "downloading", "detail": "\(supportedLocale.identifier) のモデルをダウンロード中です"]
+    }
+
     let transcriber = makeTranscriber(locale: supportedLocale)
     do {
-      // 端末にモデルが無ければ、OS にダウンロードさせて入るまで待つ
+      // 端末にモデルが無ければ、ダウンロードを始めて、終わるのを待たずに返す
       if let request = try await AssetInventory.assetInstallationRequest(supporting: [transcriber]) {
-        try await request.downloadAndInstall()
+        startDownload(request)
+        return ["state": "downloading", "detail": "\(supportedLocale.identifier) のモデルのダウンロードを始めました"]
       }
     } catch {
       // 通信の途切れなど一時的な失敗もあるので、使えないとは決めず、次の prepare でやり直す
@@ -109,6 +118,22 @@ actor SpeechTranscriberEngine {
       "state": "ready",
       "detail": "locale: \(supportedLocale.identifier) / format: \(analyzerFormat?.description ?? "-")",
     ]
+  }
+
+  // ダウンロードを裏で進める。失敗しても、次の prepare で始め直す
+  private func startDownload(_ request: AssetInstallationRequest) {
+    downloadTask = Task {
+      do {
+        try await request.downloadAndInstall()
+      } catch {
+        NSLog("[SpeechTranscriber] モデルのダウンロードに失敗しました: %@", "\(error)")
+      }
+      self.finishDownload()
+    }
+  }
+
+  private func finishDownload() {
+    downloadTask = nil
   }
 
   // ---------------------------------

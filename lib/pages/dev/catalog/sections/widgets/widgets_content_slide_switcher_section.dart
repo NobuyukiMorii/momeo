@@ -46,6 +46,8 @@ class _WidgetsContentSlideSwitcherSectionState
         return const Text('アプリを再起動してください');
       case PreparationPhase.unsupported:
         return const Text('この端末では使えません');
+      case PreparationPhase.downloadingLanguage:
+        return const ActivityDotsText('言語のモデルをダウンロードしています');
     }
   }
 

@@ -12,7 +12,7 @@ import 'package:momeo/widgets/intro_setting_layout.dart';
 import 'package:momeo/widgets/content_slide_switcher.dart';
 
 // ---------------------------------
-// 待ち画面の5フェーズ
+// 待ち画面の6フェーズ
 // ---------------------------------
 enum PreparationPhase {
   /// DL状態の取得前・DL開始前・エンジンのメモリ読み込み中
@@ -29,6 +29,9 @@ enum PreparationPhase {
 
   /// OS の文字起こしが使えない端末。再試行しない
   unsupported,
+
+  /// OS が言語のモデルをダウンロード中。入ったかを確かめ直しながら待つ
+  downloadingLanguage,
 }
 
 // ---------------------------------
@@ -66,6 +69,13 @@ class PreparationGatePage extends ConsumerWidget {
     AsyncValue<AssetPackState> downloadState,
     bool restartSuggested,
   ) {
+    // ---------------------------------
+    // 言語のモデルのダウンロード中（確かめ直しの最中も、表示を揺らさないよう同じフェーズにする）
+    // ---------------------------------
+    if (engineState.error is SttModelDownloadingError) {
+      return PreparationPhase.downloadingLanguage;
+    }
+
     // ---------------------------------
     // エンジン失敗中（再試行のisLoading中は除く。前回のエラーが残り続けるため）
     // ---------------------------------
@@ -127,6 +137,8 @@ class PreparationGatePage extends ConsumerWidget {
       case PreparationPhase.unsupported:
         // 再起動しても変わらないお知らせなので、動きは付けない
         return const Text('この端末では使えません');
+      case PreparationPhase.downloadingLanguage:
+        return const ActivityDotsText('言語のモデルをダウンロードしています');
     }
   }
 }

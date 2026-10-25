@@ -19,6 +19,15 @@ class SttUnsupportedError implements Exception {
   String toString() => 'SttUnsupportedError: $detail';
 }
 
+// 言語のモデルのダウンロード中（失敗には数えず、終わるまで確かめ直す）
+class SttModelDownloadingError implements Exception {
+  const SttModelDownloadingError(this.detail);
+  final String detail;
+
+  @override
+  String toString() => 'SttModelDownloadingError: $detail';
+}
+
 // ============================================================
 // sttEngineProvider — 音声 isolate（SttAudioWorker）をアプリ全体で1つだけ持つ
 //
@@ -42,6 +51,7 @@ class SttEngineNotifier extends AsyncNotifier<SttAudioWorker> {
   // ---------------------------------
   static const _retryDelaySeconds = [2, 4, 8, 16, 30];
   static const _restartSuggestionThreshold = 5;
+  static const _downloadCheckInterval = Duration(seconds: 5); // 言語のモデルが入ったかを確かめ直す間隔
 
   int _consecutiveFailures = 0;
   Timer? _retryTimer;
@@ -61,8 +71,13 @@ class SttEngineNotifier extends AsyncNotifier<SttAudioWorker> {
       ref.read(sttRestartSuggestedProvider.notifier).set(false);
       return worker;
     } catch (error) {
-      // 使えない端末では、何度やっても結果は同じなので再試行しない
-      if (error is! SttUnsupportedError) _scheduleRetry();
+      if (error is SttModelDownloadingError) {
+        // 失敗には数えず、言語のモデルが入ったかを確かめ直す
+        _retryTimer = Timer(_downloadCheckInterval, _retry);
+      } else if (error is! SttUnsupportedError) {
+        // 使えない端末（何度やっても結果は同じ）以外は、バックオフ付きで再試行する
+        _scheduleRetry();
+      }
       rethrow;
     }
   }
@@ -107,7 +122,7 @@ class SttEngineNotifier extends AsyncNotifier<SttAudioWorker> {
       case OsTranscriberState.unsupported:
         throw SttUnsupportedError(status.detail);
       case OsTranscriberState.downloading:
-        throw StateError('言語のモデルをダウンロード中です（${status.detail}）');
+        throw SttModelDownloadingError(status.detail);
     }
   }
 
