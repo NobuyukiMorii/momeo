@@ -5,12 +5,9 @@ import io.flutter.embedding.engine.FlutterEngine
 
 class MainActivity : FlutterActivity() {
 
-    // アセットパックの自動DLを Flutter から操作するための橋渡し。
+    // 他のアプリが鳴っているかを Flutter から問い合わせるための橋渡し。
     //   ここで保持しておかないと不要物として回収され、通信が切れてしまうため、
     //   プロパティとして持ち続ける。
-    private var assetPackDelivery: AssetPackDeliveryChannel? = null
-
-    // 他のアプリが鳴っているかを Flutter から問い合わせるための橋渡し（同じ理由で保持する）。
     private var audioSession: AudioSessionChannel? = null
 
     // OS 内蔵の文字起こし（SpeechRecognizer）を Flutter から使うための橋渡し（同じ理由で保持する）。
@@ -23,11 +20,6 @@ class MainActivity : FlutterActivity() {
         flutterEngine.platformViewsController.registry.registerViewFactory(
             NativeMemoListFactory.VIEW_TYPE,
             NativeMemoListFactory(flutterEngine.dartExecutor.binaryMessenger),
-        )
-        // applicationContext を渡す（アプリ全体で1つの AssetPackManager を使うため）。
-        assetPackDelivery = AssetPackDeliveryChannel(
-            applicationContext,
-            flutterEngine.dartExecutor.binaryMessenger,
         )
         audioSession = AudioSessionChannel(
             applicationContext,

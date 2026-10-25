@@ -20,10 +20,6 @@ android {
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
-    // NeMo（625MB）を運ぶ fast-follow アセットパックを、このアプリのビルドに紐づける。
-    // 実体は :stt_models モジュール（android/stt_models/）。これで AAB に同梱される。
-    assetPacks += ":stt_models"
-
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -63,12 +59,6 @@ android {
             }
         }
     }
-}
-
-dependencies {
-    // Play Asset Delivery のランタイム（AssetPackManager を含む）。
-    // アセットパックの「DL状態の取得・進捗監視・完了後の実パス取得・再試行」に使う。
-    implementation("com.google.android.play:asset-delivery:2.2.2")
 }
 
 flutter {

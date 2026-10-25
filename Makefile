@@ -61,7 +61,6 @@ require-device:
 build-ios: models
 	flutter build ipa --build-number=$$(( $$(date +%s) / 60 ))
 
-# ---- Android: モデルは fast-follow アセットパックに入れて AAB 化する
+# ---- Android
 build-android: models
-	bash scripts/place_android_pack_models.sh
 	flutter build appbundle --build-number=$$(( $$(date +%s) / 60 ))
