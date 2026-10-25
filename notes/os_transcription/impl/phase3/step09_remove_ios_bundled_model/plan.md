@@ -1,4 +1,4 @@
-# Step 7 iOS の同梱を消す
+# Step 9 【iOS】同梱した認識モデルを消す
 
 ## 目的
 
@@ -6,7 +6,7 @@ iOS のアプリに同梱している SenseVoice（約239MB）と、その置き
 
 アプリのサイズが、その分小さくなる。
 
-動きは変えない（step 6 で、Dart から呼ばれなくなっている）。
+動きは変えない（step 8 で、Dart から呼ばれなくなっている）。
 
 
 | 項目 | 今 | この step の後 |
@@ -38,7 +38,7 @@ iOS のアプリに同梱している SenseVoice（約239MB）と、その置き
 - `scripts/run_on_device.sh`
   - `place_ios_models.sh` の呼び出し（と、そのコメント）を消す
 - `Makefile`
-  - `build-ios` の `place_ios_models.sh` を消す（`models` への依存は step 9 で外す）
+  - `build-ios` の `place_ios_models.sh` を消す（`models` への依存は step 11 で外す）
 
 ※ pbxproj の行は、Xcode で消すか、行を手で消す。手で消すときは、同じ ID が他に残っていないことを確かめる。
 

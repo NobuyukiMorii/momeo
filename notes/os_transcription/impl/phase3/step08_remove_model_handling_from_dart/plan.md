@@ -1,8 +1,8 @@
-# Step 6 Dart から、認識モデルの置き場所とダウンロードの扱いを消す
+# Step 8 【共通】Dart から、認識モデルの置き場所とダウンロードの扱いを消す
 
 ## 目的
 
-step 4 で使われなくなった、SenseVoice の置き場所を探す処理と、Android のダウンロード（Play の自動ダウンロード）の進み具合を見る処理を、Dart から消す。
+step 6 で使われなくなった、SenseVoice の置き場所を探す処理と、Android のダウンロード（Play の自動ダウンロード）の進み具合を見る処理を、Dart から消す。
 
 画面と文字化の動きは変えない。
 
@@ -11,11 +11,11 @@ step 4 で使われなくなった、SenseVoice の置き場所を探す処理�
 | --- | --- | --- |
 | `SttModelProvisioner` | SenseVoice（本体・tokens）と Silero の3ファイルの置き場所を返す | Silero を端末へコピーして、その置き場所を返すだけ |
 | Android のダウンロードの進み具合 | `sttModelDownloadStateProvider` が見ている | 見ない |
-| 準備ゲート画面 | ダウンロードの % を出すフェーズがある（step 4 の後は使われていない） | そのフェーズが無い |
+| 準備ゲート画面 | ダウンロードの % を出すフェーズがある（step 6 の後は使われていない） | そのフェーズが無い |
 | 開発用カタログ | 「STT → モデル配置」で3ファイルの状態を見られる | 項目ごと無い |
 
 
-ネイティブ側の窓口（iOS の `SttModelChannel`、Android の `AssetPackDeliveryChannel`）は、呼ばれなくなるだけで残る。消すのは step 7・8。
+ネイティブ側の窓口（iOS の `SttModelChannel`、Android の `AssetPackDeliveryChannel`）は、呼ばれなくなるだけで残る。消すのは step 9・10。
 
 ## やること
 

@@ -1,4 +1,4 @@
-# Step 8 Android の自動ダウンロードを消す
+# Step 10 【Android】Play の自動ダウンロードを消す
 
 ## 目的
 
@@ -6,7 +6,7 @@ Android で SenseVoice を配っている、Play の自動ダウンロード（f
 
 インストールの直後に約239MB をダウンロードすることが無くなる。
 
-動きは変えない（step 6 で、Dart から呼ばれなくなっている）。
+動きは変えない（step 8 で、Dart から呼ばれなくなっている）。
 
 
 | 項目 | 今 | この step の後 |
@@ -42,7 +42,7 @@ Android で SenseVoice を配っている、Play の自動ダウンロード（f
 - `scripts/install_android_bundle.sh`
   - アセットパックのために AAB を経由していたなら、使われなくなるので消す。ほかに使い道があれば残す
 - `Makefile`
-  - `build-android` の `place_android_pack_models.sh` を消す（`models` への依存は step 9 で外す）
+  - `build-android` の `place_android_pack_models.sh` を消す（`models` への依存は step 11 で外す）
 
 ※ `INTERNET` 権限が本当に無くなったかは、release の AAB の manifest で確かめる（ほかのプラグインが足している場合は残る。そのときは残してよい）。
 
