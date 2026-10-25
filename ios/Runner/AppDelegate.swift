@@ -41,11 +41,8 @@ import UIKit
   // ---------------------------------
   // Dart 側の dismiss はプロセスごと止まるので走らない。iOS が終了前にくれる数秒のうちに、ここで消す
   override func applicationWillTerminate(_ application: UIApplication) {
-    // --- iOS 16.1 以降の場合のみ
-    if #available(iOS 16.1, *) {
-      // --- Live Activity の終了処理を実行
-      endAllListeningActivities()
-    }
+    // --- Live Activity の終了処理を実行
+    endAllListeningActivities()
     // --- スーパークラスの終了処理を実行
     super.applicationWillTerminate(application)
   }
@@ -53,7 +50,6 @@ import UIKit
   // ---------------------------------
   // Live Activity の終了
   // ---------------------------------
-  @available(iOS 16.1, *)
   private func endAllListeningActivities() {
     // --- 終了処理が終わるまで待つためのセマフォを作る
     let semaphore = DispatchSemaphore(value: 0)

@@ -31,10 +31,6 @@ enum SpeechTranscriberChannel {
   // 使えるかの確認とモデルの用意
   // ---------------------------------
   private static func handlePrepare(result: @escaping FlutterResult) {
-    guard #available(iOS 26.0, *) else {
-      result(["state": "unsupported", "detail": "iOS 26 未満のため使えません"])
-      return
-    }
     Task {
       let reply = await SpeechTranscriberEngine.shared.prepare()
       await MainActor.run { result(reply) }
@@ -45,10 +41,6 @@ enum SpeechTranscriberChannel {
   // 1発話ぶんの文字化
   // ---------------------------------
   private static func handleTranscribe(arguments: Any?, result: @escaping FlutterResult) {
-    guard #available(iOS 26.0, *) else {
-      result(FlutterError(code: "unavailable", message: "iOS 26 未満のため使えません", details: nil))
-      return
-    }
     // Dart の Float32List は FlutterStandardTypedData として届く
     guard let typedData = arguments as? FlutterStandardTypedData else {
       result(FlutterError(code: "bad_arguments", message: "音声サンプル（Float32List）が届いていません", details: nil))
@@ -77,7 +69,6 @@ enum SpeechTranscriberChannel {
 //   発話ごとに SpeechAnalyzer を作り、音を流し終えたら確定させて結果をまとめる。
 //   モデル本体は OS が持っていて、アプリ側で読み込み直すものは無い。
 // ============================================================
-@available(iOS 26.0, *)
 actor SpeechTranscriberEngine {
   static let shared = SpeechTranscriberEngine()
 

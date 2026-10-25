@@ -239,10 +239,6 @@ private final class MemoDocumentView: UITextView, UITextViewDelegate {
         insertSubview(rail, at: 0)
         addGestureRecognizer(MemoScrollThumbPan(document: self))
         addGestureRecognizer(MemoSelectionDismissTap(document: self))
-        // iOS 15 以前は、文字選択のメニューに「削除」をここで足す（iOS 16 以降は textView(_:editMenuForTextIn:suggestedActions:) で足す）
-        if #unavailable(iOS 16) {
-            UIMenuController.shared.menuItems = [UIMenuItem(title: Self.deleteMenuTitle, action: #selector(deleteSelectedText(_:)))]
-        }
     }
 
     required init?(coder: NSCoder) { fatalError("ストーリーボードからは生成しません") }
@@ -521,8 +517,7 @@ private final class MemoDocumentView: UITextView, UITextViewDelegate {
         Locale.preferredLanguages.first?.hasPrefix("ja") == true ? "削除" : "Delete"
     }
 
-    // iOS 16 以降: OS が用意したメニューの「コピー」のすぐ後ろに「削除」を差し込む
-    @available(iOS 16.0, *)
+    // OS が用意したメニューの「コピー」のすぐ後ろに「削除」を差し込む
     func textView(_ textView: UITextView, editMenuForTextIn range: NSRange,
                   suggestedActions: [UIMenuElement]) -> UIMenu? {
         guard range.length > 0 else { return nil }
@@ -531,7 +526,6 @@ private final class MemoDocumentView: UITextView, UITextViewDelegate {
     }
 
     // メニューの中を入れ子までたどり、「コピー」の後ろに差し込む（見つからなければ末尾に足す）
-    @available(iOS 16.0, *)
     private static func inserting(_ action: UIAction, afterCopyIn elements: [UIMenuElement]) -> [UIMenuElement] {
         var inserted = false
         func insert(into elements: [UIMenuElement]) -> [UIMenuElement] {
