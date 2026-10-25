@@ -3,8 +3,10 @@ import 'dart:collection' show ListQueue;
 import 'dart:isolate';
 import 'dart:typed_data';
 
-import 'package:flutter/foundation.dart' show kDebugMode;
+import 'package:flutter/foundation.dart' show debugPrint, kDebugMode;
 import 'package:sherpa_onnx/sherpa_onnx.dart' as sherpa;
+
+import 'package:momeo/platform/os_transcriber_channel.dart';
 
 // ============================================================
 // 音声処理（VAD の区切り・認識モデルの文字化）を専用 isolate に閉じ込める窓口
@@ -12,6 +14,10 @@ import 'package:sherpa_onnx/sherpa_onnx.dart' as sherpa;
 //   認識器も VAD もこの isolate の中だけに存在するため、UI 側から
 //   触れるのは Future を返すメソッドと通知イベントだけになる。
 //   数秒かかる処理で UI スレッドが止まることは構造上起きない。
+//
+//   useOsTranscriber のときは認識器を作らず、区切った発話を UI 側へ戻して
+//   OS 内蔵の文字起こし（iOS: SpeechTranscriber / Android: SpeechRecognizer）に頼む
+//   （→ 下の「OS の文字起こし」）。
 // ============================================================
 
 const int _kSampleRate = 16000; // 1秒あたりのサンプル数
@@ -82,6 +88,7 @@ class SttAudioWorker {
   static Future<SttAudioWorker> spawn({
     required String modelPath,
     required String tokensPath,
+    bool useOsTranscriber = false,
   }) async {
     final fromWorker = ReceivePort();
     final isolate = await Isolate.spawn(
@@ -90,6 +97,7 @@ class SttAudioWorker {
         toMain: fromWorker.sendPort,
         modelPath: modelPath,
         tokensPath: tokensPath,
+        useOsTranscriber: useOsTranscriber,
       ),
       onError: fromWorker.sendPort,
       onExit: fromWorker.sendPort,
@@ -119,6 +127,9 @@ class SttAudioWorker {
   int _nextCommandId = 0;
   bool _closed = false;
 
+  // OS の文字起こしを発話の順に1つずつ流すための列（最後に積んだ仕事）
+  Future<void> _osTranscriptionQueue = Future<void>.value();
+
   // 発話中フラグ・音量・確定テキストがここに流れてくる
   Stream<SttAudioEvent> get events => _events.stream;
 
@@ -139,8 +150,10 @@ class SttAudioWorker {
   }
 
   // 末尾に残った発話を押し出す。文字化まで終わってから返る
-  Future<void> stopListening() {
-    return _request(_StopListeningCommand(id: _nextCommandId++));
+  Future<void> stopListening() async {
+    await _request(_StopListeningCommand(id: _nextCommandId++));
+    // OS の文字起こしに頼んだ分も、終わるまで待つ
+    await _osTranscriptionQueue;
   }
 
   // 区切り役を解放する（認識器は残す）
@@ -207,9 +220,41 @@ class SttAudioWorker {
       return;
     }
 
+    if (message is _SegmentCaptured) {
+      _enqueueOsTranscription(message.samples);
+      return;
+    }
+
     if (message is SttAudioEvent) {
       _events.add(message);
     }
+  }
+
+  // ---------------------------------
+  // OS の文字起こし
+  //   音声 isolate から platform channel は呼べないため、区切った発話をここで受けて頼む
+  // ---------------------------------
+  void _enqueueOsTranscription(Float32List samples) {
+    _osTranscriptionQueue = _osTranscriptionQueue.then((_) async {
+      final stopwatch = Stopwatch()..start();
+      var text = '';
+      try {
+        text = await OsTranscriberChannel.transcribe(samples);
+      } catch (error) {
+        // 失敗しても結果待ちが解けるよう、空のテキストとして知らせる
+        debugPrint('[sttWorker] OS の文字起こしで文字化できませんでした: $error');
+      }
+      stopwatch.stop();
+
+      if (_events.isClosed) return;
+      _events.add(
+        SttTranscribed(
+          text: text,
+          durationSec: samples.length / _kSampleRate,
+          elapsedMs: stopwatch.elapsedMilliseconds,
+        ),
+      );
+    });
   }
 
   // isolate が落ちたら、待っている依頼をまとめて失敗させる
@@ -245,11 +290,13 @@ class _WorkerStartup {
     required this.toMain,
     required this.modelPath,
     required this.tokensPath,
+    required this.useOsTranscriber,
   });
 
   final SendPort toMain;
   final String modelPath;
   final String tokensPath;
+  final bool useOsTranscriber;
 }
 
 // 認識器の生成まで済んだ合図。以後はこの窓口に依頼を送る
@@ -284,6 +331,12 @@ class _ReleaseListeningCommand extends _Command {
   const _ReleaseListeningCommand({required int id}) : super(id);
 }
 
+// 区切った1発話ぶんの音（OS の文字起こしを使うときだけ、文字化の代わりに届く）
+class _SegmentCaptured {
+  const _SegmentCaptured(this.samples);
+  final Float32List samples;
+}
+
 // 返事の要らない依頼
 class _PushAudioCommand {
   const _PushAudioCommand(this.bytes);
@@ -314,7 +367,8 @@ void _runAudioIsolate(_WorkerStartup startup) {
     engine = _AudioEngine(
       modelPath: startup.modelPath,
       tokensPath: startup.tokensPath,
-      onEvent: toMain.send,
+      useOsTranscriber: startup.useOsTranscriber,
+      onMessage: toMain.send,
     );
   } catch (error) {
     toMain.send(_WorkerFailed('$error'));
@@ -360,14 +414,17 @@ class _AudioEngine {
   _AudioEngine({
     required String modelPath,
     required String tokensPath,
-    required this.onEvent,
-  }) : _recognizer = _createRecognizer(
-          modelPath: modelPath,
-          tokensPath: tokensPath,
-        );
+    required bool useOsTranscriber,
+    required this.onMessage,
+  }) : _recognizer = useOsTranscriber
+            ? null
+            : _createRecognizer(modelPath: modelPath, tokensPath: tokensPath);
 
-  final void Function(SttAudioEvent event) onEvent;
-  final sherpa.OfflineRecognizer _recognizer;
+  // UI 側へ送る（SttAudioEvent か _SegmentCaptured）
+  final void Function(Object message) onMessage;
+
+  // OS の文字起こしを使うときは作らない
+  final sherpa.OfflineRecognizer? _recognizer;
 
   sherpa.VoiceActivityDetector? _vad;
   String? _sileroPath;
@@ -458,7 +515,7 @@ class _AudioEngine {
 
   void dispose() {
     releaseListening();
-    _recognizer.free();
+    _recognizer?.free();
   }
 
   // ---------------------------------
@@ -484,13 +541,13 @@ class _AudioEngine {
     // 発話中かどうかの変化は、確定テキストより先に知らせる
     _notifySpeechActive(detected: vad.isDetected());
     _drainAndTranscribe(vad);
-    onEvent(SttMicLevelMeasured(_peakLevel(samples)));
+    onMessage(SttMicLevelMeasured(_peakLevel(samples)));
   }
 
   void _notifySpeechActive({required bool detected}) {
     if (detected == _speechActive) return;
     _speechActive = detected;
-    onEvent(SttSpeechActiveChanged(detected));
+    onMessage(SttSpeechActiveChanged(detected));
   }
 
   // 区切られた発話を順に取り出し、文字化して通知する
@@ -502,11 +559,18 @@ class _AudioEngine {
       // 発話と判定される前に話していた分を、区切りの頭へ補う
       final samples = _headKeeper.prependHead(segment);
 
+      // 認識器が無ければ、文字化は UI 側の OS の文字起こしに任せる
+      final recognizer = _recognizer;
+      if (recognizer == null) {
+        onMessage(_SegmentCaptured(samples));
+        continue;
+      }
+
       final stopwatch = Stopwatch()..start();
-      final text = _transcribe(samples);
+      final text = _transcribe(recognizer, samples);
       stopwatch.stop();
 
-      onEvent(SttTranscribed(
+      onMessage(SttTranscribed(
         text: text,
         durationSec: samples.length / _kSampleRate,
         elapsedMs: stopwatch.elapsedMilliseconds,
@@ -515,12 +579,12 @@ class _AudioEngine {
   }
 
   // 1発話ぶんの音声サンプルを日本語テキストに変換する
-  String _transcribe(Float32List samples) {
-    final stream = _recognizer.createStream();
+  String _transcribe(sherpa.OfflineRecognizer recognizer, Float32List samples) {
+    final stream = recognizer.createStream();
     try {
       stream.acceptWaveform(samples: samples, sampleRate: _kSampleRate);
-      _recognizer.decode(stream);
-      return _recognizer.getResult(stream).text;
+      recognizer.decode(stream);
+      return recognizer.getResult(stream).text;
     } finally {
       stream.free();
     }
