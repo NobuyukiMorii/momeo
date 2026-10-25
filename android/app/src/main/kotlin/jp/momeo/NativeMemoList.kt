@@ -9,7 +9,6 @@ import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.Region
 import android.graphics.Typeface
-import android.os.Build
 import android.text.Selection
 import android.text.Spannable
 import android.text.SpannableStringBuilder
@@ -888,12 +887,7 @@ private class MemoScrollView(context: Context) : ScrollView(context) {
     // 下端がナビゲーションバーに重なる高さ（ホームへ戻る操作の受付領域では掴みにくいため、つまみはその上までにする）
     private fun bottomSystemBarOverlap(): Float {
         val insets = rootWindowInsets ?: return 0f
-        val systemBarHeight = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            insets.getInsets(WindowInsets.Type.navigationBars()).bottom
-        } else {
-            @Suppress("DEPRECATION")
-            insets.systemWindowInsetBottom
-        }
+        val systemBarHeight = insets.getInsets(WindowInsets.Type.navigationBars()).bottom
         val location = IntArray(2)
         getLocationInWindow(location)
         val spaceBelow = rootView.height - (location[1] + height)

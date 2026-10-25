@@ -3,7 +3,6 @@ package jp.momeo
 import android.content.Context
 import android.content.Intent
 import android.media.AudioFormat
-import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.LocaleList
@@ -33,7 +32,6 @@ import kotlin.concurrent.thread
 //   言語は端末の「優先する言語」のうち、端末内モデルが入っている最初のものに固定する。
 //   入っていなければダウンロードを頼み、downloading を返す（prepare の返事は iOS 側と同じ3つ）。
 //
-//   自分の音を渡す仕組み（EXTRA_AUDIO_SOURCE）が Android 13 からなので、それ未満は使わない。
 //   SpeechRecognizer はメインスレッドでしか触れないため、ここの処理はすべてメインスレッドで動く。
 // ============================================================
 class SpeechRecognizerChannel(private val context: Context, messenger: BinaryMessenger) {
@@ -81,10 +79,6 @@ class SpeechRecognizerChannel(private val context: Context, messenger: BinaryMes
     // 使えるかの確認と、言語の決定
     // ---------------------------------
     private fun prepare(result: MethodChannel.Result) {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
-            reply(result, STATE_UNSUPPORTED, "Android 13 未満のため使えません")
-            return
-        }
         if (!SpeechRecognizer.isOnDeviceRecognitionAvailable(context)) {
             reply(result, STATE_UNSUPPORTED, "この端末では端末内の音声認識が使えません")
             return

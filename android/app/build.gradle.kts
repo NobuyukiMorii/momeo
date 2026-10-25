@@ -37,7 +37,8 @@ android {
         applicationId = "jp.momeo"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = flutter.minSdkVersion
+        // 録った音を端末内の SpeechRecognizer に渡せる（EXTRA_AUDIO_SOURCE）のが Android 13 から
+        minSdk = 33
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
