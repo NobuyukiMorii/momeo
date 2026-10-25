@@ -3,21 +3,19 @@ import 'dart:collection' show ListQueue;
 import 'dart:isolate';
 import 'dart:typed_data';
 
-import 'package:flutter/foundation.dart' show debugPrint, kDebugMode;
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:sherpa_onnx/sherpa_onnx.dart' as sherpa;
 
 import 'package:momeo/platform/os_transcriber_channel.dart';
 
 // ============================================================
-// 音声処理（VAD の区切り・認識モデルの文字化）を専用 isolate に閉じ込める窓口
+// 音声処理（VAD の区切り）を専用 isolate に閉じ込める窓口
 //
-//   認識器も VAD もこの isolate の中だけに存在するため、UI 側から
+//   VAD はこの isolate の中だけに存在するため、UI 側から
 //   触れるのは Future を返すメソッドと通知イベントだけになる。
-//   数秒かかる処理で UI スレッドが止まることは構造上起きない。
 //
-//   useOsTranscriber のときは認識器を作らず、区切った発話を UI 側へ戻して
-//   OS 内蔵の文字起こし（iOS: SpeechTranscriber / Android: SpeechRecognizer）に頼む
-//   （→ 下の「OS の文字起こし」）。
+//   区切った発話は UI 側へ戻し、OS 内蔵の文字起こし（iOS: SpeechTranscriber /
+//   Android: SpeechRecognizer）に頼む（→ 下の「OS の文字起こし」）。
 // ============================================================
 
 const int _kSampleRate = 16000; // 1秒あたりのサンプル数
@@ -40,9 +38,6 @@ const int _kHeadLookbackSeconds = 10;
 // 音を覚えておく長さ（秒）。区切りを文字化するのは最長の発話と3秒の無音の後なので、そのぶんも足す
 const int _kHeadHistorySeconds =
     _kHeadLookbackSeconds + _kMaxSpeechDuration ~/ 1 + _kMinSilenceDuration ~/ 1 + 1;
-
-// 認識する言語。空文字は自動判定。日本語に固定すると普通話が崩れ、日本語側の利得も無い
-const String _kRecognitionLanguage = '';
 
 // ============================================================
 // 音声 isolate から届く通知
@@ -84,21 +79,12 @@ class SttTranscribed extends SttAudioEvent {
 class SttAudioWorker {
   SttAudioWorker._(this._isolate, this._fromWorker);
 
-  // 認識器の生成まで済ませた isolate を立ち上げる（数秒かかるが UI は止まらない）
-  static Future<SttAudioWorker> spawn({
-    required String modelPath,
-    required String tokensPath,
-    bool useOsTranscriber = false,
-  }) async {
+  // VAD を受け付けられる isolate を立ち上げる
+  static Future<SttAudioWorker> spawn() async {
     final fromWorker = ReceivePort();
     final isolate = await Isolate.spawn(
       _runAudioIsolate,
-      _WorkerStartup(
-        toMain: fromWorker.sendPort,
-        modelPath: modelPath,
-        tokensPath: tokensPath,
-        useOsTranscriber: useOsTranscriber,
-      ),
+      _WorkerStartup(toMain: fromWorker.sendPort),
       onError: fromWorker.sendPort,
       onExit: fromWorker.sendPort,
       debugName: 'stt-audio',
@@ -156,12 +142,12 @@ class SttAudioWorker {
     await _osTranscriptionQueue;
   }
 
-  // 区切り役を解放する（認識器は残す）
+  // 区切り役を解放する
   Future<void> releaseListening() {
     return _request(_ReleaseListeningCommand(id: _nextCommandId++));
   }
 
-  // 認識器ごと片付けて isolate を終わらせる
+  // isolate を終わらせる
   Future<void> dispose() async {
     if (_closed) return;
     _closed = true;
@@ -286,26 +272,18 @@ class SttAudioWorker {
 // ============================================================
 
 class _WorkerStartup {
-  const _WorkerStartup({
-    required this.toMain,
-    required this.modelPath,
-    required this.tokensPath,
-    required this.useOsTranscriber,
-  });
+  const _WorkerStartup({required this.toMain});
 
   final SendPort toMain;
-  final String modelPath;
-  final String tokensPath;
-  final bool useOsTranscriber;
 }
 
-// 認識器の生成まで済んだ合図。以後はこの窓口に依頼を送る
+// 立ち上げが済んだ合図。以後はこの窓口に依頼を送る
 class _WorkerReady {
   const _WorkerReady(this.toWorker);
   final SendPort toWorker;
 }
 
-// 認識器の生成に失敗した合図
+// 立ち上げに失敗した合図
 class _WorkerFailed {
   const _WorkerFailed(this.reason);
   final String reason;
@@ -331,7 +309,7 @@ class _ReleaseListeningCommand extends _Command {
   const _ReleaseListeningCommand({required int id}) : super(id);
 }
 
-// 区切った1発話ぶんの音（OS の文字起こしを使うときだけ、文字化の代わりに届く）
+// 区切った1発話ぶんの音（UI 側で OS の文字起こしに頼む）
 class _SegmentCaptured {
   const _SegmentCaptured(this.samples);
   final Float32List samples;
@@ -364,12 +342,7 @@ void _runAudioIsolate(_WorkerStartup startup) {
   final _AudioEngine engine;
   try {
     sherpa.initBindings();
-    engine = _AudioEngine(
-      modelPath: startup.modelPath,
-      tokensPath: startup.tokensPath,
-      useOsTranscriber: startup.useOsTranscriber,
-      onMessage: toMain.send,
-    );
+    engine = _AudioEngine(onMessage: toMain.send);
   } catch (error) {
     toMain.send(_WorkerFailed('$error'));
     commands.close();
@@ -408,23 +381,13 @@ void _runAudioIsolate(_WorkerStartup startup) {
 }
 
 // ---------------------------------
-// 音声 isolate が持つ道具一式（認識器・VAD・変換バッファ）
+// 音声 isolate が持つ道具一式（VAD・変換バッファ）
 // ---------------------------------
 class _AudioEngine {
-  _AudioEngine({
-    required String modelPath,
-    required String tokensPath,
-    required bool useOsTranscriber,
-    required this.onMessage,
-  }) : _recognizer = useOsTranscriber
-            ? null
-            : _createRecognizer(modelPath: modelPath, tokensPath: tokensPath);
+  _AudioEngine({required this.onMessage});
 
   // UI 側へ送る（SttAudioEvent か _SegmentCaptured）
   final void Function(Object message) onMessage;
-
-  // OS の文字起こしを使うときは作らない
-  final sherpa.OfflineRecognizer? _recognizer;
 
   sherpa.VoiceActivityDetector? _vad;
   String? _sileroPath;
@@ -436,26 +399,6 @@ class _AudioEngine {
 
   // 発話と判定される前の声を、区切りの頭へ補う係
   final _SpeechHeadKeeper _headKeeper = _SpeechHeadKeeper();
-
-  // SenseVoice の枠にモデル本体のパスを入れることで読み方が決まる
-  static sherpa.OfflineRecognizer _createRecognizer({
-    required String modelPath,
-    required String tokensPath,
-  }) {
-    final config = sherpa.OfflineRecognizerConfig(
-      model: sherpa.OfflineModelConfig(
-        senseVoice: sherpa.OfflineSenseVoiceModelConfig(
-          model: modelPath,
-          language: _kRecognitionLanguage,
-          useInverseTextNormalization: true, // 数字や句読点を読みやすい形にする
-        ),
-        tokens: tokensPath,
-        numThreads: 1,
-        debug: kDebugMode,
-      ),
-    );
-    return sherpa.OfflineRecognizer(config);
-  }
 
   static sherpa.VoiceActivityDetector _createVad(String sileroPath) {
     return sherpa.VoiceActivityDetector(
@@ -501,7 +444,7 @@ class _AudioEngine {
 
     _notifySpeechActive(detected: false);
     vad.flush();
-    _drainAndTranscribe(vad);
+    _drainSegments(vad);
   }
 
   void releaseListening() {
@@ -515,12 +458,11 @@ class _AudioEngine {
 
   void dispose() {
     releaseListening();
-    _recognizer?.free();
   }
 
   // ---------------------------------
   // 音声チャンクの受信
-  //   ① Float32 へ変換 → ② 512サンプル窓で VAD に供給 → ③ 区切り → 文字化
+  //   ① Float32 へ変換 → ② 512サンプル窓で VAD に供給 → ③ 区切った発話を UI 側へ戻す
   // ---------------------------------
 
   void acceptAudio(Uint8List bytes) {
@@ -540,7 +482,7 @@ class _AudioEngine {
 
     // 発話中かどうかの変化は、確定テキストより先に知らせる
     _notifySpeechActive(detected: vad.isDetected());
-    _drainAndTranscribe(vad);
+    _drainSegments(vad);
     onMessage(SttMicLevelMeasured(_peakLevel(samples)));
   }
 
@@ -550,8 +492,8 @@ class _AudioEngine {
     onMessage(SttSpeechActiveChanged(detected));
   }
 
-  // 区切られた発話を順に取り出し、文字化して通知する
-  void _drainAndTranscribe(sherpa.VoiceActivityDetector vad) {
+  // 区切られた発話を順に取り出し、UI 側へ戻す
+  void _drainSegments(sherpa.VoiceActivityDetector vad) {
     while (!vad.isEmpty()) {
       final segment = vad.front();
       vad.pop();
@@ -559,34 +501,7 @@ class _AudioEngine {
       // 発話と判定される前に話していた分を、区切りの頭へ補う
       final samples = _headKeeper.prependHead(segment);
 
-      // 認識器が無ければ、文字化は UI 側の OS の文字起こしに任せる
-      final recognizer = _recognizer;
-      if (recognizer == null) {
-        onMessage(_SegmentCaptured(samples));
-        continue;
-      }
-
-      final stopwatch = Stopwatch()..start();
-      final text = _transcribe(recognizer, samples);
-      stopwatch.stop();
-
-      onMessage(SttTranscribed(
-        text: text,
-        durationSec: samples.length / _kSampleRate,
-        elapsedMs: stopwatch.elapsedMilliseconds,
-      ));
-    }
-  }
-
-  // 1発話ぶんの音声サンプルを日本語テキストに変換する
-  String _transcribe(sherpa.OfflineRecognizer recognizer, Float32List samples) {
-    final stream = recognizer.createStream();
-    try {
-      stream.acceptWaveform(samples: samples, sampleRate: _kSampleRate);
-      recognizer.decode(stream);
-      return recognizer.getResult(stream).text;
-    } finally {
-      stream.free();
+      onMessage(_SegmentCaptured(samples));
     }
   }
 

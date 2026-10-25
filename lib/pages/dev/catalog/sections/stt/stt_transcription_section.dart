@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:momeo/platform/os_transcriber_channel.dart';
 import 'package:momeo/stt/stt_audio_worker.dart';
 import 'package:momeo/stt/stt_listening_pipeline.dart';
 import 'package:momeo/stt/stt_model_provisioner.dart';
 
 // ============================================================
 // 文字化の動作確認セクション
-//   マイク → 音声 isolate（VAD の区切り → 認識モデル）→ 認識テキストの表示。
+//   マイク → 音声 isolate（VAD の区切り）→ OS の文字起こし → 認識テキストの表示。
 //   各発話の「長さ・変換時間・認識テキスト」を並べて体感の速さを確かめる。
 //
 //   リスニング画面と同じ配線（SttAudioWorker + SttListeningPipeline）を使うが、
@@ -53,28 +54,23 @@ class _SttTranscriptionSectionState extends State<SttTranscriptionSection> {
   }
 
   // ---------------------------------
-  // 準備：モデルの住所を窓口から受け取り、確認用の音声 isolate を立てる
+  // 準備：OS の文字起こしが使えるかを確かめ、確認用の音声 isolate を立てる
   // ---------------------------------
 
   Future<void> _prepare() async {
     try {
-      final models = await SttModelProvisioner().provision();
+      // silero（VAD 用）を端末へコピーし、その住所を受け取る
+      final sileroPath = await SttModelProvisioner().ensureSilero();
 
-      // silero（VAD 用）が無いと区切れない
-      if (!models.silero.isValid) {
-        throw StateError('silero_vad.onnx が見つかりません（VAD 区切り不可）');
-      }
-      // 認識モデル（本体・tokens）が無いと文字化できない
-      if (!models.sttModel.isValid || !models.sttTokens.isValid) {
+      // OS の文字起こしがすぐ使えないと文字化できない
+      final status = await OsTranscriberChannel.prepare();
+      if (status.state != OsTranscriberState.ready) {
         throw StateError(
-          '認識モデルが未配置です。「STT → モデル配置」が OK か確認してください',
+          'OS の文字起こしが使えません（${status.state.name} / ${status.detail}）',
         );
       }
 
-      final worker = await SttAudioWorker.spawn(
-        modelPath: models.sttModel.path,
-        tokensPath: models.sttTokens.path,
-      );
+      final worker = await SttAudioWorker.spawn();
 
       if (!mounted) {
         await worker.dispose();
@@ -85,7 +81,7 @@ class _SttTranscriptionSectionState extends State<SttTranscriptionSection> {
         _worker = worker;
         _pipeline = SttListeningPipeline(
           worker: worker,
-          sileroPath: models.silero.path,
+          sileroPath: sileroPath,
           onTranscribed: _onTranscribed,
         );
         _preparing = false;

@@ -10,10 +10,19 @@ import 'package:momeo/platform/os_transcriber_channel.dart';
 import 'package:momeo/stt/stt_audio_worker.dart';
 import 'package:momeo/stt/stt_model_provisioner.dart';
 
+// OS の文字起こしが使えない端末（何度やっても結果は同じなので、再試行しない）
+class SttUnsupportedError implements Exception {
+  const SttUnsupportedError(this.detail);
+  final String detail;
+
+  @override
+  String toString() => 'SttUnsupportedError: $detail';
+}
+
 // ============================================================
 // sttEngineProvider — 音声 isolate（SttAudioWorker）をアプリ全体で1つだけ持つ
 //
-//   認識器の読み込みは数秒かかるため、起動時に1回だけ行い全画面で使い回す。
+//   OS の文字起こしが使えるかの確かめと音声 isolate の立ち上げを、起動時に1回だけ行い全画面で使い回す。
 //   状態は AsyncValue で公開する（loading=準備中 / data=完了 / error=失敗）。
 //
 //   準備が失敗したら、この provider が自分でバックオフ付きの再試行を予約する。
@@ -52,44 +61,21 @@ class SttEngineNotifier extends AsyncNotifier<SttAudioWorker> {
       ref.read(sttRestartSuggestedProvider.notifier).set(false);
       return worker;
     } catch (error) {
-      _scheduleRetry();
+      // 使えない端末では、何度やっても結果は同じなので再試行しない
+      if (error is! SttUnsupportedError) _scheduleRetry();
       rethrow;
     }
   }
 
   // ---------------------------------
   // 起動時の準備処理
-  //   ① モデルパス取得 → ② (Android初回のみ) DL完了待ち → ③ 音声 isolate の立ち上げ
+  //   ① OS の文字起こしが使えるかを確かめる → ② 音声 isolate の立ち上げ
   // ---------------------------------
   Future<SttAudioWorker> _prepare() async {
-    final provisioner = SttModelProvisioner();
+    await _ensureOsTranscriberReady();
 
-    // ① モデル3ファイルのパス・整合性を取得（silero の端末コピーもこの中で済む）
-    var models = await provisioner.provision();
-
-    // ② 認識モデルが未到着なら、DL中に限り完了を待ってからパスを取り直す
-    if (!_isModelReady(models)) {
-      await _waitForModelDownload(provisioner);
-      models = await provisioner.provision();
-    }
-
-    // 待った後も揃わなければ失敗として公開する
-    if (!_isModelReady(models)) {
-      throw StateError(
-        '認識モデルが読める状態になっていません'
-        '（model: ${models.sttModel.isValid ? 'OK' : 'NG'}'
-        ' / tokens: ${models.sttTokens.isValid ? 'OK' : 'NG'}）',
-      );
-    }
-
-    // ③ 音声 isolate を立ち上げる。認識器の生成（数秒）もこの中で済む
-    final useOsTranscriber = await _canUseOsTranscriber();
     final stopwatch = Stopwatch()..start();
-    final worker = await SttAudioWorker.spawn(
-      modelPath: models.sttModel.path,
-      tokensPath: models.sttTokens.path,
-      useOsTranscriber: useOsTranscriber,
-    );
+    final worker = await SttAudioWorker.spawn();
     stopwatch.stop();
     ref.onDispose(worker.dispose);
 
@@ -103,53 +89,25 @@ class SttEngineNotifier extends AsyncNotifier<SttAudioWorker> {
   }
 
   // ---------------------------------
-  // OS の文字起こしをすぐ使えるか。使えなければ同梱の認識モデルで文字化する
+  // OS の文字起こしがすぐ使えるかを確かめる。使えなければエラーを投げる
   // ---------------------------------
-  Future<bool> _canUseOsTranscriber() async {
-    if (!Platform.isIOS && !Platform.isAndroid) return false;
-
-    try {
-      final status = await OsTranscriberChannel.prepare();
-      final canUse = status.state == OsTranscriberState.ready;
-      debugPrint(
-        '[sttEngine] OS の文字起こしを${canUse ? '使います' : '使いません'}'
-        '（${status.state.name} / ${status.detail}）',
-      );
-      return canUse;
-    } catch (error) {
-      debugPrint('[sttEngine] OS の文字起こしを確かめられませんでした: $error');
-      return false;
-    }
-  }
-
-  // 認識モデル（本体・tokens）の2ファイルが正しく置いてあるか
-  bool _isModelReady(SttModels models) {
-    return models.sttModel.isValid && models.sttTokens.isValid;
-  }
-
-  // ---------------------------------
-  // Android 初回の DL 完了待ち
-  //   「DL中」→ 完了 or 失敗まで待つ／「未開始・失敗で止まっている」→ 即エラー
-  // ---------------------------------
-  Future<void> _waitForModelDownload(SttModelProvisioner provisioner) async {
-    final current = await provisioner.modelDownloadState();
-
-    // 待たずに失敗として公開し、永久待ちを防ぐ
-    if (current.phase != AssetPackPhase.downloading) {
-      throw StateError(
-        '認識モデルが未配置です（DL状態: ${current.rawStatus ?? current.phase.name}）',
-      );
+  Future<void> _ensureOsTranscriberReady() async {
+    if (!Platform.isIOS && !Platform.isAndroid) {
+      throw const SttUnsupportedError('iOS・Android 以外では使えません');
     }
 
-    final finished = await provisioner.watchModelDownload().firstWhere(
-          (state) =>
-              state.phase == AssetPackPhase.completed ||
-              state.phase == AssetPackPhase.failed,
-        );
-    if (finished.phase == AssetPackPhase.failed) {
-      throw StateError(
-        '認識モデルのダウンロードに失敗しました（errorCode: ${finished.errorCode}）',
-      );
+    final status = await OsTranscriberChannel.prepare();
+    debugPrint(
+      '[sttEngine] OS の文字起こし: ${status.state.name}（${status.detail}）',
+    );
+
+    switch (status.state) {
+      case OsTranscriberState.ready:
+        return;
+      case OsTranscriberState.unsupported:
+        throw SttUnsupportedError(status.detail);
+      case OsTranscriberState.downloading:
+        throw StateError('言語のモデルをダウンロード中です（${status.detail}）');
     }
   }
 
@@ -178,40 +136,10 @@ class SttEngineNotifier extends AsyncNotifier<SttAudioWorker> {
   }
 
   // ---------------------------------
-  // 再試行の本体。DL起因の失敗なら再取得を頼んでから準備をやり直す
+  // 再試行の本体。準備をやり直す
   // ---------------------------------
-  Future<void> _retry() async {
-    try {
-      final provisioner = SttModelProvisioner();
-      final download = await provisioner.modelDownloadState();
-      if (download.phase == AssetPackPhase.notStarted ||
-          download.phase == AssetPackPhase.failed) {
-        await provisioner.requestModelDownload();
-        await _waitForDownloadingTransition(provisioner);
-      }
-    } catch (_) {
-      // 再取得の依頼に失敗しても準備のやり直しには進む
-      // （また失敗すれば次のバックオフに乗る）
-    }
+  void _retry() {
     ref.invalidateSelf();
-  }
-
-  // fetch 直後はDL状態の反映にラグがあるため、DLが始まるまで少しだけ待つ
-  Future<void> _waitForDownloadingTransition(
-    SttModelProvisioner provisioner,
-  ) async {
-    try {
-      await provisioner
-          .watchModelDownload()
-          .firstWhere(
-            (state) =>
-                state.phase != AssetPackPhase.notStarted &&
-                state.phase != AssetPackPhase.failed,
-          )
-          .timeout(const Duration(seconds: 5));
-    } on TimeoutException {
-      // 遷移が観測できなくても再試行は続ける
-    }
   }
 }
 

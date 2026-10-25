@@ -44,6 +44,8 @@ class _WidgetsContentSlideSwitcherSectionState
         return const ActivityDotsText('再試行しています');
       case PreparationPhase.tryRestarting:
         return const Text('アプリを再起動してください');
+      case PreparationPhase.unsupported:
+        return const Text('この端末では使えません');
     }
   }
 

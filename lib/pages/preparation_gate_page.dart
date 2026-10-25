@@ -12,7 +12,7 @@ import 'package:momeo/widgets/intro_setting_layout.dart';
 import 'package:momeo/widgets/content_slide_switcher.dart';
 
 // ---------------------------------
-// 待ち画面の4フェーズ
+// 待ち画面の5フェーズ
 // ---------------------------------
 enum PreparationPhase {
   /// DL状態の取得前・DL開始前・エンジンのメモリ読み込み中
@@ -26,6 +26,9 @@ enum PreparationPhase {
 
   /// 連続失敗が閾値を超え、ユーザーに再起動を促す状態
   tryRestarting,
+
+  /// OS の文字起こしが使えない端末。再試行しない
+  unsupported,
 }
 
 // ---------------------------------
@@ -67,6 +70,9 @@ class PreparationGatePage extends ConsumerWidget {
     // エンジン失敗中（再試行のisLoading中は除く。前回のエラーが残り続けるため）
     // ---------------------------------
     if (engineState.hasError && !engineState.isLoading) {
+      if (engineState.error is SttUnsupportedError) {
+        return PreparationPhase.unsupported;
+      }
       return restartSuggested
           ? PreparationPhase.tryRestarting
           : PreparationPhase.retrying;
@@ -118,6 +124,9 @@ class PreparationGatePage extends ConsumerWidget {
       case PreparationPhase.tryRestarting:
         // 「処理中」ではなくユーザーへの依頼なので、動きは付けない
         return const Text('アプリを再起動してください');
+      case PreparationPhase.unsupported:
+        // 再起動しても変わらないお知らせなので、動きは付けない
+        return const Text('この端末では使えません');
     }
   }
 }
