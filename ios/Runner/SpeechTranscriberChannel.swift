@@ -81,6 +81,12 @@ actor SpeechTranscriberEngine {
   // 進行中の言語のモデルのダウンロード（終わると nil に戻る）
   private var downloadTask: Task<Void, Never>?
 
+  // この起動中にダウンロードを終えた言語（OS が依頼を返し続けても、始め直さないため）
+  private var downloadedLocaleIDs: Set<String> = []
+
+  // 直前のダウンロードの失敗（次の prepare の説明に出す）
+  private var lastDownloadError: String?
+
   // ---------------------------------
   // 端末・言語の対応確認と、モデルのダウンロードの開始
   // ---------------------------------
@@ -101,15 +107,18 @@ actor SpeechTranscriberEngine {
     }
 
     let transcriber = makeTranscriber(locale: supportedLocale)
-    do {
-      // 端末にモデルが無ければ、ダウンロードを始めて、終わるのを待たずに返す
-      if let request = try await AssetInventory.assetInstallationRequest(supporting: [transcriber]) {
-        startDownload(request)
-        return ["state": "downloading", "detail": "\(supportedLocale.identifier) のモデルのダウンロードを始めました"]
+    if await !isModelInstalled(for: supportedLocale) {
+      do {
+        // 端末にモデルが無ければ、ダウンロードを始めて、終わるのを待たずに返す
+        if let request = try await AssetInventory.assetInstallationRequest(supporting: [transcriber]) {
+          let previousError = lastDownloadError.map { "（前回の失敗: \($0)）" } ?? ""
+          startDownload(request, localeID: localeID(of: supportedLocale))
+          return ["state": "downloading", "detail": "\(supportedLocale.identifier) のモデルのダウンロードを始めました\(previousError)"]
+        }
+      } catch {
+        // 通信の途切れなど一時的な失敗もあるので、使えないとは決めず、次の prepare でやり直す
+        return ["state": "downloading", "detail": "モデルを用意できませんでした: \(error)"]
       }
-    } catch {
-      // 通信の途切れなど一時的な失敗もあるので、使えないとは決めず、次の prepare でやり直す
-      return ["state": "downloading", "detail": "モデルを用意できませんでした: \(error)"]
     }
 
     locale = supportedLocale
@@ -120,20 +129,35 @@ actor SpeechTranscriberEngine {
     ]
   }
 
+  // 言語のモデルが端末に入っているか（OS の一覧か、この起動中にダウンロードを終えた言語）
+  private func isModelInstalled(for locale: Locale) async -> Bool {
+    let id = localeID(of: locale)
+    if downloadedLocaleIDs.contains(id) { return true }
+    let installedLocales = await SpeechTranscriber.installedLocales
+    return installedLocales.contains { localeID(of: $0) == id }
+  }
+
   // ダウンロードを裏で進める。失敗しても、次の prepare で始め直す
-  private func startDownload(_ request: AssetInstallationRequest) {
+  private func startDownload(_ request: AssetInstallationRequest, localeID id: String) {
     downloadTask = Task {
       do {
         try await request.downloadAndInstall()
+        self.finishDownload(localeID: id, error: nil)
       } catch {
-        NSLog("[SpeechTranscriber] モデルのダウンロードに失敗しました: %@", "\(error)")
+        self.finishDownload(localeID: id, error: "\(error)")
       }
-      self.finishDownload()
     }
   }
 
-  private func finishDownload() {
+  private func finishDownload(localeID id: String, error: String?) {
     downloadTask = nil
+    lastDownloadError = error
+    if error == nil { downloadedLocaleIDs.insert(id) }
+  }
+
+  // 言語を比べるための名前（ja_JP と ja-JP のような書き方の違いをそろえる）
+  private func localeID(of locale: Locale) -> String {
+    return locale.identifier(.bcp47)
   }
 
   // ---------------------------------
