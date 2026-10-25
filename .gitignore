@@ -47,12 +47,5 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 
-# オンデバイス STT のモデル（巨大なので Git に入れない／取得は scripts/download_nemo_model.sh）
-#   ・.dev_models/                 … ダウンロードした NeMo の置き場（丸ごと無視）
-#   ・ios/Runner/Models/           … iOS へコピーした NeMo の実体だけ無視（Xcode の参照設定は残す）
-#   ・android アセットパック（stt_models） … fast-follow の入れ物に置くモデルの実体だけ無視（モジュール構成は残す）
+# 認識モデルの調査で手元に落としたモデルの置き場（巨大なので Git に入れない）
 /.dev_models/
-/ios/Runner/Models/model.int8.onnx
-/ios/Runner/Models/tokens.txt
-/android/stt_models/src/main/assets/models/model.int8.onnx
-/android/stt_models/src/main/assets/models/tokens.txt
