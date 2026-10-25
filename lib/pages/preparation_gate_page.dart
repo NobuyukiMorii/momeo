@@ -2,24 +2,19 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:momeo/foundation/app_colors.dart';
 import 'package:momeo/foundation/app_text_styles.dart';
-import 'package:momeo/platform/asset_pack_delivery.dart';
 import 'package:momeo/pages/splash_page.dart';
 import 'package:momeo/providers/stt_providers.dart';
 import 'package:momeo/stt/stt_audio_worker.dart';
 import 'package:momeo/widgets/activity_dots_text.dart';
-import 'package:momeo/widgets/downloading_progress_text.dart';
 import 'package:momeo/widgets/intro_setting_layout.dart';
 import 'package:momeo/widgets/content_slide_switcher.dart';
 
 // ---------------------------------
-// 待ち画面の6フェーズ
+// 待ち画面の5フェーズ
 // ---------------------------------
 enum PreparationPhase {
-  /// DL状態の取得前・DL開始前・エンジンのメモリ読み込み中
+  /// エンジンの準備中（OS の文字起こしの確かめ・音声 isolate の立ち上げ）
   loading,
-
-  /// モデルDLが進行中。DL%を表示する
-  downloading,
 
   /// エンジン初期化に失敗し、自動再試行を待っている状態
   retrying,
@@ -43,10 +38,9 @@ class PreparationGatePage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final engineState = ref.watch(sttEngineProvider);
-    final downloadState = ref.watch(sttModelDownloadStateProvider);
     final restartSuggested = ref.watch(sttRestartSuggestedProvider);
 
-    final phase = _resolvePhase(engineState, downloadState, restartSuggested);
+    final phase = _resolvePhase(engineState, restartSuggested);
 
     return Scaffold(
       body: IntroSettingLayout(
@@ -54,7 +48,7 @@ class PreparationGatePage extends ConsumerWidget {
           style: AppTextStyles.headline.copyWith(color: AppColors.onSurface),
           child: ContentSlideSwitcher(
             contentKey: phase,
-            child: _buildPhaseContent(phase, downloadState),
+            child: _buildPhaseContent(phase),
           ),
         ),
       ),
@@ -62,11 +56,10 @@ class PreparationGatePage extends ConsumerWidget {
   }
 
   // ---------------------------------
-  // エンジン・DLの状態からフェーズを判定する
+  // エンジンの状態からフェーズを判定する
   // ---------------------------------
   PreparationPhase _resolvePhase(
     AsyncValue<SttAudioWorker> engineState,
-    AsyncValue<AssetPackState> downloadState,
     bool restartSuggested,
   ) {
     // ---------------------------------
@@ -88,47 +81,16 @@ class PreparationGatePage extends ConsumerWidget {
           : PreparationPhase.retrying;
     }
 
-    // ---------------------------------
-    // DL状態が未取得 → DLがまだ始まる前と同じ扱い
-    // ---------------------------------
-    final download = downloadState.value;
-    if (download == null) {
-      return PreparationPhase.loading;
-    }
-
-    // ---------------------------------
-    // DL状態ごとに出し分ける
-    //   completed には iOS のように自動DLが無い環境（常に完了扱い）も含まれる
-    // ---------------------------------
-    switch (download.phase) {
-      case AssetPackPhase.notStarted:
-        return PreparationPhase.loading;
-      case AssetPackPhase.downloading:
-        return PreparationPhase.downloading;
-      case AssetPackPhase.completed:
-        return PreparationPhase.loading;
-      case AssetPackPhase.failed:
-        // エンジン側の失敗確定を待つ間もフェーズを揺らさないよう、同じ判定で出す
-        return restartSuggested
-            ? PreparationPhase.tryRestarting
-            : PreparationPhase.retrying;
-    }
+    return PreparationPhase.loading;
   }
 
   // ---------------------------------
   // フェーズのコンテンツを組み立てる
   // ---------------------------------
-  Widget _buildPhaseContent(
-    PreparationPhase phase,
-    AsyncValue<AssetPackState> downloadState,
-  ) {
+  Widget _buildPhaseContent(PreparationPhase phase) {
     switch (phase) {
       case PreparationPhase.loading:
         return const Text(splashAppName);
-      case PreparationPhase.downloading:
-        // DL% は数字だけその場更新（フェーズが同じなのでスライドは起きない）
-        final percent = ((downloadState.value?.progress ?? 0.0) * 100).round();
-        return DownloadingProgressText(percent: percent);
       case PreparationPhase.retrying:
         return const ActivityDotsText('再試行しています');
       case PreparationPhase.tryRestarting:

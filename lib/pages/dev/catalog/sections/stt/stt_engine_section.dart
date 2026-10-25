@@ -10,10 +10,9 @@ import 'package:momeo/providers/stt_providers.dart';
 //   - 起動と同時に準備が始まり、ここを開いたときには（普通は）完了していること
 //   - このセクションに出入りしても再ロードが走らないこと
 //     （エンジン識別番号が変わらない＝同じエンジンの使い回し）
-//   - モデル未配置などの失敗が「失敗」として見えること
+//   - OS の文字起こしが使えないなどの失敗が「失敗」として見えること
 //
 //   ※ このセクションは状態を映すだけで、自分ではエンジンを作らない。
-//   ※ Android のDL進捗・再試行は「STT → モデル配置」セクションが担当。
 // ============================================================
 
 class SttEngineSection extends ConsumerWidget {
@@ -54,12 +53,12 @@ class SttEngineSection extends ConsumerWidget {
               title: '失敗',
               detail: '$error',
             ),
-          // 準備中：DL待ち・メモリ読み込み中
+          // 準備中：OS の文字起こしの確かめ・音声 isolate の立ち上げ中
           _ => const _StatusTile(
               icon: Icons.hourglass_top,
               color: Colors.orange,
-              title: '準備中（DL待ち・メモリ読み込み中）',
-              detail: 'モデルの詳細は「STT → モデル配置」で確認できます',
+              title: '準備中',
+              detail: 'OS の文字起こしの確かめ・音声 isolate の立ち上げ中',
             ),
         },
       ],

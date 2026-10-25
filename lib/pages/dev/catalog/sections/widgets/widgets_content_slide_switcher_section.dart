@@ -1,12 +1,9 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:momeo/foundation/app_colors.dart';
 import 'package:momeo/foundation/app_text_styles.dart';
 import 'package:momeo/pages/preparation_gate_page.dart';
 import 'package:momeo/pages/splash_page.dart';
 import 'package:momeo/widgets/activity_dots_text.dart';
-import 'package:momeo/widgets/downloading_progress_text.dart';
 import 'package:momeo/widgets/content_slide_switcher.dart';
 
 // ============================================================
@@ -24,12 +21,6 @@ class WidgetsContentSlideSwitcherSection extends StatefulWidget {
 class _WidgetsContentSlideSwitcherSectionState
     extends State<WidgetsContentSlideSwitcherSection> {
   PreparationPhase _phase = PreparationPhase.loading;
-  int _percent = 0;
-
-  // ---------------------------------
-  // ダウンロードタイマー
-  // ---------------------------------
-  Timer? _downloadTimer;
 
   // ---------------------------------
   // 選択中フェーズの中身
@@ -38,8 +29,6 @@ class _WidgetsContentSlideSwitcherSectionState
     switch (_phase) {
       case PreparationPhase.loading:
         return const Text(splashAppName);
-      case PreparationPhase.downloading:
-        return DownloadingProgressText(percent: _percent);
       case PreparationPhase.retrying:
         return const ActivityDotsText('再試行しています');
       case PreparationPhase.tryRestarting:
@@ -52,41 +41,7 @@ class _WidgetsContentSlideSwitcherSectionState
   }
 
   void _selectPhase(PreparationPhase phase) {
-    // ---------------------------------
-    // ダウンロードタイマーを止める
-    // ---------------------------------
-    _downloadTimer?.cancel();
-
-    // ---------------------------------
-    // フェーズを更新
-    // ---------------------------------
-    setState(() {
-      _phase = phase;
-      if (phase == PreparationPhase.downloading) _percent = 0;
-    });
-
-    // ---------------------------------
-    // ダウンロードタイマーを開始
-    // ---------------------------------
-    if (phase == PreparationPhase.downloading) _startDownloadDemo();
-  }
-
-  // ---------------------------------
-  // ダウンロード率の更新
-  // ---------------------------------
-  void _startDownloadDemo() {
-    _downloadTimer = Timer.periodic(const Duration(milliseconds: 100), (timer) {
-      setState(() {
-        _percent++;
-      });
-      if (_percent >= 100) timer.cancel();
-    });
-  }
-
-  @override
-  void dispose() {
-    _downloadTimer?.cancel();
-    super.dispose();
+    setState(() => _phase = phase);
   }
 
   @override
@@ -98,8 +53,7 @@ class _WidgetsContentSlideSwitcherSectionState
         // 説明テキスト
         // ---------------------------------
         const Text(
-          'フェーズボタンでスライド切り替えを確認できます。downloading は 0% から 100% まで'
-          '1%ずつ自動で進み、同じフェーズ内はスライドせずその場で更新されます。'
+          'フェーズボタンでスライド切り替えを確認できます。'
           '処理中フェーズはドットが動き続けます。',
           style: TextStyle(fontSize: 12),
         ),

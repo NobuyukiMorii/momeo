@@ -5,10 +5,8 @@ import 'dart:math' show min;
 import 'package:flutter/foundation.dart' show debugPrint, kDebugMode;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:momeo/platform/asset_pack_delivery.dart';
 import 'package:momeo/platform/os_transcriber_channel.dart';
 import 'package:momeo/stt/stt_audio_worker.dart';
-import 'package:momeo/stt/stt_model_provisioner.dart';
 
 // OS の文字起こしが使えない端末（何度やっても結果は同じなので、再試行しない）
 class SttUnsupportedError implements Exception {
@@ -173,17 +171,3 @@ class SttRestartSuggestionNotifier extends Notifier<bool> {
   // SttEngineNotifier が成否に応じて呼ぶ（画面側は watch するだけ）
   void set(bool suggested) => state = suggested;
 }
-
-// ============================================================
-// sttModelDownloadStateProvider — 認識モデルの自動DL（fast-follow）の進捗
-//
-//   sttEngineProvider の「準備中」だけでは DL中か読み込み中か分からないため、
-//   待ち画面が併読する。iOS など自動DLが無い環境では常に ready が流れる。
-// ============================================================
-final sttModelDownloadStateProvider =
-    StreamProvider.autoDispose<AssetPackState>((ref) async* {
-  // 変化通知は動いたときしか来ないため、購読開始時点の状態をまず1回流す
-  final provisioner = SttModelProvisioner();
-  yield await provisioner.modelDownloadState();
-  yield* provisioner.watchModelDownload();
-});
