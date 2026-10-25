@@ -57,9 +57,8 @@ require-device:
 # ---------------------------------
 #   ストアが要求する単調増加を人手なしで満たすため → notes/release/versioning/version_management.md
 
-# ---- iOS: モデルはバンドルリソースとして同梱する
+# ---- iOS
 build-ios: models
-	bash scripts/place_ios_models.sh
 	flutter build ipa --build-number=$$(( $$(date +%s) / 60 ))
 
 # ---- Android: モデルは fast-follow アセットパックに入れて AAB 化する

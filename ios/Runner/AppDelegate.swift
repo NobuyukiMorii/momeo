@@ -20,11 +20,6 @@ import UIKit
                          withId: NativeMemoListFactory.viewType)
     }
 
-    // STT モデルの実パスを Dart に返すネイティブブリッジを登録
-    if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "SttModelChannel") {
-      SttModelChannel.register(with: registrar.messenger())
-    }
-
     // OS 内蔵の文字起こし（SpeechTranscriber）を Dart から使うネイティブブリッジを登録
     if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "SpeechTranscriberChannel") {
       SpeechTranscriberChannel.register(with: registrar.messenger())

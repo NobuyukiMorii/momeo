@@ -70,8 +70,5 @@ bash "$SCRIPT_DIR/clean_stale_ios_build.sh" "$FLUTTER_DEVICE_ID"
 # Android のモデルを置く
 bash "$SCRIPT_DIR/place_android_device_models.sh" "$FLUTTER_DEVICE_ID"
 
-# iOS のモデルを置く
-bash "$SCRIPT_DIR/place_ios_models.sh" "$FLUTTER_DEVICE_ID"
-
 # 起動する
 flutter run --"$BUILD_MODE" -d "$FLUTTER_DEVICE_ID"
