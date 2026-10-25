@@ -25,6 +25,11 @@ import UIKit
       SttModelChannel.register(with: registrar.messenger())
     }
 
+    // OS 内蔵の文字起こし（SpeechTranscriber）を Dart から使うネイティブブリッジを登録
+    if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "SpeechTranscriberChannel") {
+      SpeechTranscriberChannel.register(with: registrar.messenger())
+    }
+
     // 他のアプリの音に録音を合わせるための AVAudioSession の窓口を登録
     if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "AudioSessionChannel") {
       AudioSessionChannel.register(with: registrar.messenger())

@@ -22,6 +22,7 @@
 		97C147011CF9000F007C117D /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 97C146FF1CF9000F007C117D /* LaunchScreen.storyboard */; };
 		B3FC7C5B7B7A5D364EAE51B2 /* MomeoWidgets.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = CDFA1D9307A565082CB9A50E /* MomeoWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		D10B5E28F914957D2FB664EF /* MomeoWidgetsBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C3DDEE3404B0576C8AEB7A3 /* MomeoWidgetsBundle.swift */; };
+		5A7C0E1D2B3F4A5600C1D001 /* SpeechTranscriberChannel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A7C0E1D2B3F4A5600C1D002 /* SpeechTranscriberChannel.swift */; };
 		D54D3CD22DF370F5EE28D154 /* SttModelChannel.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACC68584E009F98472B27DB8 /* SttModelChannel.swift */; };
 		E91A885820E74219A34FA001 /* NativeMemoList.swift in Sources */ = {isa = PBXBuildFile; fileRef = E91A885820E74219A34FA002 /* NativeMemoList.swift */; };
 		F3AE6B0EBFD4F47463C3A900 /* ListeningActivityWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = A26AB548A63D27F550654B95 /* ListeningActivityWidget.swift */; };
@@ -98,6 +99,7 @@
 		A5EFBB2D187191B32CF88D9C /* Pods_Runner.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_Runner.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		A83FF56E2C466BAC6391BBF6 /* Runner.entitlements */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.entitlements; path = Runner.entitlements; sourceTree = "<group>"; };
 		AC266C70F75E9EC73645D8BD /* Pods-RunnerTests.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-RunnerTests.release.xcconfig"; path = "Target Support Files/Pods-RunnerTests/Pods-RunnerTests.release.xcconfig"; sourceTree = "<group>"; };
+		5A7C0E1D2B3F4A5600C1D002 /* SpeechTranscriberChannel.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SpeechTranscriberChannel.swift; sourceTree = "<group>"; };
 		ACC68584E009F98472B27DB8 /* SttModelChannel.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SttModelChannel.swift; sourceTree = "<group>"; };
 		E91A885820E74219A34FA002 /* NativeMemoList.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeMemoList.swift; sourceTree = "<group>"; };
 		B44F88B0D52D8D531AC69AC0 /* Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
@@ -235,6 +237,7 @@
 				7884E8672EC3CC0400C636F2 /* SceneDelegate.swift */,
 				74858FAD1ED2DC5600515810 /* Runner-Bridging-Header.h */,
 				016CA583B9E7763003D9095C /* Models */,
+				5A7C0E1D2B3F4A5600C1D002 /* SpeechTranscriberChannel.swift */,
 				ACC68584E009F98472B27DB8 /* SttModelChannel.swift */,
 				E91A885820E74219A34FA002 /* NativeMemoList.swift */,
 				A83FF56E2C466BAC6391BBF6 /* Runner.entitlements */,
@@ -519,6 +522,7 @@
 				74858FAF1ED2DC5600515810 /* AppDelegate.swift in Sources */,
 				1498D2341E8E89220040F4C2 /* GeneratedPluginRegistrant.m in Sources */,
 				7884E8682EC3CC0700C636F2 /* SceneDelegate.swift in Sources */,
+				5A7C0E1D2B3F4A5600C1D001 /* SpeechTranscriberChannel.swift in Sources */,
 				D54D3CD22DF370F5EE28D154 /* SttModelChannel.swift in Sources */,
 				E91A885820E74219A34FA001 /* NativeMemoList.swift in Sources */,
 				FA86B42C48E9BC77111E506C /* AudioSessionChannel.swift in Sources */,
