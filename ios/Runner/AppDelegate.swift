@@ -29,6 +29,11 @@ import UIKit
     if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "AudioSessionChannel") {
       AudioSessionChannel.register(with: registrar.messenger())
     }
+
+    // 録音の止まり方を後から調べるための、端末ログ（os_log）への窓口を登録
+    if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "DeviceLogChannel") {
+      DeviceLogChannel.register(with: registrar.messenger())
+    }
   }
 
   // ---------------------------------

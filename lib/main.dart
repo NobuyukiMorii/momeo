@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:momeo/diagnostics/device_log.dart';
 import 'package:momeo/diagnostics/main_thread_watchdog.dart';
 import 'package:momeo/foundation/app_scroll_behavior.dart';
 import 'package:momeo/foundation/app_theme.dart';
@@ -55,6 +56,11 @@ void main() {
     runApp(const RecordingApp());
     return;
   }
+
+  // ---------------------------------
+  // ログの書き残しを始める（Swift 側の出来事も受け取れるようにし、起動を記録する）
+  // ---------------------------------
+  DeviceLog.start();
 
   // ---------------------------------
   // 前回のプロセスが残した「録音中」の Live Activity を消す（iOS）

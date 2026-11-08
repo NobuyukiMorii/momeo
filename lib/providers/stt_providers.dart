@@ -2,9 +2,9 @@ import 'dart:async';
 import 'dart:io' show Platform;
 import 'dart:math' show min;
 
-import 'package:flutter/foundation.dart' show debugPrint, kDebugMode;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:momeo/diagnostics/device_log.dart';
 import 'package:momeo/platform/os_transcriber_channel.dart';
 import 'package:momeo/stt/stt_audio_worker.dart';
 
@@ -92,12 +92,10 @@ class SttEngineNotifier extends AsyncNotifier<SttAudioWorker> {
     stopwatch.stop();
     ref.onDispose(worker.dispose);
 
-    if (kDebugMode) {
-      debugPrint(
-        '[sttEngine] エンジンの読み込みが完了しました'
-        '（${stopwatch.elapsedMilliseconds}ms・音声 isolate 内）',
-      );
-    }
+    DeviceLog.write(
+      '[sttEngine] エンジンの読み込みが完了しました'
+      '（${stopwatch.elapsedMilliseconds}ms・音声 isolate 内）',
+    );
     return worker;
   }
 
@@ -110,7 +108,7 @@ class SttEngineNotifier extends AsyncNotifier<SttAudioWorker> {
     }
 
     final status = await OsTranscriberChannel.prepare();
-    debugPrint(
+    DeviceLog.write(
       '[sttEngine] OS の文字起こし: ${status.state.name}（${status.detail}）',
     );
 
@@ -140,12 +138,10 @@ class SttEngineNotifier extends AsyncNotifier<SttAudioWorker> {
       _retry,
     );
 
-    if (kDebugMode) {
-      debugPrint(
-        '[sttEngine] 準備に失敗しました（連続 $_consecutiveFailures 回目）。'
-        '${_retryDelaySeconds[delayIndex]}秒後に自動で再試行します',
-      );
-    }
+    DeviceLog.write(
+      '[sttEngine] 準備に失敗しました（連続 $_consecutiveFailures 回目）。'
+      '${_retryDelaySeconds[delayIndex]}秒後に自動で再試行します',
+    );
   }
 
   // ---------------------------------

@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		0D9E1C2B3A4F5E6D7C8B9A01 /* DeviceLogChannel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D9E1C2B3A4F5E6D7C8B9A02 /* DeviceLogChannel.swift */; };
 		1498D2341E8E89220040F4C2 /* GeneratedPluginRegistrant.m in Sources */ = {isa = PBXBuildFile; fileRef = 1498D2331E8E89220040F4C2 /* GeneratedPluginRegistrant.m */; };
 		331C808B294A63AB00263BE5 /* RunnerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 331C807B294A618700263BE5 /* RunnerTests.swift */; };
 		34A23FED66A72D0E49532257 /* Pods_RunnerTests.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = C30DE97179583E4B5979243E /* Pods_RunnerTests.framework */; };
@@ -69,6 +70,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		0D9E1C2B3A4F5E6D7C8B9A02 /* DeviceLogChannel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceLogChannel.swift; sourceTree = "<group>"; };
 		1498D2321E8E86230040F4C2 /* GeneratedPluginRegistrant.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = GeneratedPluginRegistrant.h; sourceTree = "<group>"; };
 		1498D2331E8E89220040F4C2 /* GeneratedPluginRegistrant.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = GeneratedPluginRegistrant.m; sourceTree = "<group>"; };
 		14A14A8F4762243D02ACB683 /* Pods-Runner.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Runner.debug.xcconfig"; path = "Target Support Files/Pods-Runner/Pods-Runner.debug.xcconfig"; sourceTree = "<group>"; };
@@ -224,6 +226,7 @@
 				E91A885820E74219A34FA002 /* NativeMemoList.swift */,
 				A83FF56E2C466BAC6391BBF6 /* Runner.entitlements */,
 				909BA209ADAA3DCBBD27CE6D /* AudioSessionChannel.swift */,
+				0D9E1C2B3A4F5E6D7C8B9A02 /* DeviceLogChannel.swift */,
 			);
 			path = Runner;
 			sourceTree = "<group>";
@@ -505,6 +508,7 @@
 				5A7C0E1D2B3F4A5600C1D001 /* SpeechTranscriberChannel.swift in Sources */,
 				E91A885820E74219A34FA001 /* NativeMemoList.swift in Sources */,
 				FA86B42C48E9BC77111E506C /* AudioSessionChannel.swift in Sources */,
+				0D9E1C2B3A4F5E6D7C8B9A01 /* DeviceLogChannel.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

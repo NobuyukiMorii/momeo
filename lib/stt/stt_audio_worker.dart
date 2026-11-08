@@ -3,9 +3,9 @@ import 'dart:collection' show ListQueue;
 import 'dart:isolate';
 import 'dart:typed_data';
 
-import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:sherpa_onnx/sherpa_onnx.dart' as sherpa;
 
+import 'package:momeo/diagnostics/device_log.dart';
 import 'package:momeo/platform/os_transcriber_channel.dart';
 
 // ============================================================
@@ -228,7 +228,7 @@ class SttAudioWorker {
         text = await OsTranscriberChannel.transcribe(samples);
       } catch (error) {
         // 失敗しても結果待ちが解けるよう、空のテキストとして知らせる
-        debugPrint('[sttWorker] OS の文字起こしで文字化できませんでした: $error');
+        DeviceLog.write('[sttWorker] OS の文字起こしで文字化できませんでした: $error');
       }
       stopwatch.stop();
 
