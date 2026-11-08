@@ -12,9 +12,12 @@ enum AudioSessionChannel {
   static let releaseBluetoothMicMethod = "releaseBluetoothMic"
   static let releaseAudioSessionMethod = "releaseAudioSession"
   static let deviceChangesChannelName = "jp.momeo/audio_session/device_changes"
+  static let engineStopsChannelName = "jp.momeo/audio_session/engine_stops"
 
   // 機器の抜き差しを流す係（購読されている間だけ iOS の知らせを見張る）
   private static let deviceChangeStreamHandler = AudioDeviceChangeStreamHandler()
+  // 録音エンジンが止まったことを流す係（購読されている間だけ iOS の知らせを見張る）
+  private static let engineStopStreamHandler = AudioEngineStopStreamHandler()
 
   // 通話線（MethodChannel）を1本立て、問い合わせに応える
   static func register(with messenger: FlutterBinaryMessenger) {
@@ -37,6 +40,10 @@ enum AudioSessionChannel {
     // 機器の抜き差しを Dart へ流す線（EventChannel）も立てる
     let deviceChanges = FlutterEventChannel(name: deviceChangesChannelName, binaryMessenger: messenger)
     deviceChanges.setStreamHandler(deviceChangeStreamHandler)
+
+    // 録音エンジンが止まったことを Dart へ流す線も立てる
+    let engineStops = FlutterEventChannel(name: engineStopsChannelName, binaryMessenger: messenger)
+    engineStops.setStreamHandler(engineStopStreamHandler)
   }
 
   // 今の録音が Bluetooth のマイク（通話用の HFP）を使っているか
@@ -46,7 +53,7 @@ enum AudioSessionChannel {
   }
 
   // 録音を止めずに Bluetooth のマイクを手放し、イヤホンを通話用（HFP）から音楽用（A2DP）に戻す。
-  // オプションは Dart 側の _buildRecordConfig(allowsBluetoothMic: false) と揃える。背面では iOS に拒否される
+  // オプションは Dart 側の _buildRecordConfig(allowsBluetoothMic: false) と揃える
   private static func handleReleaseBluetoothMic(result: FlutterResult) {
     do {
       try AVAudioSession.sharedInstance().setCategory(
@@ -89,6 +96,34 @@ final class AudioDeviceChangeStreamHandler: NSObject, FlutterStreamHandler {
       // momeo 自身の設定変更による組み直しは流さず、機器の抜き差しだけを知らせる
       guard reason == .newDeviceAvailable || reason == .oldDeviceUnavailable else { return }
       events(reasonValue)
+    }
+    return nil
+  }
+
+  func onCancel(withArguments arguments: Any?) -> FlutterError? {
+    if let observer = observer {
+      NotificationCenter.default.removeObserver(observer)
+    }
+    observer = nil
+    return nil
+  }
+}
+
+// ---------------------------------
+// 録音エンジンが止まったことを Dart へ流す
+// ---------------------------------
+// AVAudioEngine は経路やカテゴリが変わると止まり、この知らせを出す。record は見ていないので、
+// momeo がどのエンジンの知らせでも受け取り（object: nil）、Dart 側はすぐ生死を確かめて録音を再開する
+final class AudioEngineStopStreamHandler: NSObject, FlutterStreamHandler {
+  private var observer: NSObjectProtocol?
+
+  func onListen(withArguments arguments: Any?, eventSink events: @escaping FlutterEventSink) -> FlutterError? {
+    observer = NotificationCenter.default.addObserver(
+      forName: .AVAudioEngineConfigurationChange,
+      object: nil,
+      queue: .main
+    ) { _ in
+      events(nil)
     }
     return nil
   }

@@ -1,21 +1,16 @@
 import 'dart:async';
-import 'dart:io' show Platform;
 
-import 'package:flutter/foundation.dart' show debugPrint;
 // アプリがバックグラウンドかフォアグラウンドかを把握するための3つのクラスを取り込む
 import 'package:flutter/widgets.dart'
     show AppLifecycleListener, AppLifecycleState, WidgetsBinding;
-import 'package:flutter_foreground_task/flutter_foreground_task.dart'
-    show FlutterForegroundTask;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
 
 import 'package:momeo/database/app_database.dart';
+import 'package:momeo/diagnostics/device_log.dart';
 import 'package:momeo/providers/database_providers.dart';
-import 'package:momeo/providers/settings_providers.dart';
 import 'package:momeo/providers/stt_providers.dart';
 import 'package:momeo/repositories/voice_memo_repository.dart';
-import 'package:momeo/stt/listening_foreground_service.dart';
-import 'package:momeo/stt/listening_live_activity.dart';
 import 'package:momeo/stt/stt_audio_worker.dart';
 import 'package:momeo/stt/stt_listening_pipeline.dart';
 import 'package:momeo/stt/stt_model_provisioner.dart';
@@ -25,6 +20,9 @@ import 'package:momeo/stt/stt_model_provisioner.dart';
 //
 //   ページ（listening_page）は watch して描画するだけの View に徹する。
 //   録音パイプラインの生成・開始・破棄もこの Notifier が持つ。
+//
+//   録音するのは、アプリを開いている間だけ。バックグラウンドに移ったら止め、フォアグラウンドに戻ったら始め直す。
+//   録音している間は、自動ロックで止まらないよう画面を消さない。
 //
 //   autoDispose: 画面が watch をやめる（＝画面を離れる）と Notifier ごと
 //   破棄され、パイプラインも止まる。破棄時に flush された末尾の発話も
@@ -47,7 +45,6 @@ class ListeningState {
     this.memos = const [],
     this.speechActive = false,
     this.awaitingTranscription = false,
-    this.recordingPaused = false,
     this.appendTargetId,
     this.typeInMemoId,
     this.typeInFrom = 0,
@@ -61,9 +58,6 @@ class ListeningState {
 
   // 発話が終わり、文字化の結果（空の結果も含む）を待っているか
   final bool awaitingTranscription;
-
-  // 録音が一時的に中断されているか（他のアプリが鳴っている・OS に中断されている）
-  final bool recordingPaused;
 
   // 次の発話を書き足すメモの id
   final int? appendTargetId;
@@ -86,7 +80,6 @@ class ListeningState {
       // 発話が終わったら、結果が届くまで待ちに入る
       awaitingTranscription:
           awaitingTranscription || (speechActive && !isActive),
-      recordingPaused: recordingPaused,
       appendTargetId: appendTargetId,
       typeInMemoId: typeInMemoId,
       typeInFrom: typeInFrom,
@@ -100,20 +93,6 @@ class ListeningState {
       memos: memos,
       speechActive: false,
       awaitingTranscription: false,
-      recordingPaused: recordingPaused,
-      appendTargetId: appendTargetId,
-      typeInMemoId: typeInMemoId,
-      typeInFrom: typeInFrom,
-    );
-  }
-
-  // 録音が一時的に中断された・再開した
-  ListeningState withRecordingPaused(bool isPaused) {
-    return ListeningState(
-      memos: memos,
-      speechActive: speechActive,
-      awaitingTranscription: awaitingTranscription,
-      recordingPaused: isPaused,
       appendTargetId: appendTargetId,
       typeInMemoId: typeInMemoId,
       typeInFrom: typeInFrom,
@@ -127,7 +106,6 @@ class ListeningState {
       memos: [memo, ...memos],
       speechActive: speechActive,
       awaitingTranscription: false,
-      recordingPaused: recordingPaused,
       appendTargetId: memo.id,
       typeInMemoId: memo.id,
       typeInFrom: 0,
@@ -140,7 +118,6 @@ class ListeningState {
       memos: [memo, ...memos.skip(1)],
       speechActive: speechActive,
       awaitingTranscription: false,
-      recordingPaused: recordingPaused,
       appendTargetId: memo.id,
       typeInMemoId: memo.id,
       typeInFrom: typeInFrom,
@@ -153,7 +130,6 @@ class ListeningState {
       memos: memos,
       speechActive: speechActive,
       awaitingTranscription: awaitingTranscription,
-      recordingPaused: recordingPaused,
       appendTargetId: null,
       typeInMemoId: typeInMemoId,
       typeInFrom: typeInFrom,
@@ -166,7 +142,6 @@ class ListeningState {
       memos: memos,
       speechActive: speechActive,
       awaitingTranscription: false,
-      recordingPaused: recordingPaused,
       appendTargetId: appendTargetId,
       typeInMemoId: typeInMemoId,
       typeInFrom: typeInFrom,
@@ -185,7 +160,6 @@ class ListeningState {
       ],
       speechActive: speechActive,
       awaitingTranscription: awaitingTranscription,
-      recordingPaused: recordingPaused,
       // 追記先が消えていたら、追記先も手放す
       appendTargetId: removedIds.contains(appendTargetId) ? null : appendTargetId,
       typeInMemoId: typeInMemoId,
@@ -199,7 +173,6 @@ class ListeningState {
       memos: memos,
       speechActive: speechActive,
       awaitingTranscription: awaitingTranscription,
-      recordingPaused: recordingPaused,
       appendTargetId: appendTargetId,
       typeInMemoId: null,
       typeInFrom: typeInFrom,
@@ -231,12 +204,6 @@ class ListeningNotifier extends AsyncNotifier<ListeningState> {
   // 破棄後は state に触れないためのフラグ（DB への保存だけは続ける）
   bool _disposed = false;
 
-  // バックグラウンドでも録音を続ける状態が成立しているか ↓
-  // ・ 「バックグラウンド録音」設定が ON
-  // ・ （Androidの場合） フォアグラウンドサービスが起動できている
-  // ・ （iOSの場合） 「バックグラウンド録音」設定が ON なだけで成立
-  bool _keepsRecordingInBackground = false;
-
   @override
   Future<ListeningState> build() async {
     _repository = ref.watch(voiceMemoRepositoryProvider);
@@ -248,21 +215,13 @@ class ListeningNotifier extends AsyncNotifier<ListeningState> {
       onResume: _onAppResumed, // フォアグラウンド復帰で再開する
     );
 
-    // 録音中に「バックグラウンド録音」設定を切り替えられたら、その場で反映する
-    ref.listen(backgroundRecordingProvider, _onBackgroundRecordingSettingChanged);
-
-    // 常駐通知の停止ボタンからの停止要求を受け取る（Android）
-    FlutterForegroundTask.addTaskDataCallback(_onServiceDataReceived);
-
     ref.onDispose(() {
       _disposed = true;
       lifecycleListener.dispose();
-      FlutterForegroundTask.removeTaskDataCallback(_onServiceDataReceived);
       _pipeline?.dispose();
       _pipeline = null;
-      unawaited(ListeningForegroundService.stop()); // フォアグラウンドサービスを終了
-      unawaited(ListeningLiveActivity.setRecordingPaused(false)); // 中断の記録を次の録音へ持ち越さない
-      unawaited(ListeningLiveActivity.dismiss()); // 「録音中」の Live Activity を消す（iOS）
+      // 録音をやめたので、画面の自動ロックを元に戻す
+      unawaited(WakelockPlus.disable());
     });
 
     final memos = await _repository.findAll();
@@ -291,123 +250,36 @@ class ListeningNotifier extends AsyncNotifier<ListeningState> {
         onTranscribed: _onTranscribed,
         onSpeechActiveChanged: _onSpeechActiveChanged,
         onLevelChanged: (level) => _latestLevel = level,
-        onPausedChanged: _onRecordingPausedChanged,
         onSpeechDiscarded: _onSpeechDiscarded,
       );
-
-      // 録音を始める前にバックグラウンドでも続ける状態を作る
-      _keepsRecordingInBackground = await _prepareBackgroundRecording();
-
-      // iOS の Live Activity に出す経過時間の起点を、録音を始めるこの時刻にする
-      ListeningLiveActivity.markRecordingStarted();
-
-      // iOS の Live Activity を表示
-      if (_keepsRecordingInBackground) {
-        unawaited(ListeningLiveActivity.show());
-      }
 
       await pipeline.start();
 
       if (_disposed) {
         await pipeline.dispose();
-        await ListeningForegroundService.stop();
-        await ListeningLiveActivity.dismiss();
         return;
       }
       _pipeline = pipeline;
 
+      // 録音している間は、自動ロックで録音が止まらないよう画面を消さない
+      unawaited(WakelockPlus.enable());
+
       // _startPipeline() の最中にアプリがバックグラウンドへ移ると、_onAppPaused の時点で録音がまだ無い。
       // その場合の保険として、今バックグラウンドにいるなら始まったばかりの録音をここで止める
-      if (!_keepsRecordingInBackground && // バックグラウンドで録音を続ける状態が成立していない
-          WidgetsBinding.instance.lifecycleState == AppLifecycleState.paused) { // アプリがバックグラウンドに移った
+      if (WidgetsBinding.instance.lifecycleState == AppLifecycleState.paused) {
         await pipeline.stop();
       }
     } catch (error) {
       // 準備待ち画面やエラー表示はまだ無い。ここではログに記録するだけ
-      debugPrint('[listening] リスニングを開始できませんでした: $error');
+      DeviceLog.write('[listening] リスニングを開始できませんでした: $error');
     }
   }
 
   // ---------------------------------
-  // バックグラウンドでも録音を続けられるよう準備
-  // ---------------------------------
-  Future<bool> _prepareBackgroundRecording() async {
-    // 「バックグラウンド録音」設定を取得
-    final isEnabled =
-        ref.read(backgroundRecordingProvider).value?.isEnabled ?? false;
-    // 「バックグラウンド録音」設定が OFF なら何もしない
-    if (!isEnabled) return false;
-    // Android はフォアグラウンドサービスまで起動できて初めて成立する
-    if (Platform.isAndroid) {
-      return ListeningForegroundService.start();
-    }
-    // iOS は Info.plist の宣言（UIBackgroundModes の audio）が効くため、ここで起動するものは無い
-    return true;
-  }
-
-  // ---------------------------------
-  // 「バックグラウンド録音」設定を切り替えた時
-  // ---------------------------------
-  Future<void> _onBackgroundRecordingSettingChanged(
-    AsyncValue<BackgroundRecordingState>? previous,
-    AsyncValue<BackgroundRecordingState> next,
-  ) async {
-    // 「バックグラウンド録音」の前の設定
-    final wasEnabled = previous?.value?.isEnabled ?? false;
-    // 「バックグラウンド録音」の新しい設定
-    final isEnabled = next.value?.isEnabled ?? false;
-    // 前の設定と新しい設定が同じなら何もしない
-    if (isEnabled == wasEnabled) return;
-    // 録音中でなければ何もしない
-    if (_pipeline == null) return;
-
-    // 「バックグラウンド録音」設定が ON なら
-    if (isEnabled) {
-      // フォアグラウンドサービスを起動
-      _keepsRecordingInBackground = await _prepareBackgroundRecording();
-      // iOS の Live Activity を表示
-      if (_keepsRecordingInBackground) {
-        unawaited(ListeningLiveActivity.show());
-      }
-    } else { // 「バックグラウンド録音」設定が OFF なら
-      // フォアグラウンドサービスを終了
-      _keepsRecordingInBackground = false;
-      await ListeningForegroundService.stop();
-      // iOS の Live Activity を消す
-      await ListeningLiveActivity.dismiss();
-    }
-  }
-
-  // ---------------------------------
-  // 常駐通知の停止ボタンが押されたとき（Android）
-  // ---------------------------------
-  void _onServiceDataReceived(Object data) {
-    // 停止要求以外のメッセージは無視
-    if (data != listeningServiceStopRequested) return;
-    // バックグラウンドでも録音を続ける状態を解除
-    _keepsRecordingInBackground = false;
-    // フォアグラウンドサービスを終了
-    unawaited(ListeningForegroundService.stop());
-    // 「バックグラウンド録音」設定を OFF に戻す
-    unawaited(ref.read(backgroundRecordingProvider.notifier).setEnabled(false));
-    // バックグラウンドにいるとき
-    if (WidgetsBinding.instance.lifecycleState == AppLifecycleState.paused) {
-      // 録音を停止
-      debugPrint('[listening] 通知の停止ボタン: 録音を停止します');
-      unawaited(_stopRecordingAndEndBlock());
-    }
-  }
-
-  // ---------------------------------
-  // アプリがバックグラウンドに移ったときの録音の停止・継続
+  // アプリがバックグラウンドに移ったときの録音の停止
   // ---------------------------------
   void _onAppPaused() {
-    if (_keepsRecordingInBackground) { // バックグラウンドでも録音を続けられる状態なら
-      // 録音を止めずにそのまま続ける（追記先もそのまま保つ）
-      debugPrint('[listening] バックグラウンド遷移: 録音を続けます');
-      return;
-    }
-    debugPrint('[listening] バックグラウンド遷移: 録音を停止します');
+    DeviceLog.write('[listening] 背面に回りました。録音を止めます');
     unawaited(_stopRecordingAndEndBlock());
   }
 
@@ -423,31 +295,17 @@ class ListeningNotifier extends AsyncNotifier<ListeningState> {
 
   // ---------------------------------
   // アプリがフォアグラウンドに復帰したときの録音の再開
-  //   バックグラウンドの間に録音が黙って止まっていることがあるため、
-  //   止めていた場合の再開と、続けていた場合の生死の確認を ensureRunning にまとめる
+  //   バックグラウンドに移っていたなら止めているので始め直す。コントロールセンターを開いただけなど、
+  //   バックグラウンドに移らずに戻ったときは録音が続いているので、止まっていないかを確かめる（どちらも ensureRunning が担う）
   // ---------------------------------
   Future<void> _onAppResumed() async {
-    debugPrint('[listening] フォアグラウンド復帰: 録音を再開します');
-    // バックグラウンドでも録音を続ける状態なら、iOS の Live Activity が消えていないか確認して出し直す
-    if (_keepsRecordingInBackground) {
-      unawaited(ListeningLiveActivity.show());
-    }
+    DeviceLog.write('[listening] 前面に戻りました。録音を始めるか、止まっていないか確かめます');
     try {
       await _pipeline?.ensureRunning();
     } catch (error) {
       // バックグラウンド中の権限取り消しなどはログのみ。権限の取り直しは RootView が担う
-      debugPrint('[listening] リスニングを再開できませんでした: $error');
+      DeviceLog.write('[listening] リスニングを再開できませんでした: $error');
     }
-  }
-
-  // 録音の一時的な中断・再開を状態へ写す（録音設定パネルの状態行が表示を切り替える）
-  void _onRecordingPausedChanged(bool isPaused) {
-    // iOS の Live Activity の文言を、中断中は「録音が一時的に中断されています」にする
-    unawaited(ListeningLiveActivity.setRecordingPaused(isPaused));
-    if (_disposed) return;
-    final current = state.value;
-    if (current == null) return;
-    state = AsyncData(current.withRecordingPaused(isPaused));
   }
 
   // 発話が文字化されずに捨てられたら、「.」の結果待ちを解く（結果は届かないため）

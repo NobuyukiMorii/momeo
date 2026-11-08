@@ -1,9 +1,6 @@
-import 'dart:async';
-
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:momeo/diagnostics/device_log.dart';
 import 'package:momeo/diagnostics/main_thread_watchdog.dart';
@@ -19,15 +16,9 @@ import 'package:momeo/pages/preparation_gate_page.dart';
 import 'package:momeo/pages/splash_page.dart';
 import 'package:momeo/pages/listening/listening_page.dart';
 import 'package:momeo/providers/stt_providers.dart';
-import 'package:momeo/stt/listening_live_activity.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
-
-  // ---------------------------------
-  // 常駐通知の停止ボタンを効かせるための準備（Android）
-  // ---------------------------------
-  FlutterForegroundTask.initCommunicationPort();
 
   // ---------------------------------
   // Android でもシステムバーの裏までコンテンツを描画する（エッジトゥエッジ）。
@@ -61,11 +52,6 @@ void main() {
   // ログの書き残しを始める（Swift 側の出来事も受け取れるようにし、起動を記録する）
   // ---------------------------------
   DeviceLog.start();
-
-  // ---------------------------------
-  // 前回のプロセスが残した「録音中」の Live Activity を消す（iOS）
-  // ---------------------------------
-  unawaited(ListeningLiveActivity.dismissLeftovers());
 
   // ---------------------------------
   // メインスレッドが長く止まっていないかの見張りを始める

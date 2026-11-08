@@ -25,12 +25,6 @@ abstract final class AppColors {
   static const onError = AppPalette.white;
 
   // ---------------------------------
-  // 状態を示す色
-  // ---------------------------------
-  static const caution = AppPalette.red500; // 注意を向けてほしい状態
-  static const notice = AppPalette.yellow500; // 軽く気に留めてほしい状態
-
-  // ---------------------------------
   // 文字の中の、押せる場所
   // ---------------------------------
   static const link = AppPalette.blue600;
@@ -48,8 +42,6 @@ abstract final class AppColors {
     ('onPrimary', onPrimary),
     ('error', error),
     ('onError', onError),
-    ('caution', caution),
-    ('notice', notice),
     ('link', link),
   ];
 

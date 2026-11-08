@@ -15,7 +15,6 @@ import UIKit
 private enum ChannelMethod {
     // Dart から呼ばれるメソッド
     static let update = "update"
-    static let clearSelection = "clearSelection"
     // Dart へ知らせるメソッド
     static let deleteText = "deleteText"
 }
@@ -35,7 +34,7 @@ private enum BodyLayout {
     // 本文の左右の余白（右も左と同じ。縦線は本文の後ろを通す）
     static let paddingLeft: CGFloat = 8
     static let paddingRight: CGFloat = 8
-    // 本文の上の余白の下限（メモが少ないうちは、残りを上に空けて一覧を下に寄せる）
+    // 本文の上の余白の下限（ステータスバーに重なる分は、これに足す。メモが少ないうちは、残りを上に空けて一覧を下に寄せる）
     static let minPaddingTop: CGFloat = 24
     // 本文の下の余白（ホームインジケーターに重なる分は、これに足す）
     static let paddingBottom: CGFloat = 24
@@ -154,9 +153,6 @@ private final class NativeMemoList: NSObject, FlutterPlatformView {
             switch call.method {
             case ChannelMethod.update:
                 self.documentView.update(call.arguments)
-                result(nil)
-            case ChannelMethod.clearSelection:
-                self.documentView.clearTextSelection()
                 result(nil)
             default:
                 result(FlutterMethodNotImplemented)
@@ -587,11 +583,20 @@ private final class MemoDocumentView: UITextView, UITextViewDelegate {
         lastLayoutSize = bounds.size
     }
 
+    // ステータスバーに重なる高さが変わったら、上の余白を求め直す
+    override func safeAreaInsetsDidChange() {
+        super.safeAreaInsetsDidChange()
+        needsDocumentLayout = true
+        setNeedsLayout()
+    }
+
     // メモが少ないうちは上の余白を広げて一覧を下に寄せ、ブロックの区切りの位置を求め直す
+    //   一番上までスクロールしたときだけ、いちばん古い行をステータスバーの下へ離す（途中では裏を通り抜けて流れる）
     private func layoutDocument() {
         layoutManager.ensureLayout(for: textContainer)
         let documentHeight = layoutManager.usedRect(for: textContainer).height
-        let topInset = max(BodyLayout.minPaddingTop, bounds.height - documentHeight - textContainerInset.bottom)
+        let minTopInset = safeAreaInsets.top + BodyLayout.minPaddingTop
+        let topInset = max(minTopInset, bounds.height - documentHeight - textContainerInset.bottom)
         if abs(textContainerInset.top - topInset) > 0.5 { textContainerInset.top = topInset }
         layoutBoundaries(top: topInset)
     }
@@ -730,9 +735,10 @@ private final class MemoDocumentView: UITextView, UITextViewDelegate {
     // ---------------------------------
     private var scrollableHeight: CGFloat { max(0, contentSize.height - bounds.height) }
 
-    // 下端がホームインジケーターに重なるときは、その上に広めの余白をとる（ホームへ戻る操作の受付領域では掴みにくいため）
+    // 上端はステータスバーの下から動かす。下端がホームインジケーターに重なるときは、その上に広めの余白をとる
+    // （ホームへ戻る操作の受付領域では掴みにくいため）
     private var scrollThumbTrack: ClosedRange<CGFloat> {
-        let top = ScrollThumbLayout.trackMargin
+        let top = safeAreaInsets.top + ScrollThumbLayout.trackMargin
         let bottomMargin = safeAreaInsets.bottom > 0
             ? ScrollThumbLayout.trackMarginAboveHomeIndicator
             : ScrollThumbLayout.trackMargin

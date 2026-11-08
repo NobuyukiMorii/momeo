@@ -57,7 +57,6 @@ import kotlin.math.roundToInt
 
 // Dart から呼ばれるメソッド
 private const val METHOD_UPDATE = "update"
-private const val METHOD_CLEAR_SELECTION = "clearSelection"
 
 // Dart へ知らせるメソッド
 private const val METHOD_DELETE_TEXT = "deleteText"
@@ -72,9 +71,11 @@ private const val DEFAULT_COPY_SEPARATOR = "\n\n"
 // 定数: 本文（dp。iOS 側の pt とそろえる）
 // ---------------------------------
 
-// 本文の左右と上の余白（右も左と同じ。縦線は本文の後ろを通す）
+// 本文の左右の余白（右も左と同じ。縦線は本文の後ろを通す）
 private const val BODY_PADDING_LEFT_DP = 8
 private const val BODY_PADDING_RIGHT_DP = 8
+
+// 本文の上の余白（ステータスバーに重なる分は、これに足す）
 private const val BODY_PADDING_TOP_DP = 24
 
 // 本文の下の余白（ナビゲーションバーに重なる分は、これに足す）
@@ -213,10 +214,6 @@ private class NativeMemoList(context: Context, viewId: Int, messenger: BinaryMes
             when (call.method) {
                 METHOD_UPDATE -> {
                     document.update(call.arguments)
-                    result.success(null)
-                }
-                METHOD_CLEAR_SELECTION -> {
-                    document.clearTextSelection()
                     result.success(null)
                 }
                 else -> result.notImplemented()
@@ -405,7 +402,7 @@ private class MemoDocumentView(context: Context, private val scroll: MemoScrollV
         replaceChangedTail(document, newText)
         syncBlockSpans(document)
         // 次のブロックの1行目に「.」を出すあいだは、その分の高さを文書の下に空けておく
-        updateBottomPadding()
+        updateVerticalPadding()
         if (hadSelection && selectionStartPosition != null && selectionEndPosition != null) {
             restoreSelection(selectionStartPosition, selectionEndPosition)
         }
@@ -477,10 +474,13 @@ private class MemoDocumentView(context: Context, private val scroll: MemoScrollV
         document.replace(commonLength, document.length, newText.substring(commonLength))
     }
 
-    // 文書の下の余白を、ナビゲーションバーと発話中の「.」の分に合わせる
-    fun updateBottomPadding() {
+    // 文書の上下の余白を、ステータスバー・ナビゲーションバーと発話中の「.」の分に合わせる
+    fun updateVerticalPadding() {
+        val topPadding = scroll.documentPaddingTop()
         val bottomPadding = scroll.documentPaddingBottom()
-        if (paddingBottom != bottomPadding) setPadding(paddingLeft, paddingTop, paddingRight, bottomPadding)
+        if (paddingTop != topPadding || paddingBottom != bottomPadding) {
+            setPadding(paddingLeft, topPadding, paddingRight, bottomPadding)
+        }
     }
 
     // ---------------------------------
@@ -862,8 +862,9 @@ private class MemoScrollView(context: Context) : ScrollView(context) {
     // ---------------------------------
     // つまみの位置（y は表示範囲の上端から測る）
     // ---------------------------------
+    // 上端はステータスバーの下から動かす
     private val trackTop: Float
-        get() = dp(THUMB_TRACK_MARGIN_DP)
+        get() = topSystemBarOverlap() + dp(THUMB_TRACK_MARGIN_DP)
 
     private val trackBottom: Float
         get() {
@@ -882,8 +883,17 @@ private class MemoScrollView(context: Context) : ScrollView(context) {
         scrollRange > 0 && x >= width - dp(THUMB_TOUCH_WIDTH_DP) && abs(y - thumbCenterY()) <= dp(THUMB_TOUCH_HEIGHT_DP) / 2
 
     // ---------------------------------
-    // ナビゲーションバーを避ける
+    // ステータスバー・ナビゲーションバーを避ける
     // ---------------------------------
+    // 上端がステータスバーに重なる高さ
+    private fun topSystemBarOverlap(): Float {
+        val insets = rootWindowInsets ?: return 0f
+        val systemBarHeight = insets.getInsets(WindowInsets.Type.statusBars()).top
+        val location = IntArray(2)
+        getLocationInWindow(location)
+        return max(0, systemBarHeight - location[1]).toFloat()
+    }
+
     // 下端がナビゲーションバーに重なる高さ（ホームへ戻る操作の受付領域では掴みにくいため、つまみはその上までにする）
     private fun bottomSystemBarOverlap(): Float {
         val insets = rootWindowInsets ?: return 0f
@@ -894,16 +904,20 @@ private class MemoScrollView(context: Context) : ScrollView(context) {
         return max(0, systemBarHeight - spaceBelow).toFloat()
     }
 
+    // 文書の上の余白（ステータスバーを避ける分）
+    fun documentPaddingTop(): Int = (topSystemBarOverlap() + dp(BODY_PADDING_TOP_DP)).roundToInt()
+
     // 文書の下の余白（ナビゲーションバーを避ける分と、発話中の「.」を次のブロックの位置に出す分）
     fun documentPaddingBottom(): Int {
         val speakingDotsHeight = documentView?.speakingDotsReservedHeight ?: 0
         return (bottomSystemBarOverlap() + dp(BODY_PADDING_BOTTOM_DP)).roundToInt() + speakingDotsHeight
     }
 
-    // 一番下までスクロールしたときだけ、最新の行をナビゲーションバーの上へ離す（途中では下を通り抜けて流れる）
+    // 一番上・一番下までスクロールしたときだけ、端の行をステータスバー・ナビゲーションバーから離す
+    // （途中では裏を通り抜けて流れる）
     override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
         super.onLayout(changed, left, top, right, bottom)
-        documentView?.updateBottomPadding()
+        documentView?.updateVerticalPadding()
     }
 
     // 一番下を見ている間に一覧の高さが変わったときは、一番下のまま保つ

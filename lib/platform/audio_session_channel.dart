@@ -12,10 +12,16 @@ class AudioSessionChannel {
   static const MethodChannel _channel = MethodChannel('jp.momeo/audio_session');
   static const EventChannel _deviceChanges =
       EventChannel('jp.momeo/audio_session/device_changes');
+  static const EventChannel _engineStops =
+      EventChannel('jp.momeo/audio_session/engine_stops');
 
   // イヤホンなどの機器がつながった・外れたときに流れる（iOS のみ）
   static Stream<void> get deviceChanges =>
       _deviceChanges.receiveBroadcastStream().map((_) {});
+
+  // 録音エンジン（record の AVAudioEngine）が経路の変化などで止まったときに流れる（iOS のみ）
+  static Stream<void> get engineStops =>
+      _engineStops.receiveBroadcastStream().map((_) {});
 
   // 他のアプリが音を鳴らしているか
   static Future<bool> isOtherAudioPlaying() async {
@@ -29,7 +35,7 @@ class AudioSessionChannel {
     return inUse ?? false;
   }
 
-  // 録音を止めずに Bluetooth のマイクを手放し、イヤホンを音楽用（A2DP）に戻す（iOS のみ。背面では失敗する）
+  // 録音を止めずに Bluetooth のマイクを手放し、イヤホンを音楽用（A2DP）に戻す（iOS のみ）
   static Future<void> releaseBluetoothMic() {
     return _channel.invokeMethod<void>('releaseBluetoothMic');
   }
