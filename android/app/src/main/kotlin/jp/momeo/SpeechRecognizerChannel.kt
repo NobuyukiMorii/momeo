@@ -49,6 +49,7 @@ class SpeechRecognizerChannel(private val context: Context, messenger: BinaryMes
 
         private const val INPUT_SAMPLE_RATE = 16000 // Flutter から届く音のサンプリングレート
         private const val TRANSCRIBE_TIMEOUT_MILLIS = 30_000L // 返事が来ないときに諦めるまでの時間
+        private const val SUPPORT_CHECK_TIMEOUT_MILLIS = 10_000L // 対応言語の確認に返事が来ないときに諦めるまでの時間
         private const val SILENCE_TO_END_MILLIS = 5_000L // これだけ無音が続くまで認識を終わらせない
     }
 
@@ -87,21 +88,39 @@ class SpeechRecognizerChannel(private val context: Context, messenger: BinaryMes
         val onDeviceRecognizer = recognizer ?: SpeechRecognizer.createOnDeviceSpeechRecognizer(context)
         recognizer = onDeviceRecognizer
 
+        // 返事は1回だけ（期限切れのあとに届いた返事は捨てる）
+        var replied = false
+
         val supportIntent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
         onDeviceRecognizer.checkRecognitionSupport(
             supportIntent,
             context.mainExecutor,
             object : RecognitionSupportCallback {
                 override fun onSupportResult(support: RecognitionSupport) {
+                    if (replied) return
+                    replied = true
                     chooseLanguage(onDeviceRecognizer, support, result)
                 }
 
                 // 一時的な失敗もあるので、使えないとは決めずに失敗として返す（Dart 側が再試行する）
                 override fun onError(error: Int) {
+                    if (replied) return
+                    replied = true
                     result.error("support_check_failed", "対応言語を確かめられませんでした（error: $error）", null)
                 }
             },
         )
+
+        // OS の音声認識サービスが返事をしないことがあるので、期限を切って失敗として返す（Dart 側が再試行する）
+        mainHandler.postDelayed({
+            if (replied) return@postDelayed
+            replied = true
+            // 黙ったままの SpeechRecognizer は再試行でも返事をしないので、作り直させる
+            onDeviceRecognizer.destroy()
+            if (recognizer === onDeviceRecognizer) recognizer = null
+            Log.w(TAG, "対応言語の確認に返事がありませんでした")
+            result.error("support_check_timeout", "対応言語の確認に返事がありませんでした", null)
+        }, SUPPORT_CHECK_TIMEOUT_MILLIS)
     }
 
     // 優先する言語を上から見て、端末内モデルが入っている最初の言語を選ぶ
