@@ -72,7 +72,10 @@ enum DeviceLogChannel {
     ) { notification in
       let reasonValue = notification.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt ?? 0
       let inputs = session.currentRoute.inputs.map { $0.portType.rawValue }.joined(separator: ",")
-      writeFromNative("[audioSession] 経路の変化（reason=\(reasonValue) 入力=\(inputs) カテゴリ=\(session.category.rawValue)）")
+      // 機器の名前と、マイクから取る音の細かさ（Bluetooth の通話用の経路は、8000Hz だと声が判定されにくい）も残す
+      let inputNames = session.currentRoute.inputs.map(\.portName).joined(separator: ",")
+      writeFromNative("[audioSession] 経路の変化（reason=\(reasonValue) 入力=\(inputs) 機器=\(inputNames) "
+                      + "サンプルレート=\(Int(session.sampleRate))Hz カテゴリ=\(session.category.rawValue)）")
     })
 
     // メディアサーバーが落ちた・立ち直った（立ち直っても録音は自動では戻らない）

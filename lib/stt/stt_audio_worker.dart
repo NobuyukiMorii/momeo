@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:collection' show ListQueue;
 import 'dart:isolate';
+import 'dart:math' show log, ln10, sqrt;
 import 'dart:typed_data';
 
 import 'package:sherpa_onnx/sherpa_onnx.dart' as sherpa;
@@ -31,6 +32,9 @@ const double _kMaxSpeechDuration = 30.0;
 
 // どれくらいの音を「声」とみなすか。既定の 0.5 では語頭を取りこぼす
 const double _kVadThreshold = 0.35;
+
+// 録音中の音量と声の判定を、端末ログにまとめて残す間隔（声が文字にならないときに、マイクに声が届いていたかを後から調べるため）
+const int _kAudioStatsIntervalSeconds = 10;
 
 // 発話と判定される前の声を、区切りの頭へ補うときにさかのぼれる上限（区切りの開始から何秒前まで）
 const int _kHeadLookbackSeconds = 10;
@@ -211,6 +215,11 @@ class SttAudioWorker {
       return;
     }
 
+    if (message is _AudioStatsSummary) {
+      DeviceLog.write('[sttWorker] ${message.describe()}');
+      return;
+    }
+
     if (message is SttAudioEvent) {
       _events.add(message);
     }
@@ -231,6 +240,11 @@ class SttAudioWorker {
         DeviceLog.write('[sttWorker] OS の文字起こしで文字化できませんでした: $error');
       }
       stopwatch.stop();
+      // 本文は残さず、長さだけ残す
+      final durationSec = (samples.length / _kSampleRate).toStringAsFixed(1);
+      DeviceLog.write(
+        '[sttWorker] 文字化: 発話 $durationSec秒 → ${text.length}文字（${stopwatch.elapsedMilliseconds}ms）',
+      );
 
       if (_events.isClosed) return;
       _events.add(
@@ -313,6 +327,32 @@ class _ReleaseListeningCommand extends _Command {
 class _SegmentCaptured {
   const _SegmentCaptured(this.samples);
   final Float32List samples;
+}
+
+// 一定の間隔ごとの、録音の音量と声の判定のまとめ（UI 側で端末ログに残す）
+class _AudioStatsSummary {
+  const _AudioStatsSummary({
+    required this.seconds,
+    required this.peakLevel,
+    required this.averageDbfs,
+    required this.speechSeconds,
+    required this.speechStarts,
+    required this.segments,
+  });
+
+  final double seconds; // まとめた録音の長さ
+  final double peakLevel; // 音量の最大（0.0〜1.0）
+  final double averageDbfs; // 音量の平均（RMS を dBFS で。無音に近いほど小さい）
+  final double speechSeconds; // VAD が声と判定していた長さ
+  final int speechStarts; // 声の判定が始まった回数
+  final int segments; // 区切って文字化へ回した発話の数
+
+  String describe() {
+    return '録音 ${seconds.toStringAsFixed(0)}秒: '
+        '音量の最大 ${peakLevel.toStringAsFixed(2)}・平均 ${averageDbfs.toStringAsFixed(0)}dBFS・'
+        '声と判定 ${speechSeconds.toStringAsFixed(1)}秒（始まり $speechStarts回）・'
+        '区切った発話 $segments件';
+  }
 }
 
 // 返事の要らない依頼
@@ -400,6 +440,9 @@ class _AudioEngine {
   // 発話と判定される前の声を、区切りの頭へ補う係
   final _SpeechHeadKeeper _headKeeper = _SpeechHeadKeeper();
 
+  // 端末ログに残す、音量と声の判定の集計
+  final _AudioStats _stats = _AudioStats();
+
   static sherpa.VoiceActivityDetector _createVad(String sileroPath) {
     return sherpa.VoiceActivityDetector(
       config: sherpa.VadModelConfig(
@@ -436,6 +479,7 @@ class _AudioEngine {
     }
     _floatBuffer.clear();
     _speechActive = false;
+    _stats.reset();
   }
 
   void stopListening() {
@@ -445,6 +489,8 @@ class _AudioEngine {
     _notifySpeechActive(detected: false);
     vad.flush();
     _drainSegments(vad);
+    // 間隔に満たない最後の分も残す
+    if (_stats.hasSamples) onMessage(_stats.takeSummary());
   }
 
   void releaseListening() {
@@ -481,14 +527,22 @@ class _AudioEngine {
     }
 
     // 発話中かどうかの変化は、確定テキストより先に知らせる
-    _notifySpeechActive(detected: vad.isDetected());
+    final detected = vad.isDetected();
+    _notifySpeechActive(detected: detected);
     _drainSegments(vad);
-    onMessage(SttMicLevelMeasured(_peakLevel(samples)));
+    final peak = _peakLevel(samples);
+    onMessage(SttMicLevelMeasured(peak));
+
+    _stats.addChunk(samples, peak: peak, isSpeech: detected);
+    if (_stats.seconds >= _kAudioStatsIntervalSeconds) {
+      onMessage(_stats.takeSummary());
+    }
   }
 
   void _notifySpeechActive({required bool detected}) {
     if (detected == _speechActive) return;
     _speechActive = detected;
+    if (detected) _stats.speechStarts++;
     onMessage(SttSpeechActiveChanged(detected));
   }
 
@@ -501,6 +555,7 @@ class _AudioEngine {
       // 発話と判定される前に話していた分を、区切りの頭へ補う
       final samples = _headKeeper.prependHead(segment);
 
+      _stats.segments++;
       onMessage(_SegmentCaptured(samples));
     }
   }
@@ -525,6 +580,58 @@ class _AudioEngine {
       if (abs > maxAbs) maxAbs = abs;
     }
     return maxAbs;
+  }
+}
+
+// ============================================================
+// _AudioStats — 録音の音量と声の判定を、一定の間隔ごとにまとめる（端末ログ用）
+//   声が文字にならなかったとき、マイクに音が届いていたか（音量）と、それを声と判定できたか（VAD）を見分けるため
+// ============================================================
+class _AudioStats {
+  int _sampleCount = 0;
+  int _speechSampleCount = 0;
+  double _sumOfSquares = 0;
+  double _peakLevel = 0;
+  int speechStarts = 0;
+  int segments = 0;
+
+  double get seconds => _sampleCount / _kSampleRate;
+  bool get hasSamples => _sampleCount > 0;
+
+  // 届いた音の塊を1つ足す（isSpeech は、その時点で VAD が声と判定していたか）
+  void addChunk(Float32List samples, {required double peak, required bool isSpeech}) {
+    for (final sample in samples) {
+      _sumOfSquares += sample * sample;
+    }
+    _sampleCount += samples.length;
+    if (isSpeech) _speechSampleCount += samples.length;
+    if (peak > _peakLevel) _peakLevel = peak;
+  }
+
+  // ここまでのまとめを返し、数え直す
+  _AudioStatsSummary takeSummary() {
+    final rms = _sampleCount == 0 ? 0.0 : sqrt(_sumOfSquares / _sampleCount);
+    // 完全な無音は -120dBFS として扱う
+    final averageDbfs = rms <= 0 ? -120.0 : 20 * log(rms) / ln10;
+    final summary = _AudioStatsSummary(
+      seconds: seconds,
+      peakLevel: _peakLevel,
+      averageDbfs: averageDbfs,
+      speechSeconds: _speechSampleCount / _kSampleRate,
+      speechStarts: speechStarts,
+      segments: segments,
+    );
+    reset();
+    return summary;
+  }
+
+  void reset() {
+    _sampleCount = 0;
+    _speechSampleCount = 0;
+    _sumOfSquares = 0;
+    _peakLevel = 0;
+    speechStarts = 0;
+    segments = 0;
   }
 }
 
