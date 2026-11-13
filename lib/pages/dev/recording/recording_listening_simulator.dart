@@ -142,6 +142,7 @@ List<SimulatedSpeech> _buildSimulatedSpeeches() {
         id: id,
         content: content,
         createdAt: DateTime(today.year, today.month, today.day, 9, minute),
+        position: id,
       ),
       duration: Duration(milliseconds: duration),
       pauseAfter: Duration(milliseconds: pauseAfter),

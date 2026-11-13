@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:momeo/foundation/app_colors.dart';
@@ -29,15 +27,24 @@ class _ListeningPageState extends ConsumerState<ListeningPage> {
         typingMemoId: listening.typeInMemoId,
         typeFrom: listening.typeInFrom,
         speakingDots: _speakingDots(listening),
-        onDeleteText: _onDeleteText,
+        onEditingStarted: _onEditingStarted,
+        onEditingEnded: _onEditingEnded,
         onTypingComplete: _onTypingComplete,
       ),
     );
   }
 
-  // 文字選択のメニューで「削除」が押されたら、選んだ範囲の文字をメモから消す
-  void _onDeleteText(List<MemoTextRange> ranges) {
-    unawaited(ref.read(listeningProvider.notifier).deleteTextRanges(ranges));
+  // 一覧の編集が始まったら、書き直している段落へ声を足さないようにする
+  void _onEditingStarted() {
+    ref.read(listeningProvider.notifier).onEditingStarted();
+  }
+
+  // 一覧の編集を終えたら、書き直した段落を保存する
+  Future<void> _onEditingEnded(EditedDocument document) {
+    return ref.read(listeningProvider.notifier).saveEditedDocument(
+          editedIds: document.editedIds,
+          paragraphs: document.paragraphs,
+        );
   }
 
   // 打ち出しの演出を使い切ったら、再表示で打ち直さないように知らせる
@@ -72,6 +79,8 @@ class _ListeningPageState extends ConsumerState<ListeningPage> {
 
     return Scaffold(
       backgroundColor: AppColors.surface,
+      // キーボードに隠れる分はネイティブの一覧が受け持つ（画面ごと縮めると、閉じるときにチラついたり、本文が何回かに分けてずれたりする）
+      resizeToAvoidBottomInset: false,
       body: Stack(
         children: [
           // ---------------------------------

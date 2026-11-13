@@ -99,6 +99,7 @@ List<VoiceMemo> _buildDemoMemos() {
         id: id,
         content: content,
         createdAt: DateTime(today.year, today.month, today.day, hour, minute),
+        position: id,
       );
 
   // ---------------------------------

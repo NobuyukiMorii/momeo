@@ -10,6 +10,7 @@ import 'package:momeo/database/app_database.dart';
 import 'package:momeo/diagnostics/device_log.dart';
 import 'package:momeo/providers/database_providers.dart';
 import 'package:momeo/providers/stt_providers.dart';
+import 'package:momeo/repositories/edited_document_plan.dart';
 import 'package:momeo/repositories/voice_memo_repository.dart';
 import 'package:momeo/stt/stt_audio_worker.dart';
 import 'package:momeo/stt/stt_listening_pipeline.dart';
@@ -148,20 +149,23 @@ class ListeningState {
     );
   }
 
-  // 文字選択で選んだ範囲を消した（本文を書き換えたメモは差し替え、空になったメモは一覧から外す）
-  ListeningState withTextDeleted({
-    required Map<int, VoiceMemo> editedMemos,
-    required Set<int> removedIds,
+  // 編集を終えた文書を保存した（編集した段落を差し替え、それより後ろの段落はそのまま残す）
+  //   editedIds は編集を始めた時点の段落の id、savedMemos は保存した段落（上から順）
+  ListeningState withMemosEdited({
+    required Set<int> editedIds,
+    required List<VoiceMemo> savedMemos,
   }) {
     return ListeningState(
       memos: [
+        // 編集の間に増えた段落（新しい順のまま）
         for (final memo in memos)
-          if (!removedIds.contains(memo.id)) editedMemos[memo.id] ?? memo,
+          if (!editedIds.contains(memo.id)) memo,
+        // 保存した段落（新しい順に直す）
+        ...savedMemos.reversed,
       ],
       speechActive: speechActive,
       awaitingTranscription: awaitingTranscription,
-      // 追記先が消えていたら、追記先も手放す
-      appendTargetId: removedIds.contains(appendTargetId) ? null : appendTargetId,
+      appendTargetId: appendTargetId,
       typeInMemoId: typeInMemoId,
       typeInFrom: typeInFrom,
     );
@@ -378,7 +382,7 @@ class ListeningNotifier extends AsyncNotifier<ListeningState> {
   // 1発話の確定テキストの受け取り
   //   空: 誤検知として結果待ちだけを解く。
   //       追記先には触れず、終了までの起点も動かさない
-  //   あり: 追記先があればその末尾へ書き足し、無ければ新しく起こす
+  //   あり: 追記先があればその末尾へ書き足し、無ければ新しく起こす。発話の記録にも残す
   //   ※ 画面を離れた後に届く末尾の発話も、DB への保存だけは行う
   // ---------------------------------
   Future<void> _onTranscribed(SttTranscribed result) async {
@@ -392,107 +396,110 @@ class ListeningNotifier extends AsyncNotifier<ListeningState> {
       return;
     }
     final appendTarget = _appendTarget; // 今の追記先
+    final int memoId;
     if (appendTarget == null) { // 追記先が無い
-      await _startNewMemo(content); // 新しいブロックを作成
+      memoId = await _startNewMemo(content); // 新しいブロックを作成
     } else { // 追記先がある
-      await _appendToTarget(appendTarget, content); // そのブロックの末尾に追記
+      memoId = await _appendToTarget(appendTarget, content); // そのブロックの末尾に追記
     }
 
     // 次の発話を同じブロックに入れるかどうかの起点にする
     _lastAppendedAt = DateTime.now();
+
+    // 認識したままの文字列を、発話の記録に残す（あとで本文と比べられるように）
+    await _repository.insertUtterance(
+      content: content,
+      recognizedAt: DateTime.now(),
+      durationSec: result.durationSec,
+      memoId: memoId,
+    );
   }
 
   // ---------------------------------
-  // 新しいブロックを起こす（以後の発話は、このブロックへ追記していく）
+  // 新しいブロックを起こし、その id を返す（以後の発話は、このブロックへ追記していく）
   // ---------------------------------
-  Future<void> _startNewMemo(String content) async {
+  Future<int> _startNewMemo(String content) async {
     final createdAt = _speechStartedAt ?? DateTime.now();
-    final id = await _repository.insert(content: content, createdAt: createdAt);
-    final memo = VoiceMemo(id: id, content: content, createdAt: createdAt);
+    final memo = await _repository.insert(content: content, createdAt: createdAt);
     // 次の追記先にする
     _appendTarget = memo;
 
-    if (_disposed) return;
+    if (_disposed) return memo.id;
     final current = state.value;
-    if (current == null) return;
+    if (current == null) return memo.id;
     state = AsyncData(current.withMemoAdded(memo));
+    return memo.id;
   }
 
   // ---------------------------------
-  // ブロックの末尾に追記
+  // ブロックの末尾に追記し、そのブロックの id を返す
   // ---------------------------------
-  Future<void> _appendToTarget(VoiceMemo appendTarget, String content) async {
+  Future<int> _appendToTarget(VoiceMemo appendTarget, String content) async {
     // 発話と発話の間は区切らず、そのままつなげる
     final appended = '${appendTarget.content}$content';
     // 追記先の内容を更新
     await _repository.updateContent(id: appendTarget.id, content: appended);
     // state 用にメモを作り直す
-    final memo = VoiceMemo(
-      id: appendTarget.id,
-      content: appended,
-      createdAt: appendTarget.createdAt,
-    );
+    final memo = appendTarget.copyWith(content: appended);
     // 次の追記先として持ち直す
     _appendTarget = memo;
 
     // 画面を離れた後は state に触れない（DB への保存はここまでで済んでいる）
-    if (_disposed) return;
+    if (_disposed) return memo.id;
     // 今の状態
     final current = state.value;
     // 読み込み中でまだ状態が無ければ、表示の更新はしない
-    if (current == null) return;
+    if (current == null) return memo.id;
     // 最新のメモを、書き足した後の内容に差し替える
     state = AsyncData(current.withMemoAppended(
       memo,
       // 新しく足した分だけ1文字ずつ表示する（前からある本文はそのまま）
       typeInFrom: appended.length - content.length,
     ));
+    return memo.id;
   }
 
   // ---------------------------------
-  // 文字選択で選んだ範囲の文字を、メモの本文から消す
-  //   ranges は、選択範囲に掛かるメモごとの部分（本文の中の start 以上 end 未満）
-  //   空白や改行だけが残ったメモは、メモごと消す（元に戻す手段は持たない）
+  // 一覧の編集が始まった
+  //   書き直している段落へ声が足されないよう、今のブロックへの追記を終える（次の発話は末尾の新しい段落になる）
   // ---------------------------------
-  Future<void> deleteTextRanges(List<({int memoId, int start, int end})> ranges) async {
+  void onEditingStarted() {
+    _endCurrentBlock();
+  }
+
+  // ---------------------------------
+  // 一覧の編集を終えた文書を、段落ごとに DB の行へ戻して保存する
+  //   editedIds: 編集を始めた時点で書き直せた段落の id
+  //   paragraphs: 編集の後の段落（上から順）
+  // ---------------------------------
+  Future<void> saveEditedDocument({
+    required List<int> editedIds,
+    required List<EditedParagraph> paragraphs,
+  }) async {
     final current = state.value;
     if (current == null) return;
-    final memosById = {for (final memo in current.memos) memo.id: memo};
-    final editedMemos = <int, VoiceMemo>{};
-    final removedIds = <int>{};
+    final editedIdSet = editedIds.toSet();
+    final plan = EditedDocumentPlan.build(
+      // 編集の前の段落（上から順）
+      beforeMemos: [
+        for (final memo in current.memos.reversed)
+          if (editedIdSet.contains(memo.id)) memo,
+      ],
+      editedParagraphs: paragraphs,
+    );
+    if (!plan.hasChanges) return;
 
-    // --- メモごとに本文を書き換え、DB に保存する
-    for (final range in ranges) {
-      final memo = memosById[range.memoId];
-      if (memo == null) continue;
-      // 文字選択の間に書き足されても、書き足しは末尾に付くだけなので、選んだ位置はずれない
-      final end = range.end.clamp(0, memo.content.length);
-      final start = range.start.clamp(0, end);
-      final content = memo.content.replaceRange(start, end, '');
-      if (content.trim().isEmpty) {
-        await _repository.delete(memo.id);
-        removedIds.add(memo.id);
-      } else {
-        await _repository.updateContent(id: memo.id, content: content);
-        editedMemos[memo.id] = memo.copyWith(content: content);
-      }
-    }
+    final savedMemos = await _repository.saveEditedMemos(
+      paragraphs: plan.paragraphs,
+      deletedIds: plan.deletedIds,
+      changedText: plan.changedText,
+    );
 
-    // --- 次の発話の追記先を、書き換えた後のメモに合わせる
-    final appendTargetId = _appendTarget?.id;
-    final editedAppendTarget = editedMemos[appendTargetId];
-    if (editedAppendTarget != null) _appendTarget = editedAppendTarget;
-
-    // --- 画面へ反映する
-    if (!_disposed) {
-      final latest = state.value;
-      if (latest != null) {
-        state = AsyncData(latest.withTextDeleted(editedMemos: editedMemos, removedIds: removedIds));
-      }
-    }
-
-    // --- 追記先ごと消えたら、次の発話は新しいメモにする
-    if (removedIds.contains(appendTargetId)) _endCurrentBlock();
+    // --- 画面へ反映する（保存の間に増えた段落も残す）
+    if (_disposed) return;
+    final latest = state.value;
+    if (latest == null) return;
+    state = AsyncData(latest.withMemosEdited(editedIds: editedIdSet, savedMemos: savedMemos));
   }
 
   // タイピング演出を使い切ったときにページから呼ばれる（再表示時の再再生を防ぐ）

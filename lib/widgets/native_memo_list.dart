@@ -7,6 +7,7 @@ import 'package:flutter/rendering.dart' show PlatformViewHitTestBehavior;
 import 'package:flutter/services.dart';
 import 'package:momeo/database/app_database.dart';
 import 'package:momeo/foundation/app_colors.dart';
+import 'package:momeo/repositories/edited_document_plan.dart';
 import 'package:momeo/widgets/typewriter_text.dart';
 
 // ネイティブ側（NativeMemoListFactory）の登録名とそろえる、View の種類名
@@ -16,7 +17,8 @@ const _viewType = 'jp.momeo/native_memo_list';
 const _updateMethod = 'update';
 
 // ネイティブ側から届くメソッド
-const _deleteTextMethod = 'deleteText';
+const _editingStartedMethod = 'editingStarted';
+const _editingEndedMethod = 'editingEnded';
 
 // 本文の文字サイズ（端末の文字サイズの設定で拡大する前の値）
 const _bodyFontSize = 18.0;
@@ -24,22 +26,23 @@ const _bodyFontSize = 18.0;
 // 文字選択をブロックをまたいでコピーしたときの、ブロック同士の区切り
 const _copySeparator = '\n\n';
 
-// 文字選択のメニューの「削除」で消す、1つのメモの部分（本文の中の start 以上 end 未満）
-typedef MemoTextRange = ({int memoId, int start, int end});
+// 編集を終えた文書（editedIds は、編集を始めた時点で書き直せたメモの id）
+typedef EditedDocument = ({List<int> editedIds, List<EditedParagraph> paragraphs});
 
 // 発話中の気配として「.」を出す場所
 // append: 最新のブロックの本文の続き / newBlock: 次のブロックの1行目
 enum MemoSpeakingDots { hidden, append, newBlock }
 
 // ---------------------------------
-// メモ一覧を1つの文書にしてネイティブ側へ渡し、表示・スクロール・文字選択は OS の部品に任せる
+// メモ一覧を1つの文書にしてネイティブ側へ渡し、表示・スクロール・文字選択・編集は OS の部品に任せる
 // ---------------------------------
 class NativeMemoList extends StatefulWidget {
   const NativeMemoList({
     super.key,
     required this.memos,
     required this.onTypingComplete,
-    required this.onDeleteText,
+    required this.onEditingStarted,
+    required this.onEditingEnded,
     this.typingMemoId,
     this.typeFrom = 0,
     this.speakingDots = MemoSpeakingDots.hidden,
@@ -49,8 +52,10 @@ class NativeMemoList extends StatefulWidget {
   final List<VoiceMemo> memos;
   // 打ち出しの演出を使い切ったとき
   final ValueChanged<int> onTypingComplete;
-  // 文字選択のメニューで「削除」が押されたとき（選択範囲に掛かるメモごとの部分）
-  final ValueChanged<List<MemoTextRange>> onDeleteText;
+  // 一覧の編集が始まったとき
+  final VoidCallback onEditingStarted;
+  // 一覧の編集を終えたとき（保存を終えるまで待つ）
+  final Future<void> Function(EditedDocument document) onEditingEnded;
   // 打ち出し中のメモの id と、打ち出しを始める文字数
   final int? typingMemoId;
   final int typeFrom;
@@ -69,6 +74,8 @@ class _NativeMemoListState extends State<NativeMemoList> {
   String? _lastSignature;
   // 描画後に文書を送る予約が入っているか
   bool _updatePending = false;
+  // 編集を保存し終えた回数（ネイティブ側は、これが増えた文書を受け取るまで、編集した本文を出し続ける）
+  int _editRevision = 0;
 
   @override
   void dispose() {
@@ -92,17 +99,32 @@ class _NativeMemoListState extends State<NativeMemoList> {
   Future<void> _onNativeCall(MethodCall call) async {
     if (!mounted) return;
     switch (call.method) {
-      case _deleteTextMethod:
-        final ranges = call.arguments as List;
-        widget.onDeleteText([
-          for (final range in ranges.cast<Map>())
-            (
-              memoId: range['id'] as int,
-              start: range['start'] as int,
-              end: range['end'] as int,
-            ),
-        ]);
+      case _editingStartedMethod:
+        widget.onEditingStarted();
+      case _editingEndedMethod:
+        final arguments = call.arguments as Map;
+        try {
+          await widget.onEditingEnded(_parseEditedDocument(arguments));
+        } finally {
+          // 保存に失敗しても、ネイティブ側が編集した本文を出し続けたままにならないよう、必ず増やす
+          if (mounted) setState(() => _editRevision++);
+        }
     }
+  }
+
+  // ネイティブ側から届いた、編集を終えた文書
+  EditedDocument _parseEditedDocument(Map arguments) {
+    final paragraphs = (arguments['paragraphs'] as List).cast<Map>();
+    return (
+      editedIds: (arguments['editedIds'] as List).cast<int>(),
+      paragraphs: [
+        for (final paragraph in paragraphs)
+          (
+            text: paragraph['text'] as String,
+            sourceIds: (paragraph['sourceIds'] as List).cast<int>(),
+          ),
+      ],
+    );
   }
 
   // ---------------------------------
@@ -116,7 +138,7 @@ class _NativeMemoListState extends State<NativeMemoList> {
           'id': memo.id,
           // 打ち出し中のメモは、表示途中の本文を出す
           'text': memo.id == widget.typingMemoId ? typingText : memo.content,
-          // 打ち出し中のメモは、打ち終わるまで文字選択の対象にしない
+          // 打ち出し中のメモは、打ち終わるまで書き直せない
           'selectable': memo.id != widget.typingMemoId,
           // その日の最初のメモか（日付の区切りの横線は、その日の最初のメモの上にだけ引く）
           'startsDay':
@@ -133,6 +155,7 @@ class _NativeMemoListState extends State<NativeMemoList> {
       'textColor': AppColors.onSurface.toARGB32(),
       'railColor': AppColors.onSurfaceFaint.toARGB32(),
       'copySeparator': _copySeparator,
+      'editRevision': _editRevision,
       'speakingDots': widget.speakingDots == MemoSpeakingDots.hidden
           ? null
           : widget.speakingDots.name,
@@ -158,7 +181,7 @@ class _NativeMemoListState extends State<NativeMemoList> {
   // ネイティブ View
   // ---------------------------------
   Widget _buildPlatformView() {
-    // 一覧の上の操作（スクロール・文字選択・つまみのドラッグ）は、Flutter 側で取り合わずにすべて渡す
+    // 一覧の上の操作（スクロール・文字選択・編集・つまみのドラッグ）は、Flutter 側で取り合わずにすべて渡す
     final gestures = <Factory<OneSequenceGestureRecognizer>>{
       Factory<EagerGestureRecognizer>(EagerGestureRecognizer.new),
     };
