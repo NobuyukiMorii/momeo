@@ -8,8 +8,8 @@ momeo のアプリアイコンを、Figma での画像作成から端末のホ�
 - **Figma で 1024×1024 の PNG を2枚作るだけでよい**（iOS 用1枚 + Android 用1枚）
 - サイズ違いのファイルを手で量産する必要はない。
   `flutter_launcher_icons` というツールが全サイズを自動生成してくれる
-- ただし iOS の Live Activity のアイコン（`MomeoIcon`）だけは自動生成の対象外。
-  アイコンを差し替えたら、手順4の「Live Activity のアイコンを作り直す」も行う
+- ただし、起動画面の録音ボタンとサイトのアイコンは自動生成の対象外。
+  アイコンを差し替えたら、手順4の「自動生成されないものを作り直す」も行う
 
 ---
 
@@ -161,32 +161,38 @@ android/app/src/main/res/
   values/colors.xml                 # 背景色を色コードで指定した場合
 ```
 
-> 補足: momeo の現状の Android アイコンは旧来型（単一 `ic_launcher.png`）のみで、
-> アダプティブアイコンになっていない。上の設定で生成すればアダプティブアイコン用の
-> ファイル一式も新しく作られる。
+### 生成ツールが壊す設定を戻す（iOS）
 
-### Live Activity のアイコンを作り直す（iOS・手作業）
-
-バックグラウンド録音中にロック画面と Dynamic Island に出る Live Activity は、
-アプリ本体とは別のバンドル（ウィジェット拡張 `ios/MomeoWidgets`）で描かれる。
-本体の `AppIcon` は読めないため、専用の画像 `MomeoIcon` を別に持っている。
-`flutter_launcher_icons` はここを生成しないので、アイコンを差し替えたら手で作り直す。
-
-表示は 36pt なので、@2x 用の 72px と @3x 用の 108px の2枚を用意する。
-1024px のまま置くと Live Activity の画像サイズの制限を超え、
-アイコンの代わりに灰色の四角が出る。
-
-プロジェクトルートで実行:
+`flutter_launcher_icons` は、アイコンと一緒に `ios/Runner.xcodeproj/project.pbxproj` の
+`ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS` を `YES` から `AppIcon` に書き換えてしまう。
+生成したら、この差分だけを戻す（ほかに pbxproj の変更がなければ、ファイルごと戻してよい）。
 
 ```bash
-sips -z 72 72 assets/icon/app_icon_ios.png --out ios/MomeoWidgets/Assets.xcassets/MomeoIcon.imageset/momeo_icon@2x.png
+git checkout -- ios/Runner.xcodeproj/project.pbxproj
 ```
+
+### 自動生成されないものを作り直す（手作業）
+
+起動直後は、OS の起動画面 → Flutter のスプラッシュの順に、同じ録音ボタンが同じ大きさ・位置で重なるように作ってある
+（仕組みは `notes/specs/splash_sequence.md`）。ロゴの形を変えたら、次の3か所も同じ形に揃える。
+ずれていると、起動の瞬間にロゴが入れ替わってちらつく。
+
+| 場所 | 中身 | 大きさ |
+|---|---|---|
+| `lib/widgets/record_button_press.dart` | Flutter のスプラッシュの録音ボタン | 外径 120 |
+| `ios/Runner/Assets.xcassets/LaunchImage.imageset/` | iOS の起動画面の画像（`LaunchImage.png` / `@2x` / `@3x`） | 120 / 240 / 360px |
+| `android/app/src/main/res/drawable/splash_record_button.xml` | Android の起動画面のベクター画像 | 288dp 四方の中央に外径 120dp |
+
+サイト（`docs/`）のアイコンも生成されないので作り直す。
+
+| ファイル | 中身 |
+|---|---|
+| `docs/favicon.svg` | ブラウザのタブのアイコン。16px でも消えないよう、線はアプリより太めにする |
+| `docs/apple-touch-icon.png` | 「ホーム画面に追加」したときのアイコン。iOS 用の画像を 180px に縮めればよい |
 
 ```bash
-sips -z 108 108 assets/icon/app_icon_ios.png --out ios/MomeoWidgets/Assets.xcassets/MomeoIcon.imageset/momeo_icon@3x.png
+sips -z 180 180 assets/icon/app_icon_ios.png --out docs/apple-touch-icon.png
 ```
-
-ファイル名を変えなければ、`MomeoIcon.imageset/Contents.json` は編集しなくてよい。
 
 ---
 
@@ -201,17 +207,21 @@ flutter run
 確認ポイント:
 
 - **iOS**: ホーム画面で角丸が正しく付き、ロゴの余白バランスが崩れていないか
-- **iOS（Live Activity）**: バックグラウンド録音を ON にして録音し、
-  ロック画面の Live Activity に新しいアイコンが出ているか（灰色の四角になっていないか）
+- **起動画面**: アプリを完全に終了してから起動し、OS の起動画面からスプラッシュへ、ロゴがちらつかずに引き継がれるか。
+  iOS は起動画面の見た目を覚えているので、古いまま出たらアプリを削除して入れ直すか、端末を再起動する
 - **Android**: ホーム画面でロゴが欠けていないか
   （端末やランチャー設定によって丸・角丸四角など形が変わるので、
   形を変えて見られる環境があれば複数の形で確認する）
 
 ### ストア用アイコンについて
 
-App Store / Google Play のストア掲載ページに表示されるアイコン（1024×1024）は、
-アプリに埋め込むものではなく、**ストア登録時に別途アップロードする**。
-手順1で作った iOS 用の画像（`app_icon_ios.png`）をそのまま使えばよい。
+App Store は、アプリに入れた 1024×1024 のアイコンがそのまま掲載に使われる。
+Google Play は、掲載用のアイコン（512×512）を**ストア登録時に別途アップロードする**。
+手順1で作った iOS 用の画像（`app_icon_ios.png`）を縮めて使えばよい。
+
+```bash
+sips -z 512 512 assets/icon/app_icon_ios.png --out play_store_icon_512.png
+```
 
 ---
 
