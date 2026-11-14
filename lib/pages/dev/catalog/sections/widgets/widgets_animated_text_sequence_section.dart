@@ -14,13 +14,12 @@ class WidgetsAnimatedTextSequenceSection extends StatelessWidget {
   Widget build(BuildContext context) {
     const items = [
       (
-        label: 'スプラッシュ（デフォルト設定）',
+        label: 'スプラッシュの初回のコピー（このあと録音ボタンの演出に切り替わる）',
         texts: [
           '時の流れの中で生まれ',
           '薄れ消えゆく思考を',
           'そっと残すために',
           'ただ話しかけるだけ',
-          'momeo',
         ],
       ),
     ];

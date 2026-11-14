@@ -1,11 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:momeo/foundation/app_colors.dart';
-import 'package:momeo/foundation/app_text_styles.dart';
 import 'package:momeo/pages/permissions/permission_controller.dart';
 import 'package:momeo/pages/permissions/permission_page.dart';
-import 'package:momeo/pages/splash_page.dart';
-import 'package:momeo/widgets/intro_setting_layout.dart';
+import 'package:momeo/widgets/record_button_press.dart';
 
 // ---------------------------------
 // PermissionFlowPage — 権限フロー制御（Stateful + WidgetsBindingObserver）
@@ -198,17 +195,12 @@ class _PermissionFlowPageState extends State<PermissionFlowPage> with WidgetsBin
   @override
   Widget build(BuildContext context) {
     // ---------------------------------
-    // 最初の権限チェック中は、直前のスプラッシュと同じ位置にアプリ名を出し続ける
-    // （背景だけにすると、後ろの準備待ち画面のアプリ名と合わせて一瞬消えたように見えるため）
+    // 最初の権限チェック中は、直前のスプラッシュと同じ位置に録音ボタンを出し続ける
+    // （背景だけにすると、後ろの準備待ち画面の録音ボタンと合わせて一瞬消えたように見えるため）
     // ---------------------------------
     if (_currentState == null && _currentIndex == 0) {
-      return Scaffold(
-        body: IntroSettingLayout(
-          title: DefaultTextStyle(
-            style: AppTextStyles.headline.copyWith(color: AppColors.onSurface),
-            child: const Text(splashAppName),
-          ),
-        ),
+      return const Scaffold(
+        body: Center(child: RecordButtonPress(playsPress: false)),
       );
     }
 

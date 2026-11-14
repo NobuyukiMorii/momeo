@@ -8,6 +8,7 @@ import 'package:momeo/stt/stt_audio_worker.dart';
 import 'package:momeo/widgets/activity_dots_text.dart';
 import 'package:momeo/widgets/intro_setting_layout.dart';
 import 'package:momeo/widgets/content_slide_switcher.dart';
+import 'package:momeo/widgets/record_button_press.dart';
 
 // ---------------------------------
 // 待ち画面の5フェーズ
@@ -41,6 +42,13 @@ class PreparationGatePage extends ConsumerWidget {
     final restartSuggested = ref.watch(sttRestartSuggestedProvider);
 
     final phase = _resolvePhase(engineState, restartSuggested);
+
+    // 読み込み中は、スプラッシュから続けて同じ位置に録音ボタンを出したままにする
+    if (phase == PreparationPhase.loading) {
+      return const Scaffold(
+        body: Center(child: RecordButtonPress(playsPress: false)),
+      );
+    }
 
     return Scaffold(
       body: IntroSettingLayout(
@@ -90,6 +98,7 @@ class PreparationGatePage extends ConsumerWidget {
   Widget _buildPhaseContent(PreparationPhase phase) {
     switch (phase) {
       case PreparationPhase.loading:
+        // 読み込み中は build で録音ボタンを出すため、ふつうはここに来ない
         return const Text(splashAppName);
       case PreparationPhase.retrying:
         return const ActivityDotsText('再試行しています');

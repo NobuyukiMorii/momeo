@@ -10,6 +10,7 @@ import 'package:momeo/pages/dev/catalog/sections/foundation/foundation_app_theme
 import 'package:momeo/pages/dev/catalog/sections/widgets/widgets_animated_text_sequence_section.dart';
 import 'package:momeo/pages/dev/catalog/sections/widgets/widgets_content_slide_switcher_section.dart';
 import 'package:momeo/pages/dev/catalog/sections/widgets/widgets_intro_setting_layout_section.dart';
+import 'package:momeo/pages/dev/catalog/sections/widgets/widgets_record_button_press_section.dart';
 import 'package:momeo/pages/dev/catalog/sections/packages/packages_record_section.dart';
 import 'package:momeo/pages/dev/catalog/sections/packages/packages_sherpa_onnx_section.dart';
 import 'package:momeo/pages/dev/catalog/sections/stt/stt_vad_section.dart';
@@ -49,6 +50,7 @@ const _sections = [
     _Item(title: 'IntroSettingLayout', body: WidgetsIntroSettingLayoutSection()),
     _Item(title: 'AnimatedTextSequence', body: WidgetsAnimatedTextSequenceSection()),
     _Item(title: 'ContentSlideSwitcher', body: WidgetsContentSlideSwitcherSection()),
+    _Item(title: 'RecordButtonPress', body: WidgetsRecordButtonPressSection()),
   ]),
   _Section(title: 'Packages', items: [
     _Item(title: 'record', body: PackagesRecordSection()),
