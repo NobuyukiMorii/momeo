@@ -17,6 +17,13 @@
 - 表示時間はテキスト1つ分と同じ 1500ms
 - コピーから録音ボタンへはフェード（300ms）で切り替える
 
+### OS の起動画面からの引き継ぎ
+OS の起動画面（iOS の LaunchScreen・Android の起動画面）にも、同じ大きさ（外径 120pt / 120dp）・同じ位置（画面中央）の録音ボタンを出します。Flutter のボタンはフェードインせず最初から表示し、OS の画面からそのまま入れ替わって見えるようにします。
+
+- 初回起動かどうかを読み終えるまで Flutter の最初の描画を止め、その間は OS の起動画面を出したままにする
+- Android は Flutter が最初の画面を描き終えるまで起動画面を残し、外すときもフェードさせない
+- iOS の起動画面の画像は `ios/Runner/Assets.xcassets/LaunchImage.imageset`、Android は `android/app/src/main/res/drawable/splash_record_button.xml`
+
 ## アニメーションの挙動
 - 最初のテキストは初期状態から画面左下に表示されます。
 - 一定時間経過後、次のテキストが右からスライドインし、所定の位置で停止します。

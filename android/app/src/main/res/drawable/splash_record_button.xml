@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Android の起動画面に出す録音ボタン（輪＋黒丸）。
+  Flutter のスプラッシュの RecordButtonPress（外径 120dp）と同じ大きさ・位置に重なるように描く。
+  起動画面のアイコン枠は 288dp 四方なので、その中央に外径 120dp の輪を置く。
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="288dp"
+    android:height="288dp"
+    android:viewportWidth="288"
+    android:viewportHeight="288">
+
+    <!-- 外側の輪: 外径 120・線幅 6（線の中心は半径 57） -->
+    <path
+        android:pathData="M144,87 A57,57 0 1,1 144,201 A57,57 0 1,1 144,87 Z"
+        android:strokeColor="#111827"
+        android:strokeWidth="6"
+        android:fillColor="#00000000" />
+
+    <!-- 中央の黒丸: 直径 82.8 -->
+    <path
+        android:pathData="M144,102.6 A41.4,41.4 0 1,1 144,185.4 A41.4,41.4 0 1,1 144,102.6 Z"
+        android:fillColor="#111827" />
+</vector>

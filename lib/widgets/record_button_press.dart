@@ -4,6 +4,7 @@ import 'package:momeo/foundation/app_colors.dart';
 // ---------------------------------
 // アプリアイコンと同じ「輪＋黒丸」を出し、黒丸がひとりでに押されたように一度沈んで戻るウィジェット
 // 表示されたら一度だけ再生する（繰り返さない）
+// OS の起動画面にも同じ姿のボタンを出しているので、フェードインせず最初から表示する
 // ---------------------------------
 class RecordButtonPress extends StatefulWidget {
   const RecordButtonPress({super.key, this.size = 120, this.playsPress = true});

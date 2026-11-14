@@ -64,6 +64,8 @@ class _SplashPageState extends State<SplashPage> {
       return;
     }
 
+    // 初回起動かを読み終えるまで最初の描画を止め、同じ録音ボタンを出している OS の起動画面を残しておく
+    WidgetsBinding.instance.deferFirstFrame();
     _loadTexts();
   }
 
@@ -75,16 +77,20 @@ class _SplashPageState extends State<SplashPage> {
     final isFirstLaunch = prefs.getBool(PreferencesKeys.isFirstLaunch) ?? true;
 
     // ---------------------------------
-    // マウントされていない場合は何もしない
+    // マウントされていない場合は描画の停止だけ解く
     // ---------------------------------
-    if (!mounted) return;
+    if (!mounted) {
+      WidgetsBinding.instance.allowFirstFrame();
+      return;
+    }
 
     // ---------------------------------
-    // テキストを設定
+    // テキストを設定して、止めていた最初の描画を始める
     // ---------------------------------
     setState(() {
       _setTexts(isFirstLaunch ? _splashFullTexts : _splashShortTexts);
     });
+    WidgetsBinding.instance.allowFirstFrame();
   }
 
   // 文字がなければ、すぐ録音ボタンの演出に入る
