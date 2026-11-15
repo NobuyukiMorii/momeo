@@ -5,6 +5,7 @@
 #     make run d=<デバイスID>          # ふだんの開発はこれ（ID は flutter devices。指定は必須）
 #     make run d=<ID> mode=profile     # 動きが遅くないか確かめる（本番の速さで動く）
 #     make run d=<ID> mode=release     # ストアに出す前の最終確認
+#     make run d=<ID> define=FAKE_LANGUAGE_DOWNLOAD_SECONDS=30  # 確認用のスイッチ（--dart-define）を付けて動かす
 #     make build-ios           # flutter build ipa
 #     make build-android       # flutter build appbundle
 # ---------------------------------
@@ -15,6 +16,9 @@ d ?=
 # 実行モード。debug / profile / release を受け付ける。例: make run d=<ID> mode=release
 mode ?= debug
 
+# 確認用のスイッチ（--dart-define に渡す。カンマ区切りで複数可）。例: make run d=<ID> define=FAKE_LANGUAGE_DOWNLOAD_SECONDS=30
+#   define は Make の予約語なので、ここでは宣言せずコマンドラインから受け取るだけにする（指定がなければ空）
+
 .DEFAULT_GOAL := help
 
 .PHONY: help run build-ios build-android require-device
@@ -23,6 +27,7 @@ help:
 	@echo "make run d=<デバイスID>           … ふだんの開発はこれ"
 	@echo "make run d=<ID> mode=profile      … 動きが遅くないか確かめる（本番の速さで動く）"
 	@echo "make run d=<ID> mode=release      … ストアに出す前の最終確認"
+	@echo "make run d=<ID> define=KEY=VALUE  … 確認用のスイッチ（--dart-define）を付けて動かす"
 	@echo "make build-ios                    … flutter build ipa"
 	@echo "make build-android                … flutter build appbundle"
 
@@ -30,7 +35,7 @@ help:
 # 開発実行（端末は必ず指定させ、端末とモードによる分岐はスクリプトに任せる）
 # ---------------------------------
 run: require-device
-	bash scripts/run_on_device.sh $(d) $(mode)
+	bash scripts/run_on_device.sh $(d) $(mode) "$(define)"
 
 # ---- 対象の取り違えを避けるため、ビルドより前に即エラーで止める
 require-device:

@@ -7,11 +7,13 @@ import Speech
 //   VAD で区切った1発話ぶんの音（16kHz・Float32）を受け取り、テキストを返す。
 //   言語は、設定の「優先する言語」のうち対応している最初のものに固定する（自動判定はしない）。
 //   prepare の返事（state）は ready・downloading・unsupported の3つで、Android 側と同じ。
+//   downloadProgress は、ダウンロード中の進み具合（0.0〜1.0）を返す。分からなければ nil。
 enum SpeechTranscriberChannel {
   // Dart 側と一致させるチャンネル名・メソッド名
   static let channelName = "jp.momeo/os_transcriber"
   static let prepareMethod = "prepare"
   static let transcribeMethod = "transcribe"
+  static let downloadProgressMethod = "downloadProgress"
 
   static func register(with messenger: FlutterBinaryMessenger) {
     let channel = FlutterMethodChannel(name: channelName, binaryMessenger: messenger)
@@ -21,6 +23,8 @@ enum SpeechTranscriberChannel {
         handlePrepare(result: result)
       case transcribeMethod:
         handleTranscribe(arguments: call.arguments, result: result)
+      case downloadProgressMethod:
+        handleDownloadProgress(result: result)
       default:
         result(FlutterMethodNotImplemented)
       }
@@ -34,6 +38,16 @@ enum SpeechTranscriberChannel {
     Task {
       let reply = await SpeechTranscriberEngine.shared.prepare()
       await MainActor.run { result(reply) }
+    }
+  }
+
+  // ---------------------------------
+  // 言語のモデルのダウンロードの進み具合（0.0〜1.0。分からなければ nil）
+  // ---------------------------------
+  private static func handleDownloadProgress(result: @escaping FlutterResult) {
+    Task {
+      let fraction = await SpeechTranscriberEngine.shared.downloadFractionCompleted()
+      await MainActor.run { result(fraction) }
     }
   }
 
@@ -80,6 +94,9 @@ actor SpeechTranscriberEngine {
 
   // 進行中の言語のモデルのダウンロード（終わると nil に戻る）
   private var downloadTask: Task<Void, Never>?
+
+  // 進行中のダウンロードの進み具合（OS がダウンロードの依頼に付けて返すもの）
+  private var downloadProgress: Progress?
 
   // この起動中にダウンロードを終えた言語（OS が依頼を返し続けても、始め直さないため）
   private var downloadedLocaleIDs: Set<String> = []
@@ -139,6 +156,7 @@ actor SpeechTranscriberEngine {
 
   // ダウンロードを裏で進める。失敗しても、次の prepare で始め直す
   private func startDownload(_ request: AssetInstallationRequest, localeID id: String) {
+    downloadProgress = request.progress
     downloadTask = Task {
       do {
         try await request.downloadAndInstall()
@@ -151,8 +169,15 @@ actor SpeechTranscriberEngine {
 
   private func finishDownload(localeID id: String, error: String?) {
     downloadTask = nil
+    downloadProgress = nil
     lastDownloadError = error
     if error == nil { downloadedLocaleIDs.insert(id) }
+  }
+
+  // ダウンロード中なら進み具合（0.0〜1.0）、そうでなければ nil
+  func downloadFractionCompleted() -> Double? {
+    guard downloadTask != nil, let progress = downloadProgress else { return nil }
+    return progress.fractionCompleted
   }
 
   // 言語を比べるための名前（ja_JP と ja-JP のような書き方の違いをそろえる）

@@ -14,13 +14,61 @@ class OsTranscriberChannel {
     'jp.momeo/os_transcriber',
   );
 
+  // ---------------------------------
+  // 待ち画面の確認用: 言語のモデルのダウンロード中のふり
+  //   --dart-define=FAKE_LANGUAGE_DOWNLOAD_SECONDS=10 でビルドしたときだけ、
+  //   最初の問い合わせから指定秒数のあいだ、OS の返事を「ダウンロード中」に差し替える（0 なら何もしない）
+  //   進み具合も、経過時間に合わせて 0〜100% に増えていくふりをする。
+  //   --dart-define=FAKE_LANGUAGE_DOWNLOAD_HIDE_PROGRESS=true を足すと、進み具合は「分からない」のままにする
+  //   （Android 13 のように、ドットのまま待つ見え方の確認用）
+  // ---------------------------------
+  static const _fakeDownloadSeconds = int.fromEnvironment(
+    'FAKE_LANGUAGE_DOWNLOAD_SECONDS',
+  );
+  static const _fakeHidesProgress = bool.fromEnvironment(
+    'FAKE_LANGUAGE_DOWNLOAD_HIDE_PROGRESS',
+  );
+  static final _sinceFirstPrepare = Stopwatch();
+
   // 使えるかを確かめる。言語のモデルが端末に無ければ、OS にダウンロードを頼む
   static Future<OsTranscriberStatus> prepare() async {
+    if (!_sinceFirstPrepare.isRunning) _sinceFirstPrepare.start();
+
     final reply = await _channel.invokeMapMethod<String, Object?>('prepare');
-    return OsTranscriberStatus(
+    final status = OsTranscriberStatus(
       state: OsTranscriberState.fromName(reply?['state']),
       detail: '${reply?['detail'] ?? '-'}',
     );
+
+    // ふりの期間中は、OS の本当の返事の代わりに「ダウンロード中」を返す
+    if (_isFakingDownload) {
+      return OsTranscriberStatus(
+        state: OsTranscriberState.downloading,
+        detail: 'ダウンロード中のふり（本当の返事: ${status.state.name}）',
+      );
+    }
+    return status;
+  }
+
+  // 言語のモデルのダウンロードの進み具合（0.0〜1.0）。分からなければ null
+  //   Android 13 や、OS からまだ知らせが届いていないときは null になる
+  static Future<double?> downloadProgress() async {
+    if (_isFakingDownload) return _fakeDownloadProgress();
+
+    try {
+      return await _channel.invokeMethod<double>('downloadProgress');
+    } on PlatformException {
+      return null;
+    }
+  }
+
+  static bool get _isFakingDownload =>
+      _sinceFirstPrepare.isRunning &&
+      _sinceFirstPrepare.elapsed.inSeconds < _fakeDownloadSeconds;
+
+  static double? _fakeDownloadProgress() {
+    if (_fakeHidesProgress) return null;
+    return _sinceFirstPrepare.elapsedMilliseconds / (_fakeDownloadSeconds * 1000);
   }
 
   // 1発話ぶんの音を文字化する

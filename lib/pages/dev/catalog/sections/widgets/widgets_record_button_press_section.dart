@@ -18,6 +18,9 @@ class _WidgetsRecordButtonPressSectionState
   // 押すたびに増やし、キーを変えて押される演出を最初から再生し直す
   int _replayCount = 0;
 
+  // 輪の進み具合の見本で使う割合
+  double _ringProgress = 0.3;
+
   @override
   Widget build(BuildContext context) {
     return ListView(
@@ -42,6 +45,22 @@ class _WidgetsRecordButtonPressSectionState
             onPressed: () => setState(() => _replayCount++),
             child: const Text('もう一度'),
           ),
+        ),
+        const SizedBox(height: 32),
+        const Text(
+          'ダウンロードの進み具合（輪が12時の位置から時計回りに伸びる）',
+          style: TextStyle(fontSize: 12),
+        ),
+        const SizedBox(height: 16),
+        Center(
+          child: RecordButtonPress(
+            playsPress: false,
+            ringProgress: _ringProgress,
+          ),
+        ),
+        Slider(
+          value: _ringProgress,
+          onChanged: (value) => setState(() => _ringProgress = value),
         ),
       ],
     );

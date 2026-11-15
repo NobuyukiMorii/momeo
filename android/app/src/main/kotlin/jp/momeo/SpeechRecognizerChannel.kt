@@ -3,11 +3,13 @@ package jp.momeo
 import android.content.Context
 import android.content.Intent
 import android.media.AudioFormat
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.LocaleList
 import android.os.Looper
 import android.os.ParcelFileDescriptor
+import android.speech.ModelDownloadListener
 import android.speech.RecognitionListener
 import android.speech.RecognitionSupport
 import android.speech.RecognitionSupportCallback
@@ -31,6 +33,8 @@ import kotlin.concurrent.thread
 //
 //   言語は端末の「優先する言語」のうち、端末内モデルが入っている最初のものに固定する。
 //   入っていなければダウンロードを頼み、downloading を返す（prepare の返事は iOS 側と同じ3つ）。
+//   downloadProgress は、ダウンロード中の進み具合（0.0〜1.0）を返す。分からなければ null。
+//   進み具合を知らせてもらえるのは Android 14 以降だけで、Android 13 では常に null になる。
 //
 //   SpeechRecognizer はメインスレッドでしか触れないため、ここの処理はすべてメインスレッドで動く。
 // ============================================================
@@ -41,6 +45,7 @@ class SpeechRecognizerChannel(private val context: Context, messenger: BinaryMes
         private const val METHOD_CHANNEL = "jp.momeo/os_transcriber"
         private const val METHOD_PREPARE = "prepare"
         private const val METHOD_TRANSCRIBE = "transcribe"
+        private const val METHOD_DOWNLOAD_PROGRESS = "downloadProgress"
 
         // prepare の返事（Dart の OsTranscriberState と一致させる）
         private const val STATE_READY = "ready"
@@ -59,6 +64,9 @@ class SpeechRecognizerChannel(private val context: Context, messenger: BinaryMes
     private var recognizer: SpeechRecognizer? = null
     private var languageTag: String? = null
 
+    // この起動中に頼んだダウンロードの進み具合（%）。知らせが届いていなければ null
+    private var downloadPercent: Int? = null
+
     init {
         MethodChannel(messenger, METHOD_CHANNEL).setMethodCallHandler { call, result ->
             when (call.method) {
@@ -71,6 +79,7 @@ class SpeechRecognizerChannel(private val context: Context, messenger: BinaryMes
                         transcribe(samples, result)
                     }
                 }
+                METHOD_DOWNLOAD_PROGRESS -> result.success(downloadPercent?.let { it / 100.0 })
                 else -> result.notImplemented()
             }
         }
@@ -156,7 +165,7 @@ class SpeechRecognizerChannel(private val context: Context, messenger: BinaryMes
             if (downloadableTag != null) {
                 val downloadIntent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
                     .putExtra(RecognizerIntent.EXTRA_LANGUAGE, downloadableTag)
-                onDeviceRecognizer.triggerModelDownload(downloadIntent)
+                requestModelDownload(onDeviceRecognizer, downloadIntent)
                 reply(result, STATE_DOWNLOADING, "$downloadableTag のモデルのダウンロードを頼みました")
                 return
             }
@@ -167,6 +176,43 @@ class SpeechRecognizerChannel(private val context: Context, messenger: BinaryMes
             STATE_UNSUPPORTED,
             "優先する言語（${preferredLocales.toLanguageTags()}）のどれにも対応していません" +
                 "（installed: $installedTags）",
+        )
+    }
+
+    // ---------------------------------
+    // 言語のモデルのダウンロードを頼む
+    //   Android 14 以降は進み具合を知らせてもらう頼み方を使い、Android 13 は頼むだけにする
+    // ---------------------------------
+    private fun requestModelDownload(onDeviceRecognizer: SpeechRecognizer, downloadIntent: Intent) {
+        downloadPercent = null
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            onDeviceRecognizer.triggerModelDownload(downloadIntent)
+            return
+        }
+
+        onDeviceRecognizer.triggerModelDownload(
+            downloadIntent,
+            context.mainExecutor,
+            object : ModelDownloadListener {
+                override fun onProgress(completedPercent: Int) {
+                    downloadPercent = completedPercent
+                }
+
+                // 終わった・後回しにされた・失敗したときは、進み具合を分からない扱いに戻す
+                override fun onSuccess() {
+                    downloadPercent = null
+                }
+
+                override fun onScheduled() {
+                    Log.i(TAG, "言語のモデルのダウンロードが後回しにされました")
+                    downloadPercent = null
+                }
+
+                override fun onError(error: Int) {
+                    Log.w(TAG, "言語のモデルのダウンロードに失敗しました（error: $error）")
+                    downloadPercent = null
+                }
+            },
         )
     }
 
