@@ -189,6 +189,9 @@ img {
 
   /* 見出しにも下に伸びる字がほとんどないため、ヒーローと同じ考え方で行の高さを詰める */
   line-height: 0.9;
+
+  /* 2 行に折り返すとき、最後の 1 語だけが次の行に落ちないよう、行の長さを揃える */
+  text-wrap: balance;
 }
 
 /* 和文は 1 行 35〜40 字あたりが読みやすい上限。em 基準なら文字サイズに追従する */
@@ -226,7 +229,8 @@ img {
    端末の輪郭は細い罫線だけで示す
    --------------------------------- */
 .demo {
-  margin-top: clamp(2.5rem, 5vw, 4rem);
+  /* スマホではヒーローの直後に置く。ヒーローが下に取る余白に続けて、次のブロックとの間だけ空ける */
+  padding-bottom: var(--space-block);
 }
 
 /* 端末の外枠。細いベゼルを全周に取り、上下だけが太く見えないようにする */
@@ -242,20 +246,175 @@ img {
   border-radius: var(--device-radius);
 }
 
-/* 実際の表示面。動画を端まで見せながら、端末の内側に沿う角丸で切り抜く */
+/* 実際の表示面。中身を端末の内側に沿う角丸で切り抜く。
+   縦横比は iPhone の画面（440pt × 956pt）から、上端の Dynamic Island の分を除いたもの */
 .demo__screen {
+  /* 中の文字や余白を、この表示面の幅に対する割合で決める（1pt = 幅の 1/440） */
+  container-type: inline-size;
+  --pt: calc(100cqw / 440);
+
+  position: relative;
   overflow: hidden;
   aspect-ratio: 660 / 1356;
   background-color: var(--color-bg);
   border-radius: calc(var(--device-radius) - var(--bezel-width));
 }
 
-.demo__screen video {
-  display: block;
+/* 背景に流れる音量の波線（アプリの ListeningBackdrop と同じ描き方） */
+.demo__wave {
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
-  background-color: var(--color-bg);
-  object-fit: cover;
+}
+
+/* メモの一覧。アプリと同じく下に寄せて積み、あふれた古いメモは上で切れる。
+   文字の大きさ・行の高さ・余白はアプリの一覧（NativeMemoList）の値を pt のまま写す */
+.demo__memos {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+
+  /* 下の余白は、一覧の余白 24pt ＋ ホームインジケーターの分 34pt */
+  padding: 0 calc(8 * var(--pt)) calc(58 * var(--pt));
+
+  font-family: "Hiragino Sans", "Noto Sans JP", sans-serif;
+  font-size: calc(18 * var(--pt));
+  line-height: 2;
+  letter-spacing: 0;
+  color: var(--color-fg);
+
+  transition: opacity 1s ease;
+}
+
+/* 1 つの台本を言い終えたあと、一覧を消して最初から話し直すときに使う */
+.demo__memos.is-fading {
+  opacity: 0;
+}
+
+/* 打ち出し中のメモの、まだ打っていない残り。場所だけ取って見せない（demo.js の addMemo） */
+.demo__memo-rest {
+  color: transparent;
+}
+
+/* メモどうし（と、話している間の「.」）の間は 24pt 空ける */
+.demo__memos > * + * {
+  margin-top: calc(24 * var(--pt));
+}
+
+/* ---------------------------------
+   PC の 2 列レイアウト
+   左に文章、右に画面収録を置き、右の端末はスクロールしても画面の縦中央に留める。
+   画面収録は HTML ではヒーローの直後にあり、ここで右の列へ移す
+   --------------------------------- */
+@media (min-width: 960px) {
+  .layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    column-gap: clamp(3rem, 6vw, 7rem);
+  }
+
+  /* 文章のブロックはすべて左の列に縦に積む */
+  .layout > :not(.demo) {
+    grid-column: 1;
+  }
+
+  /* 右の列は文章の全行にまたがらせ、その高さの中で端末を動かさずに留める */
+  .demo {
+    grid-column: 2;
+    grid-row: 1 / span 99;
+    padding-bottom: 0;
+  }
+
+  /* 端末の高さを画面の高さから決め、上下に同じ余白が残る位置で留める */
+  .demo__device {
+    --device-height: min(42rem, calc(100svh - 6rem));
+
+    position: sticky;
+    top: calc((100svh - var(--device-height)) / 2);
+
+    width: auto;
+    height: var(--device-height);
+    aspect-ratio: 660 / 1356;
+  }
+
+  .demo__screen {
+    height: 100%;
+  }
+}
+
+/* ---------------------------------
+   場面ごとのスクロール
+   ヒーロー・画面収録・本文ブロックをそれぞれ 1 画面ぶんの高さにし、
+   スクロールすると次のブロックの先頭でぴたりと止める。
+   トップページ（html.scenes）だけに効かせ、下層ページは普通にスクロールさせる
+   --------------------------------- */
+html.scenes {
+  scroll-snap-type: y mandatory;
+
+  /* フッターの高さ（リンク 1 行＋上下の余白）。最後の場面はこの分だけ低くし、フッターと合わせて 1 画面にする */
+  --footer-height: calc(
+    1.5rem + var(--space-footer-bottom) * 2 + env(safe-area-inset-bottom, 0px)
+  );
+}
+
+/* ページ末尾に余白が残ると、最後の場面で止まらずに中途半端な位置まで動いてしまう */
+.scenes body {
+  padding-bottom: 0;
+}
+
+.scenes .hero,
+.scenes .demo,
+.scenes .band {
+  scroll-snap-align: start;
+  min-height: 100vh;
+  min-height: 100svh;
+}
+
+/* 画面収録と本文ブロックは 1 画面の縦中央に置く */
+.scenes .demo,
+.scenes .band {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+/* 最後の場面はフッターの分だけ低くし、その下にフッターを続けて置く */
+.scenes .band:last-child {
+  min-height: calc(100vh - var(--footer-height));
+  min-height: calc(100svh - var(--footer-height));
+}
+
+.scenes .site-footer {
+  display: flex;
+  align-items: flex-end;
+  height: var(--footer-height);
+  padding-top: 0;
+  padding-bottom: calc(var(--space-footer-bottom) + env(safe-area-inset-bottom, 0px));
+}
+
+/* スマホでは端末が 1 画面に収まるよう、画面の高さからも幅を決める */
+.scenes .demo__device {
+  width: min(100%, 20rem, calc((100svh - 4rem) * 660 / 1356));
+}
+
+/* PC では画面収録を場面に含めず、右の列に留めたままにする。
+   上の場面の指定より後に書かないと打ち消せないので、ここに置く */
+@media (min-width: 960px) {
+  .scenes .demo {
+    display: block;
+    min-height: 0;
+    padding-bottom: 0;
+    scroll-snap-align: none;
+  }
+
+  .scenes .demo__device {
+    width: auto;
+  }
 }
 
 /* ---------------------------------
@@ -295,30 +454,22 @@ img {
 
 /* ---------------------------------
    下層ページ（プライバシーポリシー・サポート）
-   トップと同じ組み方のまま、小見出しだけを足す
+   トップと同じ場面（.band）を積む組み方のまま、本文中のリンクと補足だけを足す
    --------------------------------- */
 
-/* 巨大な英字ラベルの直後に置く、日本語のページ名 */
-.doc__title {
-  margin-top: clamp(1.25rem, 2.5vw, 2rem);
-  font-size: clamp(1.125rem, 1rem + 0.8vw, 1.5rem);
-  font-weight: 700;
-}
-
-/* 条文の小見出し。本文と同じ大きさのまま、太字と上のアキだけで区別する */
-.doc__heading {
-  margin-top: 2.75em;
-  font-weight: 700;
-}
-
-.doc__heading + p {
-  margin-top: 0.5em;
+/* 本文中のリンク（導入文の中も含む） */
+.band__body .lede a {
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.2em;
 }
 
 /* 制定日など、本文の補足 */
 .doc__note {
-  margin-top: 3em;
   font-size: 0.875rem;
+}
+
+.band__body > .doc__note {
+  margin-top: 3em;
 }
 
 /* ---------------------------------
