@@ -2,7 +2,7 @@
 # ============================================================
 # サイト掲載用デモ動画の iOS 画面収録
 #
-#   iPhone 16 Pro Max シミュレータ（1320x2868）で収録モードのアプリを動かし、
+#   iPhone 17 Pro Max シミュレータ（1320x2868・iOS 26 以上）で収録モードのアプリを動かし、
 #   疑似発話によってカードが増えていく様子を録画して docs/videos/ に書き出す。
 #   発話内容は recording_listening_simulator.dart を参照。
 #
@@ -15,7 +15,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-DEVICE_NAME="iPhone 16 Pro Max"
+DEVICE_NAME="iPhone 17 Pro Max"
 BUNDLE_ID="jp.momeo"
 APP_PATH="build/ios/iphonesimulator/Runner.app"
 
@@ -33,7 +33,7 @@ OUT_NAME="how-it-works"
 #   アプリを待機画面まで起動してから録画し、ホーム画面が入るのを防ぐ
 # ---------------------------------
 WAIT_AFTER_LAUNCH=1.5 # アプリの待機画面が描かれるまで
-RECORD_SECONDS=21     # 録画する長さ
+RECORD_SECONDS=330    # 録画する長さ（台本は約5分20秒。起動の演出の分を足す）
 TRIM_START=2          # 完成動画を momeo の表示から始めるために除く冒頭部分
 
 # ---------------------------------
@@ -47,6 +47,9 @@ CROP_BOTTOM=0
 
 # 書き出す横幅（表示は約半分の幅なので、2倍の解像度を持たせる）
 OUT_WIDTH=660
+
+# 書き出すコマ数。文字が増えるだけの映像なので 30fps で足り、5分の動画でもファイルを軽く保てる
+OUT_FPS=30
 
 # ---------------------------------
 # シミュレータの起動
@@ -92,7 +95,7 @@ xcrun simctl terminate "$UDID" "$BUNDLE_ID" || true
 # ---------------------------------
 mkdir -p "$OUT_DIR"
 
-FILTER="trim=start=${TRIM_START},setpts=PTS-STARTPTS,crop=iw:ih-${CROP_TOP}-${CROP_BOTTOM}:0:${CROP_TOP},scale=${OUT_WIDTH}:-2"
+FILTER="trim=start=${TRIM_START},setpts=PTS-STARTPTS,crop=iw:ih-${CROP_TOP}-${CROP_BOTTOM}:0:${CROP_TOP},scale=${OUT_WIDTH}:-2,fps=${OUT_FPS}"
 
 echo "=== 書き出し: mp4"
 ffmpeg -y -loglevel error -i "$RAW_FILE" \

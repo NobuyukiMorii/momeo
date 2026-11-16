@@ -2,8 +2,8 @@
 # ============================================================
 # ストア掲載用スクリーンショットの iOS 一括撮影
 #
-#   iPhone 16 Pro Max シミュレータ（6.9 インチ = App Store 必須サイズ、
-#   1320x2868）で全シーンを撮影し、notes/release/screenshots/ios/ に保存する。
+#   iPhone 17 Pro Max シミュレータ（6.9 インチ = App Store 必須サイズ、
+#   1320x2868・iOS 26 以上）で全シーンを撮影し、notes/release/screenshots/ios/ に保存する。
 #   シーンの表示内容は lib/pages/dev/screenshot/screenshot_scenes.dart を参照。
 #
 #   使い方: bash scripts/take_ios_screenshots.sh
@@ -11,7 +11,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-DEVICE_NAME="iPhone 16 Pro Max"
+DEVICE_NAME="iPhone 17 Pro Max"
 BUNDLE_ID="jp.momeo"
 APP_PATH="build/ios/iphonesimulator/Runner.app"
 # simctl io screenshot は相対パスを解決できないため絶対パスにする

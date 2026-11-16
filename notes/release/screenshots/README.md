@@ -11,7 +11,7 @@
   すべてスキップして、指定シーンの固定データだけを画面に表示する
 - シェルスクリプトは、シーンごとに「ビルド → シミュレータに入れる → 起動 →
   スクリーンショット保存」を繰り返しているだけ
-- 画面そのもの（カードのデザイン、波線、レイアウト）は本物のコードを
+- 画面そのもの（一覧のデザイン、波線、レイアウト）は本物のコードを
   そのまま使っている。**偽物なのは「表示するデータ」だけ**
 
 ## 全体の流れ
@@ -95,24 +95,23 @@ ProviderScope(
 ## 5シーンの一覧（ストアに並べる順）
 
 台本の実体は `screenshot_scenes.dart`。文言・時刻を変えたらスクリプトを再実行するだけ。
-話しかけるほどメモが増えていく流れが伝わるよう、確定メモ 0→1→3→5→9 枚で並べる。
+話しかけるほどメモが増えていく流れが伝わるよう、確定メモ 0→1→3→5→7 件で並べる。
+メモの中身は、夜に1日を振り返る独り言（サイトの画面の再現 docs/demo.js の台本の冒頭と同じ）。
 
 | ファイル名 | シーン名 | 内容 |
 |---|---|---|
 | `01_listening_idle` | `listening_idle` | 波線だけの静かなリスニング画面 |
-| `02_listening_first_memo` | `listening_first_memo` | 発話中ドット＋確定1枚 |
-| `03_listening_growing_memos` | `listening_growing_memos` | 発話中ドット＋確定3枚 |
-| `04_listening_many_memos` | `listening_many_memos` | 発話中ドット＋確定5枚 |
-| `05_listening_memo_list` | `listening_memo_list` | 時刻付きの確定一覧9枚（発話なし） |
+| `02_listening_first_memo` | `listening_first_memo` | 発話中の「.」＋確定1件 |
+| `03_listening_growing_memos` | `listening_growing_memos` | 発話中の「.」＋確定3件 |
+| `04_listening_many_memos` | `listening_many_memos` | 発話中の「.」＋確定5件 |
+| `05_listening_memo_list` | `listening_memo_list` | 確定一覧7件（発話なし）。例文は2行の文が多いので、ステータスバーに重ならない7件まで |
 
 シーン名は「対象画面＋状態」で付けてあり、表示する文言には依存しない。
-デモメモは同じ分に2件ずつ入れてあり、「同じ分のカードは日時を1つにまとめる」
-という実際の表示ルールが写るようにしてある。
 
 ## 撮り直し方
 
 ```bash
-# iOS（iPhone 16 Pro Max シミュレータ。App Store 必須の 6.9 インチ = 1320x2868）
+# iOS（iPhone 17 Pro Max シミュレータ・iOS 26 以上。App Store 必須の 6.9 インチ = 1320x2868）
 bash scripts/take_ios_screenshots.sh
 
 # Android（Pixel エミュレータ。1080x2424）
