@@ -11,15 +11,15 @@ import 'package:momeo/foundation/app_text_styles.dart';
 final _content = {
   Permission.microphone: {
     PermissionScreenState.request: (
-      title: '音声を認識するためにマイクを使います',
-      button: '許可する' as String?,
+      title: 'momeo uses the microphone to turn your voice into text',
+      button: 'Allow' as String?,
     ),
     PermissionScreenState.settings: (
-      title: '設定からマイクの使用を許可してください',
-      button: '設定を開く' as String?,
+      title: 'Allow microphone access in Settings',
+      button: 'Open Settings' as String?,
     ),
     PermissionScreenState.unavailable: (
-      title: 'この端末ではマイクを使えません',
+      title: 'No microphone is available on this device',
       button: null as String?,
     ),
   },

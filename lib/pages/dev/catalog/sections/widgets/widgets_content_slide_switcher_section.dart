@@ -30,13 +30,13 @@ class _WidgetsContentSlideSwitcherSectionState
       case PreparationPhase.loading:
         return const Text(splashAppName);
       case PreparationPhase.retrying:
-        return const ActivityDotsText('再試行しています');
+        return const ActivityDotsText('Retrying');
       case PreparationPhase.tryRestarting:
-        return const Text('アプリを再起動してください');
+        return const Text('Please restart the app');
       case PreparationPhase.unsupported:
-        return const Text('この端末では使えません');
+        return const Text('Not available on this device');
       case PreparationPhase.downloadingLanguage:
-        return const ActivityDotsText('言語のモデルをダウンロードしています');
+        return const ActivityDotsText('Downloading the language model');
     }
   }
 

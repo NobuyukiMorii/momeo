@@ -19,11 +19,5 @@ class PreferenceEntry {
 // SharedPreferences で使用するキーを一元管理する
 // all の並び順がコンソール画面の表示順になる
 abstract final class PreferencesKeys {
-  // 初回起動かどうか
-  static const isFirstLaunch = 'is_first_launch';
-
-  static const all = [
-    // 初回起動かどうか
-    PreferenceEntry(key: isFirstLaunch, type: PreferenceType.boolean),
-  ];
+  static const all = <PreferenceEntry>[];
 }

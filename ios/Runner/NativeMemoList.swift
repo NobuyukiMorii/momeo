@@ -1115,7 +1115,7 @@ private final class MemoKeyboardDismissButton: UIButton {
         configuration.baseForegroundColor = .label
         configuration.cornerStyle = .capsule
         self.configuration = configuration
-        accessibilityLabel = Locale.preferredLanguages.first?.hasPrefix("ja") == true ? "キーボードを閉じる" : "Hide keyboard"
+        accessibilityLabel = "Hide keyboard"
     }
 
     required init?(coder: NSCoder) { fatalError("ストーリーボードからは生成しません") }

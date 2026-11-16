@@ -34,7 +34,7 @@
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>声をメモにするため、マイクを使用します。録音するのは momeo を開いている間だけです。</string>
+	<string>momeo uses the microphone to turn your voice into notes. It only listens while momeo is open.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

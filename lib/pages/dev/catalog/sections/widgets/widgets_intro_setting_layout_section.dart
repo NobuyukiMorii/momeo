@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:momeo/foundation/app_colors.dart';
 import 'package:momeo/foundation/app_text_styles.dart';
-import 'package:momeo/widgets/animated_text_sequence.dart';
 import 'package:momeo/widgets/intro_setting_layout.dart';
 
 class WidgetsIntroSettingLayoutSection extends StatelessWidget {
@@ -25,38 +24,21 @@ class WidgetsIntroSettingLayoutSection extends StatelessWidget {
     // ---------------------------------
     final variations = [
       (
-        label: 'アニメーションテキスト',
-        step: null,
-        title: DefaultTextStyle(
-          style: headlineStyle,
-          child: const AnimatedTextSequence(
-            texts: [
-              '時の流れの中で生まれ',
-              '薄れ消えゆく思考を',
-              'そっと残すために',
-              'ただ話しかけるだけ',
-              'momeo',
-            ],
-          ),
-        ) as Widget,
-        actionLabel: null,
+        label: 'ステップ + ボタンあり',
+        step: '1/2',
+        title: Text('momeo uses the microphone to turn your voice into text', style: headlineStyle) as Widget,
+        actionLabel: 'Allow',
       ),
       (
         label: 'ステップ + ボタンあり',
         step: '1/2',
-        title: Text('音声を認識するためにマイクを使います', style: headlineStyle) as Widget,
-        actionLabel: '許可する',
-      ),
-      (
-        label: 'ステップ + ボタンあり',
-        step: '1/2',
-        title: Text('設定からマイクの使用を許可してください', style: headlineStyle) as Widget,
-        actionLabel: '設定を開く',
+        title: Text('Allow microphone access in Settings', style: headlineStyle) as Widget,
+        actionLabel: 'Open Settings',
       ),
       (
         label: 'テキストのみ',
         step: null,
-        title: Text('この端末では\nマイクを使えません', style: headlineStyle) as Widget,
+        title: Text('No microphone is available\non this device', style: headlineStyle) as Widget,
         actionLabel: null,
       ),
     ];

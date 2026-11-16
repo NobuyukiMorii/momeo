@@ -153,7 +153,7 @@ class SttEngineNotifier extends AsyncNotifier<SttAudioWorker> {
 }
 
 // ============================================================
-// sttRestartSuggestedProvider — 待ち画面を「アプリを再起動してください」に切り替えるべきか
+// sttRestartSuggestedProvider — 待ち画面を「Please restart the app」に切り替えるべきか
 // ============================================================
 final sttRestartSuggestedProvider =
     NotifierProvider<SttRestartSuggestionNotifier, bool>(

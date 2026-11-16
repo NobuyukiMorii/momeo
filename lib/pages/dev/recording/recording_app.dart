@@ -85,7 +85,6 @@ class _RecordingFlowState extends State<_RecordingFlow> {
     // --- スプラッシュ
     if (!_splashFinished) {
       return SplashPage(
-        overrideTexts: const [],
         onFinished: () {
           setState(() => _splashFinished = true);
         },

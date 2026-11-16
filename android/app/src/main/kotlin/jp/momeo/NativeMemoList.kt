@@ -1225,6 +1225,6 @@ private class MemoKeyboardDismissButton(context: Context) : ImageButton(context)
         setImageResource(R.drawable.ic_keyboard_hide)
         imageTintList = android.content.res.ColorStateList.valueOf(DEFAULT_TEXT_COLOR)
         scaleType = ScaleType.CENTER
-        contentDescription = if (resources.configuration.locales[0].language == "ja") "キーボードを閉じる" else "Hide keyboard"
+        contentDescription = "Hide keyboard"
     }
 }

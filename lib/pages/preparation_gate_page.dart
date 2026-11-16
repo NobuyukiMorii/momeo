@@ -181,13 +181,13 @@ class _PreparationGatePageState extends ConsumerState<PreparationGatePage> {
         // 読み込み中は録音ボタンだけを出し、文字は出さない
         return const SizedBox.shrink();
       case PreparationPhase.retrying:
-        return const ActivityDotsText('再試行しています');
+        return const ActivityDotsText('Retrying');
       case PreparationPhase.tryRestarting:
         // 「処理中」ではなくユーザーへの依頼なので、動きは付けない
-        return const Text('アプリを再起動してください');
+        return const Text('Please restart the app');
       case PreparationPhase.unsupported:
         // 再起動しても変わらないお知らせなので、動きは付けない
-        return const Text('この端末では使えません');
+        return const Text('Not available on this device');
       case PreparationPhase.downloadingLanguage:
         return _buildDownloadingText();
     }
@@ -199,7 +199,7 @@ class _PreparationGatePageState extends ConsumerState<PreparationGatePage> {
   //   最初の問い合わせの答えが返るまでの一瞬も文言だけにする（進み具合が取れる端末でドットを一瞬見せないため）
   // ---------------------------------
   Widget _buildDownloadingText() {
-    const label = '言語のモデルをダウンロードしています';
+    const label = 'Downloading the language model';
 
     if (_hasReadProgress && _downloadFraction == null) {
       return const ActivityDotsText(label);

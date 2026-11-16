@@ -7,7 +7,6 @@ import 'package:momeo/pages/dev/catalog/sections/foundation/foundation_app_text_
 import 'package:momeo/pages/dev/catalog/sections/foundation/foundation_app_spacing_section.dart';
 import 'package:momeo/pages/dev/catalog/sections/foundation/foundation_app_radius_section.dart';
 import 'package:momeo/pages/dev/catalog/sections/foundation/foundation_app_theme_section.dart';
-import 'package:momeo/pages/dev/catalog/sections/widgets/widgets_animated_text_sequence_section.dart';
 import 'package:momeo/pages/dev/catalog/sections/widgets/widgets_content_slide_switcher_section.dart';
 import 'package:momeo/pages/dev/catalog/sections/widgets/widgets_intro_setting_layout_section.dart';
 import 'package:momeo/pages/dev/catalog/sections/widgets/widgets_record_button_press_section.dart';
@@ -48,7 +47,6 @@ const _sections = [
   ]),
   _Section(title: 'Widgets', items: [
     _Item(title: 'IntroSettingLayout', body: WidgetsIntroSettingLayoutSection()),
-    _Item(title: 'AnimatedTextSequence', body: WidgetsAnimatedTextSequenceSection()),
     _Item(title: 'ContentSlideSwitcher', body: WidgetsContentSlideSwitcherSection()),
     _Item(title: 'RecordButtonPress', body: WidgetsRecordButtonPressSection()),
   ]),
