@@ -15,8 +15,9 @@ import 'package:momeo/foundation/app_colors.dart';
 //   - 入力は levelReader()（直近のピーク音量 0.0〜1.0）。音の取り込みは
 //     外（リスニングのパイプライン）が担うため、このウィジェットは
 //     描画だけに徹する。
-//   - Ticker で毎フレーム、音量を平滑化→ゲイン→無音揺れ→履歴更新し、
-//     CustomPaint で中央ラインを基準に揺れる、1本のなめらかな波線を描く。
+//   - Ticker で毎フレーム、音量を平滑化→ゲイン→無音揺れし、一定間隔で履歴に記録する。
+//   - 線の頂点は画面上の位置に固定し、各頂点で「何秒前の音か」を求めて履歴から値を引く。
+//     頂点そのものは動かないので、線の端や波の形が流れに合わせてガタつかない。
 //   - 新しい音は右端に現れ、左へ流れて左端から消える。
 //
 //   ■ チューニング値（実機で整える）
@@ -51,16 +52,16 @@ class _ListeningBackdropState extends State<ListeningBackdrop>
   late final Ticker _ticker;
   Duration _lastElapsed = Duration.zero;
 
-  // 過去の音量履歴（右が新しい）。removeAt + add で左へずらすため可変長にする
+  // 過去の音量履歴（末尾が新しい）。_historyStepSec ごとに1つ記録する
   final List<double> _history =
-      List<double>.filled(_sampleCount, 0.0, growable: true);
+      List<double>.filled(_historyLength, 0.0, growable: true);
 
-  // エンベロープ平滑後の現在値と、右端から入ってくる最新1サンプル分
+  // エンベロープ平滑後の値と、それにゲインと無音揺れを掛けた「いまの音量」
   double _smoothed = 0.0;
   double _current = 0.0;
 
-  // 1サンプル分のピッチに対するスクロール量 [0.0, 1.0)。1.0 に達したら履歴をずらす
-  double _scrollFrac = 0.0;
+  // 最後に履歴へ記録してからの経過秒数
+  double _sinceLastRecordSec = 0.0;
 
   // 無音揺れの位相（時間とともに進む）
   double _idlePhase = 0.0;
@@ -114,12 +115,12 @@ class _ListeningBackdropState extends State<ListeningBackdrop>
     // ④ 完全無音でも常に命を持たせるため、微弱な揺れを下駄履き（実音が強ければそちらが優先）
     final idle = _idleAmplitude * (0.5 + 0.5 * sin(_idlePhase));
     if (_current < idle) _current = idle;
-
-    // ⑤ 1サンプル分のスクロールが進むごとに履歴を左へずらし、右端に最新を詰める（連続的な左への流れ）
     _idlePhase += _idleFrequencyHz * 2 * pi * dtSec;
-    _scrollFrac += dtSec / _sampleIntervalSec;
-    while (_scrollFrac >= 1.0) {
-      _scrollFrac -= 1.0;
+
+    // ⑤ 一定間隔ごとに、いまの音量を履歴の末尾へ記録し、古いものを捨てる
+    _sinceLastRecordSec += dtSec;
+    while (_sinceLastRecordSec >= _historyStepSec) {
+      _sinceLastRecordSec -= _historyStepSec;
       _history.removeAt(0);
       _history.add(_current);
     }
@@ -136,7 +137,7 @@ class _ListeningBackdropState extends State<ListeningBackdrop>
         painter: _BackdropPainter(
           history: _history,
           current: _current,
-          scrollFrac: _scrollFrac,
+          sinceLastRecordSec: _sinceLastRecordSec,
           color: AppColors.onSurfaceFaint,
         ),
         // 全面を覆うことで paint() の size に画面全体が入る
@@ -153,7 +154,7 @@ class _BackdropPainter extends CustomPainter {
   _BackdropPainter({
     required this.history,
     required this.current,
-    required this.scrollFrac,
+    required this.sinceLastRecordSec,
     required this.color,
   });
 
@@ -161,14 +162,14 @@ class _BackdropPainter extends CustomPainter {
   // 変数
   // ---------------------------------
 
-  // State が破壊的に更新する履歴（参照で受け取る）
+  // State が破壊的に更新する履歴（参照で受け取る。末尾が新しい）
   final List<double> history;
 
-  // 右端から入ってくる最新の1サンプル
+  // いまの音量（右端＝0秒前の値）
   final double current;
 
-  // 1サンプル分のピッチに対するスクロール量 [0.0, 1.0)
-  final double scrollFrac;
+  // 履歴の末尾を記録してからの経過秒数（＝末尾の値が何秒前のものか）
+  final double sinceLastRecordSec;
 
   final Color color;
 
@@ -178,22 +179,28 @@ class _BackdropPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final count = history.length;
-    final pitch = size.width / count;
-    final cy = size.height / 2;
+    final centerY = size.height / 2;
     final maxHalf = size.height * _maxAmplitudeFactor;
 
-    // 空間的な搬送波（画面幅に _wavesAcross 本の山が来る周波数）。これに音量を掛けて
-    // 1本の波線にする。搬送波は画面位置で固定し、音量（履歴）が右から左へ流れる
+    // 空間的な搬送波（画面幅に _wavesAcross 本の山が来る周波数）。画面位置で固定する
     final carrier = 2 * pi * _wavesAcross / size.width;
 
-    // 各サンプル点の座標。音量を上下の振れ幅にし、搬送波で揺らして1本の線に結ぶ
-    final points = <Offset>[];
-    for (var i = 0; i <= count; i++) {
-      final x = i * pitch - scrollFrac * pitch;
-      final value = i < count ? history[i] : current;
-      final y = cy + value * maxHalf * sin(x * carrier);
-      points.add(Offset(x, y));
+    // 画面1pxが何秒ぶんの時間にあたるか（右端が「いま」、左端が _visibleSeconds 秒前）
+    final secondsPerPx = _visibleSeconds / size.width;
+
+    // 頂点は画面上の位置に固定し、左端から右端までちょうど並べる
+    final vertexCount = max(1, (size.width / _vertexSpacingPx).ceil());
+
+    final path = Path();
+    for (var vertexIndex = 0; vertexIndex <= vertexCount; vertexIndex++) {
+      final x = size.width * vertexIndex / vertexCount;
+      final ageSec = (size.width - x) * secondsPerPx;
+      final y = centerY + _levelAt(ageSec) * maxHalf * sin(x * carrier);
+      if (vertexIndex == 0) {
+        path.moveTo(x, y);
+      } else {
+        path.lineTo(x, y);
+      }
     }
 
     final paint = Paint()
@@ -203,58 +210,58 @@ class _BackdropPainter extends CustomPainter {
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round;
 
-    // 1本のなめらかな波線を描く
-    canvas.drawPath(_smoothPath(points), paint);
+    canvas.drawPath(path, paint);
   }
 
   // ---------------------------------
-  // パスを返す
+  // 指定した秒数前の音量を、履歴から線形補間して返す
   // ---------------------------------
-  Path _smoothPath(List<Offset> points) {
-    final path = Path();
-    if (points.length < 2) return path;
-    path.moveTo(points[0].dx, points[0].dy);
-    final n = points.length;
-    for (var i = 0; i < n - 1; i++) {
-      final p0 = points[i == 0 ? 0 : i - 1];
-      final p1 = points[i];
-      final p2 = points[i + 1];
-      final p3 = points[i + 2 < n ? i + 2 : i + 1];
-      final cp1 = Offset(
-        p1.dx + (p2.dx - p0.dx) / 6,
-        p1.dy + (p2.dy - p0.dy) / 6,
-      );
-      final cp2 = Offset(
-        p2.dx - (p3.dx - p1.dx) / 6,
-        p2.dy - (p3.dy - p1.dy) / 6,
-      );
-      path.cubicTo(cp1.dx, cp1.dy, cp2.dx, cp2.dy, p2.dx, p2.dy);
+  double _levelAt(double ageSec) {
+    // 末尾の記録より新しい区間は、いまの音量と末尾の記録をつなぐ
+    if (ageSec <= sinceLastRecordSec) {
+      if (sinceLastRecordSec <= 0) return current;
+      return _lerp(current, history.last, ageSec / sinceLastRecordSec);
     }
-    return path;
+
+    // それより古い区間は、隣り合う2つの記録をつなぐ
+    final stepsBack = (ageSec - sinceLastRecordSec) / _historyStepSec;
+    final newerIndex = history.length - 1 - stepsBack.floor();
+    final olderIndex = newerIndex - 1;
+    if (olderIndex < 0) return history.first;
+    return _lerp(
+      history[newerIndex],
+      history[olderIndex],
+      stepsBack - stepsBack.floor(),
+    );
   }
+
+  double _lerp(double from, double to, double ratio) =>
+      from + (to - from) * ratio;
 
   // ---------------------------------
   // 再描画判定
   // ---------------------------------
 
+  // 時間が進むだけで全頂点の値が変わるため、毎フレーム描き直す
   @override
-  bool shouldRepaint(_BackdropPainter old) =>
-      current != old.current ||
-      scrollFrac != old.scrollFrac ||
-      color != old.color;
+  bool shouldRepaint(_BackdropPainter old) => true;
 }
 
 // ---------------------------------
 // チューニング定数（実機で整える）
 // ---------------------------------
 
-const int _sampleCount = 28; // 画面内のサンプル点の数
+const double _visibleSeconds = 1.68; // 右端から左端まで流れるのにかかる秒数
+const double _historyStepSec = 0.02; // 音量を履歴へ記録する間隔（秒）
+const double _vertexSpacingPx = 2.0; // 線の頂点の間隔（px）。小さいほどなめらか
 const double _strokeWidth = 0.5; // 波線の太さ（px）
 const double _wavesAcross = 2.0; // 画面幅に対する波の山の数（多いほど細かく揺れる）
-const double _sampleIntervalSec = 0.06; // 1サンプルぶんのスクロールにかかる秒数
 const double _attackTauSec = 0.02; // 音量上昇の追従時定数（小さい=速い）
 const double _releaseTauSec = 0.30; // 音量下降の追従時定数（大きい=ゆっくり）
 const double _gainExponent = 0.5; // ゲイン曲線の指数（小さいほど小音を拡大）
 const double _idleAmplitude = 0.06; // 無音揺れの振幅（最大振れ幅比）
 const double _idleFrequencyHz = 0.4; // 無音揺れの周期
 const double _maxAmplitudeFactor = 0.40; // 画面高さに対する、中央ラインからの最大振れ幅
+
+// 画面に収まる時間ぶん＋補間用の余り2つを保持する
+final int _historyLength = (_visibleSeconds / _historyStepSec).ceil() + 2;

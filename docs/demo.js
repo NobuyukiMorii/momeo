@@ -305,13 +305,14 @@
 
   // ---------------------------------
   // 背景の波線（アプリの ListeningBackdrop と同じ作り）
-  //   声の大きさをなめらかにして履歴に積み、右から左へ流しながら 1 本の波線で結ぶ
+  //   声の大きさをなめらかにして一定間隔で履歴に積み、画面に固定した頂点ごとに「何秒前の音か」を引いて結ぶ
   // ---------------------------------
   const WAVE = {
-    sampleCount: 28,
+    visibleSeconds: 1.68, // 右端から左端まで流れるのにかかる秒数
+    historyStepSec: 0.02, // 声の大きさを履歴へ記録する間隔
+    vertexSpacingPt: 2, // 線の頂点の間隔（CSS ピクセル）
     strokeWidthPt: 0.5,
     wavesAcross: 2,
-    sampleIntervalSec: 0.06,
     attackTauSec: 0.02,
     releaseTauSec: 0.3,
     gainExponent: 0.5,
@@ -322,10 +323,11 @@
   };
 
   const wave = {
-    history: new Array(WAVE.sampleCount).fill(0),
+    // 末尾が新しい。画面に収まる時間ぶん＋補間用の余り 2 つを保持する
+    history: new Array(Math.ceil(WAVE.visibleSeconds / WAVE.historyStepSec) + 2).fill(0),
     smoothed: 0,
     current: 0,
-    scrollFrac: 0,
+    sinceLastRecordSec: 0, // 履歴の末尾を記録してからの経過秒数
     idlePhase: 0,
     lastTime: 0,
   };
@@ -349,12 +351,37 @@
     if (wave.current < idle) wave.current = idle;
 
     wave.idlePhase += WAVE.idleFrequencyHz * 2 * Math.PI * dtSec;
-    wave.scrollFrac += dtSec / WAVE.sampleIntervalSec;
-    while (wave.scrollFrac >= 1) {
-      wave.scrollFrac -= 1;
+
+    // 一定間隔ごとに、いまの大きさを履歴の末尾へ記録し、古いものを捨てる
+    wave.sinceLastRecordSec += dtSec;
+    while (wave.sinceLastRecordSec >= WAVE.historyStepSec) {
+      wave.sinceLastRecordSec -= WAVE.historyStepSec;
       wave.history.shift();
       wave.history.push(wave.current);
     }
+  }
+
+  // 指定した秒数前の大きさを、履歴から線形補間して返す
+  function levelAt(ageSec) {
+    const history = wave.history;
+    const sinceLast = wave.sinceLastRecordSec;
+
+    // 末尾の記録より新しい区間は、いまの大きさと末尾の記録をつなぐ
+    if (ageSec <= sinceLast) {
+      if (sinceLast <= 0) return wave.current;
+      return lerp(wave.current, history[history.length - 1], ageSec / sinceLast);
+    }
+
+    // それより古い区間は、隣り合う 2 つの記録をつなぐ
+    const stepsBack = (ageSec - sinceLast) / WAVE.historyStepSec;
+    const newerIndex = history.length - 1 - Math.floor(stepsBack);
+    const olderIndex = newerIndex - 1;
+    if (olderIndex < 0) return history[0];
+    return lerp(history[newerIndex], history[olderIndex], stepsBack - Math.floor(stepsBack));
+  }
+
+  function lerp(from, to, ratio) {
+    return from + (to - from) * ratio;
   }
 
   function drawWave() {
@@ -362,35 +389,28 @@
     const height = waveCanvas.height;
     context.clearRect(0, 0, width, height);
 
-    const count = wave.history.length;
-    const pitch = width / count;
+    if (width <= 0) return;
+
     const centerY = height / 2;
     const maxHalf = height * WAVE.maxAmplitudeFactor;
     const carrier = (2 * Math.PI * WAVE.wavesAcross) / width;
 
-    const points = [];
-    for (let i = 0; i <= count; i++) {
-      const x = i * pitch - wave.scrollFrac * pitch;
-      const value = i < count ? wave.history[i] : wave.current;
-      points.push([x, centerY + value * maxHalf * Math.sin(x * carrier)]);
-    }
+    // 右端が「いま」、左端が visibleSeconds 秒前
+    const secondsPerPx = WAVE.visibleSeconds / width;
 
-    // 点どうしを、なめらかな曲線（Catmull-Rom を 3 次ベジェにしたもの）で結ぶ
+    // 頂点は画面上の位置に固定し、左端から右端までちょうど並べる
+    const vertexCount = Math.max(1, Math.ceil(waveCanvas.clientWidth / WAVE.vertexSpacingPt));
+
     context.beginPath();
-    context.moveTo(points[0][0], points[0][1]);
-    for (let i = 0; i < points.length - 1; i++) {
-      const p0 = points[i === 0 ? 0 : i - 1];
-      const p1 = points[i];
-      const p2 = points[i + 1];
-      const p3 = points[i + 2 < points.length ? i + 2 : i + 1];
-      context.bezierCurveTo(
-        p1[0] + (p2[0] - p0[0]) / 6,
-        p1[1] + (p2[1] - p0[1]) / 6,
-        p2[0] - (p3[0] - p1[0]) / 6,
-        p2[1] - (p3[1] - p1[1]) / 6,
-        p2[0],
-        p2[1],
-      );
+    for (let vertexIndex = 0; vertexIndex <= vertexCount; vertexIndex++) {
+      const x = (width * vertexIndex) / vertexCount;
+      const ageSec = (width - x) * secondsPerPx;
+      const y = centerY + levelAt(ageSec) * maxHalf * Math.sin(x * carrier);
+      if (vertexIndex === 0) {
+        context.moveTo(x, y);
+      } else {
+        context.lineTo(x, y);
+      }
     }
     context.strokeStyle = WAVE.color;
     context.lineWidth = Math.max(1, (WAVE.strokeWidthPt * width) / 440);
