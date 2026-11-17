@@ -2,12 +2,14 @@ import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:momeo/foundation/app_colors.dart';
+import 'package:momeo/foundation/app_text_styles.dart';
 
 // ---------------------------------
 // アプリアイコンと同じ「輪＋黒丸」を出し、黒丸がひとりでに押されたように一度沈んで戻るウィジェット
 // 表示されたら一度だけ再生する（繰り返さない）
 // OS の起動画面にも同じ姿のボタンを出しているので、フェードインせず最初から表示する
-// ringProgress を渡すと、外側の輪が12時の位置から時計回りにその割合だけ伸びた姿になる（ダウンロードの進み具合）
+// ringProgress を渡すと、外側の輪が12時の位置から時計回りにその割合だけ伸び、黒丸の中にその % が出る（ダウンロードの進み具合）
+// playsPress を false から true に変えると、輪が伸びきるのを待ってから、もう一度押される（ダウンロードが終わったとき）
 // ---------------------------------
 class RecordButtonPress extends StatefulWidget {
   const RecordButtonPress({
@@ -15,16 +17,25 @@ class RecordButtonPress extends StatefulWidget {
     this.size = 120,
     this.playsPress = true,
     this.ringProgress,
+    this.onPressStarted,
+    this.onPressFinished,
   });
 
   // 輪の外径
   final double size;
 
   // false なら動かさず、押し終わった姿のまま出す（スプラッシュの後ろの待ち画面で使う）
+  // 後から true に変えると、その時点でもう一度押される
   final bool playsPress;
 
   // 輪を伸ばす割合（0.0〜1.0）。null なら一周つながった輪を出す
   final double? ringProgress;
+
+  // もう一度押す動きを流し始めたとき（数字を消すのと同じとき）に呼ばれる
+  final VoidCallback? onPressStarted;
+
+  // 押される動きが終わったときに呼ばれる
+  final VoidCallback? onPressFinished;
 
   @override
   State<RecordButtonPress> createState() => _RecordButtonPressState();
@@ -35,6 +46,9 @@ class _RecordButtonPressState extends State<RecordButtonPress>
   // アイコンの比率（タイルに対して輪の外径 0.695・線幅 0.035・黒丸 0.48）を外径基準に直した値
   static const _ringWidthRatio = 0.05;
   static const _dotDiameterRatio = 0.69;
+
+  // 進み具合の数字の大きさ（外径 120 のとき 20pt。黒丸の中に「100%」が収まる大きさ）
+  static const _progressTextSizeRatio = 20 / 120;
 
   // 押したときに黒丸が縮む大きさ
   static const _pressedDotScale = 0.86;
@@ -47,6 +61,12 @@ class _RecordButtonPressState extends State<RecordButtonPress>
 
   // 描いている輪の長さ（0.0〜1.0）。進み具合の更新のたびに、ここから次の値までなめらかに伸ばす
   late final AnimationController _ringController;
+
+  // いま進めている、輪を伸ばすアニメーション（伸びきるのを待ってから押すために持っておく）
+  TickerFuture? _ringGrowth;
+
+  // もう一度押す動きを流し始めたか（押す間は黒丸の中の数字を消し、押す動きだけを見せる）
+  bool _isReplayingPress = false;
 
   @override
   void initState() {
@@ -81,7 +101,7 @@ class _RecordButtonPressState extends State<RecordButtonPress>
     ]).animate(_pressController);
 
     if (widget.playsPress) {
-      _pressController.forward();
+      _startPress();
     } else {
       _pressController.value = 1.0;
     }
@@ -97,16 +117,43 @@ class _RecordButtonPressState extends State<RecordButtonPress>
   @override
   void didUpdateWidget(covariant RecordButtonPress oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.ringProgress == oldWidget.ringProgress) return;
 
-    // 一周の輪から進み具合の表示に切り替わるときは、0 から伸ばし始める（一周から縮んで見えないようにする）
-    if (oldWidget.ringProgress == null) _ringController.value = 0;
-    _growRingTo(widget.ringProgress);
+    if (widget.ringProgress != oldWidget.ringProgress) {
+      // 一周の輪から進み具合の表示に切り替わるときは、0 から伸ばし始める（一周から縮んで見えないようにする）
+      if (oldWidget.ringProgress == null) _ringController.value = 0;
+      _growRingTo(widget.ringProgress);
+    }
+
+    // 押す指示に変わったら、輪が伸びきるのを待ってから押す
+    if (widget.playsPress && !oldWidget.playsPress) {
+      final ringGrowth = _ringGrowth;
+      if (ringGrowth != null && _ringController.isAnimating) {
+        ringGrowth.whenCompleteOrCancel(_replayPress);
+      } else {
+        _replayPress();
+      }
+    }
+  }
+
+  // 押される動きを最初から流し、終わったら知らせる
+  // 数字を消してから、もう一度押す
+  void _replayPress() {
+    if (!mounted) return;
+    setState(() => _isReplayingPress = true);
+    widget.onPressStarted?.call();
+    _startPress();
+  }
+
+  void _startPress() {
+    if (!mounted) return;
+    _pressController.forward(from: 0).then((_) {
+      widget.onPressFinished?.call();
+    });
   }
 
   void _growRingTo(double? progress) {
     if (progress == null) return;
-    _ringController.animateTo(
+    _ringGrowth = _ringController.animateTo(
       progress.clamp(0.0, 1.0),
       duration: _ringGrowDuration,
       curve: Curves.linear,
@@ -148,20 +195,47 @@ class _RecordButtonPressState extends State<RecordButtonPress>
             },
           ),
 
-          // 中央の黒丸（押されて沈む）
+          // 中央の黒丸（押されて沈む）。進み具合を出すときは、中に % の数字を抜き文字で出す
           ScaleTransition(
             scale: _dotScale,
             child: Container(
               width: dotDiameter,
               height: dotDiameter,
+              alignment: Alignment.center,
               decoration: const BoxDecoration(
                 color: AppColors.onSurface,
                 shape: BoxShape.circle,
               ),
+              child: showsProgress && !_isReplayingPress
+                  ? _buildProgressText()
+                  : null,
             ),
           ),
         ],
       ),
+    );
+  }
+
+  // ---------------------------------
+  // 黒丸の中の進み具合の数字
+  //   輪と同じ値から作り、輪が伸びるのに合わせて数字も少しずつ増やす
+  //   切り捨てにして、終わる前に 100% と出さないようにする
+  //   桁の幅をそろえ、数字が変わっても左右に揺れないようにする
+  // ---------------------------------
+  Widget _buildProgressText() {
+    return AnimatedBuilder(
+      animation: _ringController,
+      builder: (context, child) {
+        final percent = (_ringController.value * 100).floor();
+        return Text(
+          '$percent%',
+          style: AppTextStyles.button.copyWith(
+            color: AppColors.onPrimary,
+            fontSize: widget.size * _progressTextSizeRatio,
+            fontFeatures: const [FontFeature.tabularFigures()],
+          ),
+        );
+      },
     );
   }
 }

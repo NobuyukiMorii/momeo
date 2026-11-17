@@ -71,7 +71,9 @@ class SttEngineNotifier extends AsyncNotifier<SttAudioWorker> {
     } catch (error) {
       if (error is SttModelDownloadingError) {
         // 失敗には数えず、言語のモデルが入ったかを確かめ直す
+        //   終わった知らせが届けばすぐ、届かなくても（Android 13 など）一定の間隔で確かめ直す
         _retryTimer = Timer(_downloadCheckInterval, _retry);
+        _retryWhenDownloadFinished();
       } else if (error is! SttUnsupportedError) {
         // 使えない端末（何度やっても結果は同じ）以外は、バックオフ付きで再試行する
         _scheduleRetry();
@@ -142,6 +144,19 @@ class SttEngineNotifier extends AsyncNotifier<SttAudioWorker> {
       '[sttEngine] 準備に失敗しました（連続 $_consecutiveFailures 回目）。'
       '${_retryDelaySeconds[delayIndex]}秒後に自動で再試行します',
     );
+  }
+
+  // ---------------------------------
+  // 言語のモデルのダウンロードが終わった知らせが届いたら、間隔を待たずに確かめ直す
+  //   知らせの待ち受けは、確かめ直し（provider の作り直し）のたびに外す
+  // ---------------------------------
+  void _retryWhenDownloadFinished() {
+    final subscription = OsTranscriberChannel.downloadFinished.listen((_) {
+      DeviceLog.write('[sttEngine] 言語のモデルのダウンロードが終わったので、すぐ確かめ直します');
+      _retryTimer?.cancel();
+      _retry();
+    });
+    ref.onDispose(subscription.cancel);
   }
 
   // ---------------------------------

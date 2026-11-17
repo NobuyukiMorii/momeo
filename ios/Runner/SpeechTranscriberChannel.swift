@@ -8,15 +8,21 @@ import Speech
 //   言語は、設定の「優先する言語」のうち対応している最初のものに固定する（自動判定はしない）。
 //   prepare の返事（state）は ready・downloading・unsupported の3つで、Android 側と同じ。
 //   downloadProgress は、ダウンロード中の進み具合（0.0〜1.0）を返す。分からなければ nil。
+//   ダウンロードが終わったら、Dart に downloadFinished を送る（すぐ確かめ直してもらうため）。
 enum SpeechTranscriberChannel {
   // Dart 側と一致させるチャンネル名・メソッド名
   static let channelName = "jp.momeo/os_transcriber"
   static let prepareMethod = "prepare"
   static let transcribeMethod = "transcribe"
   static let downloadProgressMethod = "downloadProgress"
+  static let downloadFinishedMethod = "downloadFinished"
+
+  // ネイティブから Dart へ知らせを送るために持っておく
+  private static var channel: FlutterMethodChannel?
 
   static func register(with messenger: FlutterBinaryMessenger) {
     let channel = FlutterMethodChannel(name: channelName, binaryMessenger: messenger)
+    self.channel = channel
     channel.setMethodCallHandler { call, result in
       switch call.method {
       case prepareMethod:
@@ -48,6 +54,13 @@ enum SpeechTranscriberChannel {
     Task {
       let fraction = await SpeechTranscriberEngine.shared.downloadFractionCompleted()
       await MainActor.run { result(fraction) }
+    }
+  }
+
+  // 言語のモデルのダウンロードが終わったことを Dart に知らせる（チャンネルはメインスレッドでしか使えない）
+  static func notifyDownloadFinished() {
+    DispatchQueue.main.async {
+      channel?.invokeMethod(downloadFinishedMethod, arguments: nil)
     }
   }
 
@@ -167,17 +180,23 @@ actor SpeechTranscriberEngine {
     }
   }
 
+  // 終わったら Dart に知らせて、待たずに確かめ直してもらう
+  // 失敗のときは知らせない（すぐ頼み直して失敗を繰り返さないよう、いつもの間隔で確かめ直す）
   private func finishDownload(localeID id: String, error: String?) {
     downloadTask = nil
-    downloadProgress = nil
     lastDownloadError = error
-    if error == nil { downloadedLocaleIDs.insert(id) }
+    if error == nil {
+      downloadedLocaleIDs.insert(id)
+      SpeechTranscriberChannel.notifyDownloadFinished()
+    } else {
+      downloadProgress = nil
+    }
   }
 
-  // ダウンロード中なら進み具合（0.0〜1.0）、そうでなければ nil
+  // ダウンロード中か、終えた直後なら進み具合（0.0〜1.0）、そうでなければ nil
+  //   終えた直後も 1.0 を返し続け、次の画面に移るまで輪を一周に戻さない
   func downloadFractionCompleted() -> Double? {
-    guard downloadTask != nil, let progress = downloadProgress else { return nil }
-    return progress.fractionCompleted
+    return downloadProgress?.fractionCompleted
   }
 
   // 言語を比べるための名前（ja_JP と ja-JP のような書き方の違いをそろえる）

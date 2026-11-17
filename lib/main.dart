@@ -96,6 +96,10 @@ class _RootViewState extends ConsumerState<RootView> with WidgetsBindingObserver
   bool _splashFinished = false;
   bool _permissionFinished = false;
 
+  // 準備ゲートで言語のモデルのダウンロードを待ったか（待ったときは、押す動きが終わるまでゲートを残す）
+  bool _waitedForLanguageDownload = false;
+  bool _preparationGateFinished = false;
+
   @override
   void initState() {
     super.initState();
@@ -171,12 +175,23 @@ class _RootViewState extends ConsumerState<RootView> with WidgetsBindingObserver
 
     // ---------------------------------
     // 準備ゲート
+    //   準備ができたらすぐ次へ進む。ただし、ゲートでダウンロードを待っていたときは、
+    //   ゲートが録音ボタンを押す動きを見せ終わるまで残す
     // ---------------------------------
     final sttEngineState = ref.watch(sttEngineProvider);
+    if (sttEngineState.error is SttModelDownloadingError) {
+      _waitedForLanguageDownload = true;
+    }
     final isSttEngineReady =
         sttEngineState.hasValue && !sttEngineState.isLoading;
-    if (!isSttEngineReady) {
-      return const PreparationGatePage();
+    final holdsGateForPress =
+        _waitedForLanguageDownload && !_preparationGateFinished;
+    if (!isSttEngineReady || holdsGateForPress) {
+      return PreparationGatePage(
+        onFinished: () {
+          setState(() => _preparationGateFinished = true);
+        },
+      );
     }
 
     // ---------------------------------

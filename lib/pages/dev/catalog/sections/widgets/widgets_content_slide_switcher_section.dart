@@ -36,7 +36,10 @@ class _WidgetsContentSlideSwitcherSectionState
       case PreparationPhase.unsupported:
         return const Text('Not available on this device');
       case PreparationPhase.downloadingLanguage:
-        return const ActivityDotsText('Downloading the language model');
+        return const ActivityDotsText('Downloading');
+      case PreparationPhase.downloadFinished:
+        // 待ち画面と同じく、押す動きだけを見せるので文字は出さない
+        return const SizedBox.shrink();
     }
   }
 

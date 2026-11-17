@@ -35,6 +35,7 @@ import kotlin.concurrent.thread
 //   入っていなければダウンロードを頼み、downloading を返す（prepare の返事は iOS 側と同じ3つ）。
 //   downloadProgress は、ダウンロード中の進み具合（0.0〜1.0）を返す。分からなければ null。
 //   進み具合を知らせてもらえるのは Android 14 以降だけで、Android 13 では常に null になる。
+//   ダウンロードが終わったら、Dart に downloadFinished を送る（すぐ確かめ直してもらうため。Android 14 以降だけ）。
 //
 //   SpeechRecognizer はメインスレッドでしか触れないため、ここの処理はすべてメインスレッドで動く。
 // ============================================================
@@ -46,6 +47,7 @@ class SpeechRecognizerChannel(private val context: Context, messenger: BinaryMes
         private const val METHOD_PREPARE = "prepare"
         private const val METHOD_TRANSCRIBE = "transcribe"
         private const val METHOD_DOWNLOAD_PROGRESS = "downloadProgress"
+        private const val METHOD_DOWNLOAD_FINISHED = "downloadFinished"
 
         // prepare の返事（Dart の OsTranscriberState と一致させる）
         private const val STATE_READY = "ready"
@@ -60,6 +62,9 @@ class SpeechRecognizerChannel(private val context: Context, messenger: BinaryMes
 
     private val mainHandler = Handler(Looper.getMainLooper())
 
+    // Dart とのやりとりの窓口（ネイティブから Dart へ知らせを送るときにも使う）
+    private val channel = MethodChannel(messenger, METHOD_CHANNEL)
+
     // prepare が済むと埋まる
     private var recognizer: SpeechRecognizer? = null
     private var languageTag: String? = null
@@ -68,7 +73,7 @@ class SpeechRecognizerChannel(private val context: Context, messenger: BinaryMes
     private var downloadPercent: Int? = null
 
     init {
-        MethodChannel(messenger, METHOD_CHANNEL).setMethodCallHandler { call, result ->
+        channel.setMethodCallHandler { call, result ->
             when (call.method) {
                 METHOD_PREPARE -> prepare(result)
                 METHOD_TRANSCRIBE -> {
@@ -198,11 +203,14 @@ class SpeechRecognizerChannel(private val context: Context, messenger: BinaryMes
                     downloadPercent = completedPercent
                 }
 
-                // 終わった・後回しにされた・失敗したときは、進み具合を分からない扱いに戻す
+                // 終わったら 100% のままにして、Dart に知らせて待たずに確かめ直してもらう
                 override fun onSuccess() {
-                    downloadPercent = null
+                    downloadPercent = 100
+                    channel.invokeMethod(METHOD_DOWNLOAD_FINISHED, null)
                 }
 
+                // 後回しにされた・失敗したときは、進み具合を分からない扱いに戻す
+                // 失敗は知らせない（すぐ頼み直して失敗を繰り返さないよう、いつもの間隔で確かめ直す）
                 override fun onScheduled() {
                     Log.i(TAG, "言語のモデルのダウンロードが後回しにされました")
                     downloadPercent = null

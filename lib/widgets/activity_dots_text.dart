@@ -52,11 +52,16 @@ class _ActivityDotsTextState extends State<ActivityDotsText> {
   @override
   Widget build(BuildContext context) {
     // まだ出ていないドットも透明にして場所を取り、中央揃えでもドットの増減でラベル位置が揺れないようにする
+    // ラベルの前にもドットと同じ幅の透明な文字を置き、中央揃えのときにラベル自体が左右の真ん中に来るようにする
     final hiddenDotCount = widget.maxDotCount - _dotCount;
     return Text.rich(
       TextSpan(
-        text: '${widget.label} ${'.' * _dotCount}',
         children: [
+          TextSpan(
+            text: '${'.' * widget.maxDotCount} ',
+            style: const TextStyle(color: Colors.transparent),
+          ),
+          TextSpan(text: '${widget.label} ${'.' * _dotCount}'),
           TextSpan(
             text: '.' * hiddenDotCount,
             style: const TextStyle(color: Colors.transparent),

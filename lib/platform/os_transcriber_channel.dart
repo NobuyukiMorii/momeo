@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter/services.dart';
@@ -7,6 +8,7 @@ import 'package:flutter/services.dart';
 //
 //   iOS は SpeechTranscriber、Android は端末内の SpeechRecognizer が、同じチャンネル名・メソッド名で応える。
 //   VAD で区切った1発話ぶんの音（16kHz・Float32）を渡すと、テキストが返る。
+//   言語のモデルのダウンロードが終わると、ネイティブから downloadFinished が届く。
 // ============================================================
 
 class OsTranscriberChannel {
@@ -30,9 +32,28 @@ class OsTranscriberChannel {
   );
   static final _sinceFirstPrepare = Stopwatch();
 
+  // ---------------------------------
+  // 言語のモデルのダウンロードが終わった知らせ
+  //   iOS と Android 14 以降で、momeo が頼んだダウンロードが終わったときに届く
+  //   （Android 13 や、momeo が頼んでいないダウンロードでは届かない）
+  // ---------------------------------
+  static final _downloadFinishedController = StreamController<void>.broadcast(
+    onListen: _listenNativeCalls,
+  );
+  static Stream<void> get downloadFinished =>
+      _downloadFinishedController.stream;
+
+  static void _listenNativeCalls() {
+    _channel.setMethodCallHandler((call) async {
+      if (call.method == 'downloadFinished') {
+        _downloadFinishedController.add(null);
+      }
+    });
+  }
+
   // 使えるかを確かめる。言語のモデルが端末に無ければ、OS にダウンロードを頼む
   static Future<OsTranscriberStatus> prepare() async {
-    if (!_sinceFirstPrepare.isRunning) _sinceFirstPrepare.start();
+    if (!_sinceFirstPrepare.isRunning) _startFakeDownloadClock();
 
     final reply = await _channel.invokeMapMethod<String, Object?>('prepare');
     final status = OsTranscriberStatus(
@@ -60,6 +81,16 @@ class OsTranscriberChannel {
     } on PlatformException {
       return null;
     }
+  }
+
+  // ふりの時計を動かし始め、ふりの期間が終わったら本物と同じく「終わった知らせ」を出す
+  static void _startFakeDownloadClock() {
+    _sinceFirstPrepare.start();
+    if (_fakeDownloadSeconds <= 0 || _fakeHidesProgress) return;
+    Timer(
+      const Duration(seconds: _fakeDownloadSeconds),
+      () => _downloadFinishedController.add(null),
+    );
   }
 
   static bool get _isFakingDownload =>
