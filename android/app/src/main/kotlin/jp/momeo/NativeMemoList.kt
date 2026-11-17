@@ -149,6 +149,15 @@ private const val KEYBOARD_DISMISS_MARGIN_DP = 8
 // ボタンの影の高さ
 private const val KEYBOARD_DISMISS_ELEVATION_DP = 4f
 
+// ---------------------------------
+// 定数: 一番下へ戻る丸いボタン（dp。iOS とそろえる）
+// ---------------------------------
+// ボタンの直径と、ナビゲーションバーの上端からの距離
+private const val SCROLL_TO_LATEST_DIAMETER_DP = 48
+private const val SCROLL_TO_LATEST_MARGIN_DP = 8
+// 出すときのフェードの長さ
+private const val SCROLL_TO_LATEST_FADE_MS = 200L
+
 private const val SPEAKING_DOTS_INTERVAL_MS = 500L
 private const val SPEAKING_DOTS_MAX_COUNT = 10
 
@@ -229,6 +238,8 @@ private class NativeMemoList(context: Context, viewId: Int, messenger: BinaryMes
     // 一覧と、書いている間だけ一覧の右下（キーボードのすぐ上）に重ねて出す、キーボードをしまうボタン
     private val container = FrameLayout(themedContext)
     private val keyboardDismissButton = MemoKeyboardDismissButton(themedContext)
+    // 一番下から画面半分より上を見ている間だけ、一覧の下端の中央に重ねて出す、一番下へ戻るボタン
+    private val scrollToLatestButton = MemoScrollToLatestButton(themedContext)
 
     init {
         scroll.isFillViewport = true
@@ -238,6 +249,8 @@ private class NativeMemoList(context: Context, viewId: Int, messenger: BinaryMes
         )
         container.addView(scroll, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         addKeyboardDismissButton()
+        addScrollToLatestButton()
+        scroll.onFarFromLatestChanged = { isFar -> scrollToLatestButton.setShown(isFar) }
         followKeyboard()
         document.onEditingStarted = {
             keyboardDismissButton.visibility = View.VISIBLE
@@ -274,6 +287,26 @@ private class NativeMemoList(context: Context, viewId: Int, messenger: BinaryMes
         container.addView(keyboardDismissButton, params)
     }
 
+    // 右下は縦線の上のつまみが通るので、下端の中央（ナビゲーションバーの上）に置く（→ applyNavigationBarInset）
+    private fun addScrollToLatestButton() {
+        val density = themedContext.resources.displayMetrics.density
+        val diameter = (SCROLL_TO_LATEST_DIAMETER_DP * density).roundToInt()
+        val margin = (SCROLL_TO_LATEST_MARGIN_DP * density).roundToInt()
+        val params = FrameLayout.LayoutParams(diameter, diameter, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL)
+        params.setMargins(margin, margin, margin, margin)
+        scrollToLatestButton.setOnClickListener { scroll.scrollToLatest() }
+        container.addView(scrollToLatestButton, params)
+    }
+
+    // ナビゲーションバーに重なる分だけ、一番下へ戻るボタンを持ち上げる
+    private fun applyNavigationBarInset(insets: WindowInsets) {
+        val navigationBarBottom = insets.getInsets(WindowInsets.Type.navigationBars()).bottom
+        val location = IntArray(2)
+        container.getLocationInWindow(location)
+        val spaceBelow = container.rootView.height - (location[1] + container.height)
+        scrollToLatestButton.translationY = -max(0, navigationBarBottom - spaceBelow).toFloat()
+    }
+
     // ---------------------------------
     // キーボードとの重なり
     // ---------------------------------
@@ -302,6 +335,7 @@ private class NativeMemoList(context: Context, viewId: Int, messenger: BinaryMes
         // 動きを伴わない変化（キーボードの高さの切り替えなど）は、届いた値をそのまま使う。動いている間は、動きの終わりの値が先に届くので使わない
         container.setOnApplyWindowInsetsListener { _, insets ->
             if (!keyboardAnimating) applyKeyboardInsets(insets)
+            applyNavigationBarInset(insets)
             insets
         }
     }
@@ -320,6 +354,7 @@ private class NativeMemoList(context: Context, viewId: Int, messenger: BinaryMes
         channel.setMethodCallHandler(null)
         document.onEditingStarted = null
         document.onEditingEnded = null
+        scroll.onFarFromLatestChanged = null
         document.clearFocus()
     }
 }
@@ -458,7 +493,13 @@ private class MemoDocumentView(context: Context, private val scroll: MemoScrollV
         applyWholeDocument()
         // 保存を待っている間にまた触れていたら、そのまま次の編集を始める
         if (isFocused) beginEditing()
+        // 保存を終えて編集から戻ったときも、ボタンを出し直す
+        scroll.updateFarFromLatest()
     }
+
+    // 書いている途中か、保存を待っている途中か（その間は一番下へ戻るボタンを出さない）
+    val isEditingOrSaving: Boolean
+        get() = editSession != null
 
     // Dart から届いたメモの一覧（形の合わないものは飛ばす）
     private fun parseMemos(values: List<*>): List<IncomingMemo> = values.mapNotNull { value ->
@@ -516,8 +557,8 @@ private class MemoDocumentView(context: Context, private val scroll: MemoScrollV
         requestLayout()
         invalidate()
 
-        // --- 組み直した後の高さで、スクロール位置を決める（最初と、一番下を見ていたときは最新へ）
-        val scrollsToLatest = initialScrollPending || wasAtBottom
+        // --- 組み直した後の高さで、スクロール位置を決める（最初と、一番下を見ていたときと、ボタンで一番下へ動かしている途中は最新へ）
+        val scrollsToLatest = initialScrollPending || wasAtBottom || scroll.isScrollingToLatest
         initialScrollPending = false
         scrollBeforeNextDraw(toLatest = scrollsToLatest, keptScrollY = oldScrollY)
     }
@@ -527,7 +568,12 @@ private class MemoDocumentView(context: Context, private val scroll: MemoScrollV
         scroll.viewTreeObserver.addOnPreDrawListener(object : ViewTreeObserver.OnPreDrawListener {
             override fun onPreDraw(): Boolean {
                 scroll.viewTreeObserver.removeOnPreDrawListener(this)
-                scroll.scrollTo(0, if (toLatest) scroll.maxScrollY else keptScrollY)
+                when {
+                    // 動かしている途中なら、行き先を新しい一番下に付け替える（そのまま飛ぶと、残りの動きで古い一番下へ引き戻される）
+                    toLatest && scroll.isScrollingToLatest -> scroll.smoothScrollTo(0, scroll.maxScrollY)
+                    toLatest -> scroll.scrollTo(0, scroll.maxScrollY)
+                    else -> scroll.scrollTo(0, keptScrollY)
+                }
                 return true
             }
         })
@@ -628,6 +674,7 @@ private class MemoDocumentView(context: Context, private val scroll: MemoScrollV
         val editableIds = incomingMemos.filter { it.selectable }.map { it.id }.toSet()
         editSession = EditSession(editableIds)
         onEditingStarted?.invoke()
+        scroll.updateFarFromLatest()
     }
 
     // 書き終えたら、書き直せた範囲の段落を Dart へ渡して保存を頼む（保存した文書が届くまでは、書いた本文を出し続ける）
@@ -976,6 +1023,38 @@ private class MemoScrollView(context: Context) : ScrollView(context) {
     // キーボードに隠れる高さ（ナビゲーションバーの分は、文書の下の余白で避けているので含めない）
     private var keyboardOverlap = 0
 
+    // ---------------------------------
+    // 一番下へ戻るボタン
+    // ---------------------------------
+    // 一番下から画面半分より上を見ているかが変わったことを知らせる
+    var onFarFromLatestChanged: ((Boolean) -> Unit)? = null
+    // 最後に知らせた、一番下から画面半分より上を見ているか
+    private var isFarFromLatest = false
+    // ボタンで一番下へ動かしている途中か（途中で本文が増えても、一番下を見ていたものとして扱う）
+    var isScrollingToLatest = false
+        private set
+
+    // 一番下から画面半分より上を見ている間と、ボタンで一番下へ動かしている途中に出す（書いている間と、保存を待っている間は出さない）
+    fun updateFarFromLatest() {
+        val editing = documentView?.isEditingOrSaving ?: false
+        val isFar = !editing && (maxScrollY - scrollY > height / 2 || isScrollingToLatest)
+        if (isFar == isFarFromLatest) return
+        isFarFromLatest = isFar
+        onFarFromLatestChanged?.invoke(isFar)
+    }
+
+    fun scrollToLatest() {
+        isScrollingToLatest = true
+        smoothScrollTo(0, maxScrollY)
+    }
+
+    override fun onScrollChanged(left: Int, top: Int, oldLeft: Int, oldTop: Int) {
+        super.onScrollChanged(left, top, oldLeft, oldTop)
+        // 一番下に着いたら、ボタンで動かしている途中ではなくなり、ボタンを消す
+        if (scrollY >= maxScrollY) isScrollingToLatest = false
+        updateFarFromLatest()
+    }
+
     // キーボードに隠れる分だけ一覧の下を空ける（閉じるときは、空きが縮むにつれて本文がなめらかに下りる）
     //   書いている間は、カーソルの行がキーボードに隠れないようにスクロールを合わせる
     fun updateKeyboardOverlap(overlapIncludingNavigationBar: Int) {
@@ -1060,6 +1139,7 @@ private class MemoScrollView(context: Context) : ScrollView(context) {
     override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
         super.onLayout(changed, left, top, right, bottom)
         documentView?.updateVerticalPadding()
+        updateFarFromLatest()
     }
 
     // 一番下を見ている間に一覧の高さが変わったときは、一番下のまま保つ
@@ -1082,6 +1162,9 @@ private class MemoScrollView(context: Context) : ScrollView(context) {
     // ---------------------------------
     override fun onInterceptTouchEvent(event: MotionEvent): Boolean {
         if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+            // 一番下へ動かしている途中で指で触れたら、指の動きを優先する
+            isScrollingToLatest = false
+            updateFarFromLatest()
             thumbTouchDownY = if (thumbContains(event.x, event.y)) event.y else null
         }
         val downY = thumbTouchDownY ?: return super.onInterceptTouchEvent(event)
@@ -1226,5 +1309,35 @@ private class MemoKeyboardDismissButton(context: Context) : ImageButton(context)
         imageTintList = android.content.res.ColorStateList.valueOf(DEFAULT_TEXT_COLOR)
         scaleType = ScaleType.CENTER
         contentDescription = "Hide keyboard"
+    }
+}
+
+// ---------------------------------
+// 一番下へ戻る丸いボタン（本文と同じ黒の丸に、白の太い下向き矢印。影は付けない）
+// ---------------------------------
+private class MemoScrollToLatestButton(context: Context) : ImageButton(context) {
+    init {
+        background = GradientDrawable().apply {
+            shape = GradientDrawable.OVAL
+            setColor(DEFAULT_TEXT_COLOR)
+        }
+        setImageResource(R.drawable.ic_arrow_downward)
+        imageTintList = android.content.res.ColorStateList.valueOf(android.graphics.Color.WHITE)
+        scaleType = ScaleType.CENTER
+        contentDescription = "Scroll to latest"
+        alpha = 0f
+        visibility = View.GONE
+    }
+
+    // 出すときはフェードで、消すときは一瞬で（消えている間は触れない）
+    fun setShown(shown: Boolean) {
+        animate().cancel()
+        if (!shown) {
+            alpha = 0f
+            visibility = View.GONE
+            return
+        }
+        visibility = View.VISIBLE
+        animate().alpha(1f).setDuration(SCROLL_TO_LATEST_FADE_MS).start()
     }
 }

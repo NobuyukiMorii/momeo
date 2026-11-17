@@ -164,6 +164,8 @@ private final class NativeMemoList: NSObject, FlutterPlatformView {
     private let documentView = MemoDocumentView(frame: .zero, textContainer: nil)
     // 書いている間だけ、一覧の右下（キーボードのすぐ上）に重ねて出す、キーボードをしまうボタン
     private let keyboardDismissButton = MemoKeyboardDismissButton()
+    // 一番下から画面半分より上を見ている間だけ、一覧の下端の中央に重ねて出す、一番下へ戻るボタン
+    private let scrollToLatestButton = MemoScrollToLatestButton()
     private let channel: FlutterMethodChannel
 
     init(frame: CGRect, viewId: Int64, messenger: FlutterBinaryMessenger, arguments: Any?) {
@@ -174,6 +176,10 @@ private final class NativeMemoList: NSObject, FlutterPlatformView {
         documentView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         container.addSubview(documentView)
         addKeyboardDismissButton()
+        addScrollToLatestButton()
+        documentView.onFarFromLatestChanged = { [weak self] isFar in
+            self?.scrollToLatestButton.setShown(isFar)
+        }
         documentView.onEditingStarted = { [weak self] in
             self?.keyboardDismissButton.isHidden = false
             self?.channel.invokeMethod(ChannelMethod.editingStarted, arguments: nil)
@@ -213,6 +219,19 @@ private final class NativeMemoList: NSObject, FlutterPlatformView {
             keyboardDismissButton.bottomAnchor.constraint(equalTo: container.keyboardLayoutGuide.topAnchor, constant: -KeyboardDismissLayout.margin),
         ])
     }
+
+    // 右下は縦線の上のつまみが通るので、下端の中央（ホームインジケーターの上）に置く
+    private func addScrollToLatestButton() {
+        scrollToLatestButton.addTarget(documentView, action: #selector(MemoDocumentView.scrollToLatest), for: .touchUpInside)
+        scrollToLatestButton.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(scrollToLatestButton)
+        NSLayoutConstraint.activate([
+            scrollToLatestButton.widthAnchor.constraint(equalToConstant: ScrollToLatestLayout.diameter),
+            scrollToLatestButton.heightAnchor.constraint(equalToConstant: ScrollToLatestLayout.diameter),
+            scrollToLatestButton.centerXAnchor.constraint(equalTo: container.centerXAnchor),
+            scrollToLatestButton.bottomAnchor.constraint(equalTo: container.safeAreaLayoutGuide.bottomAnchor, constant: -ScrollToLatestLayout.margin),
+        ])
+    }
 }
 
 // ---------------------------------
@@ -223,6 +242,8 @@ private final class MemoDocumentView: UITextView, UITextViewDelegate {
     var onEditingStarted: (() -> Void)?
     // 書き終えた文書を知らせる（editedIds と、段落ごとの text・sourceIds）
     var onEditingEnded: (([String: Any]) -> Void)?
+    // 一番下から画面半分より上を見ているかが変わったことを知らせる
+    var onFarFromLatestChanged: ((Bool) -> Void)?
 
     // --- 文書
     // 表示中の段落（上から順）
@@ -264,6 +285,12 @@ private final class MemoDocumentView: UITextView, UITextViewDelegate {
     private let speakingDotsView = MemoSpeakingDotsView()
     // 出す場所（出さないときは nil）
     private var speakingDotsPlace: SpeakingDotsPlace?
+
+    // --- 一番下へ戻るボタン
+    // 最後に知らせた、一番下から画面半分より上を見ているか
+    private var isFarFromLatest = false
+    // ボタンで一番下へ動かしている途中か（途中で本文が増えても、一番下を見ていたものとして扱う）
+    private var isScrollingToLatest = false
 
     override init(frame: CGRect, textContainer: NSTextContainer?) {
         // TextKit 1（NSLayoutManager）で組み、文書全体の高さとブロックの区切りの位置を同じレイアウトから求める
@@ -333,6 +360,8 @@ private final class MemoDocumentView: UITextView, UITextViewDelegate {
             return
         }
         applyWholeDocument(speakingDotsChanged: speakingDotsChanged)
+        // 保存を終えて編集から戻ったときも、ボタンを出し直す
+        updateFarFromLatest()
     }
 
     // Dart から届いたメモの一覧（形の合わないものは飛ばす）
@@ -413,7 +442,8 @@ private final class MemoDocumentView: UITextView, UITextViewDelegate {
         needsDocumentLayout = true
         setNeedsLayout()
         layoutIfNeeded()
-        if isFirstLayout || (wasAtBottom && !isDragging) {
+        if isFirstLayout || ((wasAtBottom || isScrollingToLatest) && !isDragging) {
+            isScrollingToLatest = false
             contentOffset = CGPoint(x: 0, y: scrollableHeight)
         } else {
             contentOffset = CGPoint(x: 0, y: min(oldOffsetY, scrollableHeight))
@@ -498,6 +528,7 @@ private final class MemoDocumentView: UITextView, UITextViewDelegate {
         editSession = EditSession(editableIds: editableIds, awaitedRevision: nil)
         adjustTypingAttributes()
         onEditingStarted?()
+        updateFarFromLatest()
     }
 
     // 書き終えたら、書き直せた範囲の段落を Dart へ渡して保存を頼む（保存した文書が届くまでは、書いた本文を出し続ける）
@@ -786,6 +817,40 @@ private final class MemoDocumentView: UITextView, UITextViewDelegate {
         layoutRail()
         isFirstLayout = false
         lastLayoutSize = bounds.size
+        updateFarFromLatest()
+    }
+
+    // ---------------------------------
+    // 一番下へ戻るボタン
+    // ---------------------------------
+    // 一番下から画面半分より上を見ている間と、ボタンで一番下へ動かしている途中に出す（書いている間と、保存を待っている間は出さない）
+    private func updateFarFromLatest() {
+        let distanceFromLatest = scrollableHeight - contentOffset.y
+        let isFar = editSession == nil && !isFirstResponder && (distanceFromLatest > bounds.height / 2 || isScrollingToLatest)
+        guard isFar != isFarFromLatest else { return }
+        isFarFromLatest = isFar
+        onFarFromLatestChanged?(isFar)
+    }
+
+    @objc func scrollToLatest() {
+        isScrollingToLatest = true
+        setContentOffset(CGPoint(x: 0, y: scrollableHeight), animated: true)
+    }
+
+    func scrollViewDidScroll(_ scrollView: UIScrollView) {
+        updateFarFromLatest()
+    }
+
+    // 一番下に着いたら、ボタンを消す
+    func scrollViewDidEndScrollingAnimation(_ scrollView: UIScrollView) {
+        isScrollingToLatest = false
+        updateFarFromLatest()
+    }
+
+    // 一番下へ動かしている途中で指で触れたら、指の動きを優先する
+    func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
+        isScrollingToLatest = false
+        updateFarFromLatest()
     }
 
     // ---------------------------------
@@ -1009,6 +1074,7 @@ private final class MemoDocumentView: UITextView, UITextViewDelegate {
         switch recognizer.state {
         case .began:
             // 慣性スクロールを止め、指を置いた位置とつまみの中心のずれを保ったまま動かす
+            isScrollingToLatest = false
             setContentOffset(contentOffset, animated: false)
             scrollThumbGrabOffset = recognizer.touchDownY - scrollThumbCenterY
         case .changed:
@@ -1119,6 +1185,53 @@ private final class MemoKeyboardDismissButton: UIButton {
     }
 
     required init?(coder: NSCoder) { fatalError("ストーリーボードからは生成しません") }
+}
+
+// ---------------------------------
+// 一番下へ戻る丸いボタン（本文と同じ黒の丸に、白の太い下向き矢印。影は付けない）
+// ---------------------------------
+private enum ScrollToLatestLayout {
+    // ボタンの直径と、ホームインジケーターの上端からの距離
+    static let diameter: CGFloat = 48
+    static let margin: CGFloat = 8
+    // 矢印の大きさと太さ
+    static let arrowPointSize: CGFloat = 18
+    static let arrowWeight: UIImage.SymbolWeight = .bold
+    // 丸の色（本文の既定色 DefaultValue.textColor と同じ #111827）
+    static let backgroundColor = UIColor(red: 0x11 / 255.0, green: 0x18 / 255.0, blue: 0x27 / 255.0, alpha: 1)
+    // 出すときのフェードの長さ（秒）
+    static let fadeDuration: TimeInterval = 0.2
+}
+
+private final class MemoScrollToLatestButton: UIButton {
+    init() {
+        super.init(frame: .zero)
+        var configuration = UIButton.Configuration.filled()
+        configuration.image = UIImage(systemName: "arrow.down")
+        configuration.preferredSymbolConfigurationForImage = UIImage.SymbolConfiguration(
+            pointSize: ScrollToLatestLayout.arrowPointSize, weight: ScrollToLatestLayout.arrowWeight)
+        configuration.baseBackgroundColor = ScrollToLatestLayout.backgroundColor
+        configuration.baseForegroundColor = .white
+        configuration.cornerStyle = .capsule
+        self.configuration = configuration
+        accessibilityLabel = "Scroll to latest"
+        alpha = 0
+        isHidden = true
+    }
+
+    required init?(coder: NSCoder) { fatalError("ストーリーボードからは生成しません") }
+
+    // 出すときはフェードで、消すときは一瞬で（消えている間は触れない）
+    func setShown(_ shown: Bool) {
+        layer.removeAllAnimations()
+        guard shown else {
+            alpha = 0
+            isHidden = true
+            return
+        }
+        isHidden = false
+        UIView.animate(withDuration: ScrollToLatestLayout.fadeDuration) { self.alpha = 1 }
+    }
 }
 
 // ---------------------------------
