@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:momeo/widgets/record_button_press.dart';
 
 // ============================================================
-// RecordButtonPress の動作確認セクション（スプラッシュの録音ボタン）
+// RecordButtonPress の動作確認セクション（準備ゲートの録音ボタン）
 // ============================================================
 
 class WidgetsRecordButtonPressSection extends StatefulWidget {

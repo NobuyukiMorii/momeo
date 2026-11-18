@@ -4,7 +4,6 @@ import 'package:momeo/foundation/app_scroll_behavior.dart';
 import 'package:momeo/foundation/app_theme.dart';
 import 'package:momeo/pages/dev/recording/recording_listening_simulator.dart';
 import 'package:momeo/pages/listening/listening_page.dart';
-import 'package:momeo/pages/splash_page.dart';
 import 'package:momeo/providers/listening_providers.dart';
 
 // ============================================================
@@ -55,9 +54,6 @@ class _RecordingFlowState extends State<_RecordingFlow> {
   // --- 開始準備
   bool _ready = false;
 
-  // --- 表示画面
-  bool _splashFinished = false;
-
   // ---------------------------------
   // 初期化
   // ---------------------------------
@@ -80,15 +76,6 @@ class _RecordingFlowState extends State<_RecordingFlow> {
     // --- 待機画面
     if (!_ready) {
       return const Scaffold();
-    }
-
-    // --- スプラッシュ
-    if (!_splashFinished) {
-      return SplashPage(
-        onFinished: () {
-          setState(() => _splashFinished = true);
-        },
-      );
     }
 
     // --- リスニング（収録用のリスニング処理）

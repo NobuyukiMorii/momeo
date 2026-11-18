@@ -31,7 +31,7 @@ enum PreparationPhase {
   /// OS が言語のモデルをダウンロード中。入ったかを確かめ直しながら待つ
   downloadingLanguage,
 
-  /// 言語のモデルが入り、準備ができた。録音ボタンをもう一度押してから次の画面へ進む
+  /// 準備ができた。録音ボタンを押してから次の画面へ進む（ダウンロードを待ったとき・マイクの許可を聞いたとき）
   downloadFinished,
 }
 
@@ -39,12 +39,12 @@ enum PreparationPhase {
 // 文字化エンジンの準備が終わるまでの待ち画面
 // ---------------------------------
 // 準備ができたら、ふつうは呼び出し元がすぐ次の画面に切り替える。
-// ダウンロードを待っていたときだけ、呼び出し元は待ち画面を残し、
+// ダウンロードを待ったときとマイクの許可を聞いたときだけ、呼び出し元は待ち画面を残し、
 // 待ち画面は録音ボタンを押す動きを見せてから onFinished で知らせる
 class PreparationGatePage extends ConsumerStatefulWidget {
   const PreparationGatePage({super.key, this.onFinished});
 
-  // ダウンロードを待ったあと、録音ボタンを押す動きが終わったときに呼ばれる
+  // 準備ができたあと、録音ボタンを押す動きが終わったときに呼ばれる
   final VoidCallback? onFinished;
 
   @override
@@ -68,6 +68,9 @@ class _PreparationGatePageState extends ConsumerState<PreparationGatePage> {
   // 直近に分かった進み具合（0.0〜1.0）。分からなければ null
   double? _downloadFraction;
 
+  // この画面でダウンロードを待ったか（待っていなければ、押すまでの間も Downloading を出さない）
+  bool _hasWaitedForDownload = false;
+
   @override
   void dispose() {
     _pollTimer?.cancel();
@@ -80,6 +83,7 @@ class _PreparationGatePageState extends ConsumerState<PreparationGatePage> {
   //   ダウンロードが終わったときは、輪を 100% にするか一周のままにするかを決めるため、直近の進み具合を残す
   void _updatePolling(PreparationPhase phase) {
     final isDownloading = phase == PreparationPhase.downloadingLanguage;
+    if (isDownloading) _hasWaitedForDownload = true;
 
     if (isDownloading && _pollTimer == null) {
       _readProgress();
@@ -141,7 +145,7 @@ class _PreparationGatePageState extends ConsumerState<PreparationGatePage> {
     }
 
     // ---------------------------------
-    // スプラッシュから続けて、画面中央に録音ボタンを止めたまま出し、その下にいまの状況を出す
+    // 画面中央に録音ボタンを止めたまま出し、その下にいまの状況を出す
     // 上にも状況欄と同じ高さの見えない余白を置き、ボタンが画面のちょうど中央に来るようにする
     // ---------------------------------
     return Scaffold(
@@ -174,9 +178,13 @@ class _PreparationGatePageState extends ConsumerState<PreparationGatePage> {
   // 録音ボタンの下の状況欄
   //   ダウンロードが終わっても、押され始めるまではダウンロード中の文言をそのまま出し（スライドさせない）、
   //   押され始めたら、黒丸の中の数字と同じときに動きを付けずに消す
+  //   ダウンロードを待たずに押すとき（マイクの許可を聞いたあと）は、何も出さない
   // ---------------------------------
   Widget _buildStatusArea(PreparationPhase phase) {
     if (_hasPressStarted) return const SizedBox.shrink();
+    if (phase == PreparationPhase.downloadFinished && !_hasWaitedForDownload) {
+      return const SizedBox.shrink();
+    }
 
     final shownPhase = phase == PreparationPhase.downloadFinished
         ? PreparationPhase.downloadingLanguage
@@ -206,7 +214,7 @@ class _PreparationGatePageState extends ConsumerState<PreparationGatePage> {
     bool restartSuggested,
   ) {
     // ---------------------------------
-    // 準備ができた（この画面が出たままなのは、ダウンロードを待っていたときだけ）
+    // 準備ができた（この画面が出たままなのは、ダウンロードを待ったときとマイクの許可を聞いたときだけ）
     // ---------------------------------
     if (engineState.hasValue && !engineState.isLoading) {
       return PreparationPhase.downloadFinished;

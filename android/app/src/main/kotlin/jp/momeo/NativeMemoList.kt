@@ -250,7 +250,7 @@ private class NativeMemoList(context: Context, viewId: Int, messenger: BinaryMes
         container.addView(scroll, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         addKeyboardDismissButton()
         addScrollToLatestButton()
-        scroll.onFarFromLatestChanged = { isFar -> scrollToLatestButton.setShown(isFar) }
+        scroll.onFarFromLatestChanged = { isFar -> showScrollToLatestButton(isFar) }
         followKeyboard()
         document.onEditingStarted = {
             keyboardDismissButton.visibility = View.VISIBLE
@@ -287,7 +287,7 @@ private class NativeMemoList(context: Context, viewId: Int, messenger: BinaryMes
         container.addView(keyboardDismissButton, params)
     }
 
-    // 右下は縦線の上のつまみが通るので、下端の中央（ナビゲーションバーの上）に置く（→ applyNavigationBarInset）
+    // 右下は縦線の上のつまみが通るので、下端の中央（ナビゲーションバーの上）に置く
     private fun addScrollToLatestButton() {
         val density = themedContext.resources.displayMetrics.density
         val diameter = (SCROLL_TO_LATEST_DIAMETER_DP * density).roundToInt()
@@ -298,13 +298,10 @@ private class NativeMemoList(context: Context, viewId: Int, messenger: BinaryMes
         container.addView(scrollToLatestButton, params)
     }
 
-    // ナビゲーションバーに重なる分だけ、一番下へ戻るボタンを持ち上げる
-    private fun applyNavigationBarInset(insets: WindowInsets) {
-        val navigationBarBottom = insets.getInsets(WindowInsets.Type.navigationBars()).bottom
-        val location = IntArray(2)
-        container.getLocationInWindow(location)
-        val spaceBelow = container.rootView.height - (location[1] + container.height)
-        scrollToLatestButton.translationY = -max(0, navigationBarBottom - spaceBelow).toFloat()
+    // 出すたびに、ナビゲーションバーに重なる分だけ持ち上げる（この View には insets の知らせが届かないため、その場で測る）
+    private fun showScrollToLatestButton(shown: Boolean) {
+        if (shown) scrollToLatestButton.translationY = -scroll.bottomSystemBarOverlap()
+        scrollToLatestButton.setShown(shown)
     }
 
     // ---------------------------------
@@ -335,7 +332,6 @@ private class NativeMemoList(context: Context, viewId: Int, messenger: BinaryMes
         // 動きを伴わない変化（キーボードの高さの切り替えなど）は、届いた値をそのまま使う。動いている間は、動きの終わりの値が先に届くので使わない
         container.setOnApplyWindowInsetsListener { _, insets ->
             if (!keyboardAnimating) applyKeyboardInsets(insets)
-            applyNavigationBarInset(insets)
             insets
         }
     }
@@ -1116,7 +1112,7 @@ private class MemoScrollView(context: Context) : ScrollView(context) {
     }
 
     // 下端がナビゲーションバーに重なる高さ（ホームへ戻る操作の受付領域では掴みにくいため、つまみはその上までにする）
-    private fun bottomSystemBarOverlap(): Float {
+    fun bottomSystemBarOverlap(): Float {
         val insets = rootWindowInsets ?: return 0f
         val systemBarHeight = insets.getInsets(WindowInsets.Type.navigationBars()).bottom
         val location = IntArray(2)

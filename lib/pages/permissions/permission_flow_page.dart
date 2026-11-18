@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:momeo/pages/permissions/permission_controller.dart';
 import 'package:momeo/pages/permissions/permission_page.dart';
-import 'package:momeo/widgets/record_button_press.dart';
 
 // ---------------------------------
 // PermissionFlowPage — 権限フロー制御（Stateful + WidgetsBindingObserver）
@@ -11,7 +10,8 @@ import 'package:momeo/widgets/record_button_press.dart';
 class PermissionFlowPage extends StatefulWidget {
   const PermissionFlowPage({super.key, required this.onFinished});
 
-  final VoidCallback onFinished;
+  // 権限がそろったときに呼ばれる。askedUser は、この画面でユーザーに許可を聞いたか（最初から許可済みなら false）
+  final void Function(bool askedUser) onFinished;
 
   @override
   State<PermissionFlowPage> createState() => _PermissionFlowPageState();
@@ -82,7 +82,7 @@ class _PermissionFlowPageState extends State<PermissionFlowPage> with WidgetsBin
     // すべて許可済みなら即座に onFinished を呼ぶ
     // ---------------------------------
     if (needed.isEmpty) {
-      widget.onFinished();
+      widget.onFinished(false);
       return;
     }
 
@@ -138,7 +138,7 @@ class _PermissionFlowPageState extends State<PermissionFlowPage> with WidgetsBin
     // 全完了なら onFinished を呼ぶ
     // ---------------------------------
     if (_currentIndex + 1 >= _neededPermissions.length) {
-      widget.onFinished();
+      widget.onFinished(true);
       return;
     }
     // ---------------------------------
@@ -195,17 +195,7 @@ class _PermissionFlowPageState extends State<PermissionFlowPage> with WidgetsBin
   @override
   Widget build(BuildContext context) {
     // ---------------------------------
-    // 最初の権限チェック中は、直前のスプラッシュと同じ位置に録音ボタンを出し続ける
-    // （背景だけにすると、後ろの準備待ち画面の録音ボタンと合わせて一瞬消えたように見えるため）
-    // ---------------------------------
-    if (_currentState == null && _currentIndex == 0) {
-      return const Scaffold(
-        body: Center(child: RecordButtonPress(playsPress: false)),
-      );
-    }
-
-    // ---------------------------------
-    // 次の権限の状態を読み込み中は背景色のみ表示
+    // 権限の状態を読み込み中は背景色のみ表示（OS の真っ白な起動画面の続きに見せる）
     // ---------------------------------
     if (_currentState == null) return const Scaffold();
 

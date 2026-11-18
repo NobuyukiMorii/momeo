@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Android 12 以降の起動画面のアイコン枠に入れる、何も描かない透明な絵。
+  OS は起動画面の中央に必ずアイコンを出すため、透明な絵を渡して真っ白な起動画面にする。
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="288dp"
+    android:height="288dp"
+    android:viewportWidth="288"
+    android:viewportHeight="288">
+
+    <path
+        android:pathData="M0,0 L1,0 L1,1 L0,1 Z"
+        android:fillColor="#00000000" />
+</vector>

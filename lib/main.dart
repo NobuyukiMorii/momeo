@@ -13,7 +13,6 @@ import 'package:momeo/pages/dev/screenshot/screenshot_app.dart';
 import 'package:momeo/pages/permissions/permission_controller.dart';
 import 'package:momeo/pages/permissions/permission_flow_page.dart';
 import 'package:momeo/pages/preparation_gate_page.dart';
-import 'package:momeo/pages/splash_page.dart';
 import 'package:momeo/pages/listening/listening_page.dart';
 import 'package:momeo/providers/stt_providers.dart';
 
@@ -80,7 +79,7 @@ class MyApp extends StatelessWidget {
 
 // ---------------------------------
 // RootView — アプリのルート画面
-// Splash → Permission → 準備ゲート → メインコンテンツ の順に遷移する
+// Permission → 準備ゲート → メインコンテンツ の順に遷移する
 // ---------------------------------
 class RootView extends ConsumerStatefulWidget {
   const RootView({super.key});
@@ -93,11 +92,13 @@ class _RootViewState extends ConsumerState<RootView> with WidgetsBindingObserver
   // 権限の確認を担うコントローラー（復帰時の再チェックに使う）
   final _permissionController = PermissionController();
 
-  bool _splashFinished = false;
   bool _permissionFinished = false;
 
   // 準備ゲートで言語のモデルのダウンロードを待ったか（待ったときは、押す動きが終わるまでゲートを残す）
   bool _waitedForLanguageDownload = false;
+
+  // この起動でマイクの許可を聞いたか（聞いたときも、押す動きが終わるまでゲートを残す）
+  bool _askedForPermission = false;
   bool _preparationGateFinished = false;
 
   @override
@@ -152,30 +153,25 @@ class _RootViewState extends ConsumerState<RootView> with WidgetsBindingObserver
   @override
   Widget build(BuildContext context) {
     // ---------------------------------
-    // スプラッシュ画面
-    // ---------------------------------
-    if (!_splashFinished) {
-      return SplashPage(
-        onFinished: () {
-          setState(() => _splashFinished = true);
-        },
-      );
-    }
-
-    // ---------------------------------
     // 権限フロー画面
     // ---------------------------------
     if (!_permissionFinished) {
       return PermissionFlowPage(
-        onFinished: () {
-          setState(() => _permissionFinished = true);
+        onFinished: (askedUser) {
+          setState(() {
+            _permissionFinished = true;
+            if (askedUser) {
+              _askedForPermission = true;
+              _preparationGateFinished = false;
+            }
+          });
         },
       );
     }
 
     // ---------------------------------
     // 準備ゲート
-    //   準備ができたらすぐ次へ進む。ただし、ゲートでダウンロードを待っていたときは、
+    //   準備ができたらすぐ次へ進む。ただし、ダウンロードを待ったときとマイクの許可を聞いたときは、
     //   ゲートが録音ボタンを押す動きを見せ終わるまで残す
     // ---------------------------------
     final sttEngineState = ref.watch(sttEngineProvider);
@@ -185,7 +181,8 @@ class _RootViewState extends ConsumerState<RootView> with WidgetsBindingObserver
     final isSttEngineReady =
         sttEngineState.hasValue && !sttEngineState.isLoading;
     final holdsGateForPress =
-        _waitedForLanguageDownload && !_preparationGateFinished;
+        (_waitedForLanguageDownload || _askedForPermission) &&
+            !_preparationGateFinished;
     if (!isSttEngineReady || holdsGateForPress) {
       return PreparationGatePage(
         onFinished: () {

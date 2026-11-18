@@ -27,11 +27,10 @@ momeoはライブ音声入力を前提とする音声ファーストのメモア
 
 **iOS / Android 共通:**
 ```text
-App Start
-→ Splash
+App Start（OS の真っ白な起動画面）
 → Check permissions
 → Microphone permission if needed
-→ Preparation Gate（文字化エンジンの準備待ち。通常は素通り。notes/specs/preparation_gate.md）
+→ Preparation Gate（文字化エンジンの準備待ち。許可を聞いたときは録音ボタンを一度押してから進む。notes/specs/preparation_gate.md）
 → Listening Screen
 ```
 
@@ -43,10 +42,11 @@ App Start
 
 | プラットフォーム | マイク権限 | 画面遷移フロー |
 | --- | --- | --- |
-| iOS / Android | 未許可 | マイク → 準備ゲート → リスニング |
+| iOS / Android | 未許可 | マイク → 準備ゲート（録音ボタンを一度押す）→ リスニング |
 | iOS / Android | 許可済み | 準備ゲート → リスニング |
 
-※ 準備ゲートは通常素通りするため、体感上は権限画面からそのままリスニングに進みます。
+※ 許可済みのときは準備ゲートを素通りするため、体感上は起動画面からそのままリスニングに進みます。
+※ 権限の状態を確かめている間は、背景色だけを出します（真っ白な起動画面の続きに見せるため）。
 
 ## 参照する既存デザインドキュメント
 

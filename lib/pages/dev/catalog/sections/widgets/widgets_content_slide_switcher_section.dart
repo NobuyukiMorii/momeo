@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:momeo/foundation/app_colors.dart';
 import 'package:momeo/foundation/app_text_styles.dart';
 import 'package:momeo/pages/preparation_gate_page.dart';
-import 'package:momeo/pages/splash_page.dart';
 import 'package:momeo/widgets/activity_dots_text.dart';
 import 'package:momeo/widgets/content_slide_switcher.dart';
 
@@ -28,7 +27,7 @@ class _WidgetsContentSlideSwitcherSectionState
   Widget get _content {
     switch (_phase) {
       case PreparationPhase.loading:
-        return const Text(splashAppName);
+        return const Text('momeo');
       case PreparationPhase.retrying:
         return const ActivityDotsText('Retrying');
       case PreparationPhase.tryRestarting:

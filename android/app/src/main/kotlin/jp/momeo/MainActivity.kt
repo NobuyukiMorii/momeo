@@ -25,7 +25,7 @@ class MainActivity : FlutterActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Flutter が描き終わるまで画面の更新を止め、起動画面（録音ボタン）を出したままにする
+        // Flutter が描き終わるまで画面の更新を止め、真っ白な起動画面を出したままにする
         val content = findViewById<View>(android.R.id.content)
         content.viewTreeObserver.addOnPreDrawListener(object : ViewTreeObserver.OnPreDrawListener {
             override fun onPreDraw(): Boolean {
@@ -35,7 +35,7 @@ class MainActivity : FlutterActivity() {
             }
         })
 
-        // 起動画面はフェードさせずに即座に外す（下に同じ録音ボタンが描かれているので、入れ替わりが見えない）
+        // 起動画面はフェードさせずに即座に外す（下の Flutter の画面も白地なので、入れ替わりが見えない）
         splashScreen.setOnExitAnimationListener { splashView -> splashView.remove() }
     }
 
