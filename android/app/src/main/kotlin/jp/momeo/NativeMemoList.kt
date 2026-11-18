@@ -833,9 +833,13 @@ private class MemoDocumentView(context: Context, private val scroll: MemoScrollV
     private val bodyLineHeight: Int
         get() = (fontPixels * LINE_HEIGHT_RATIO).roundToInt()
 
-    // 次のブロックの1行目に出すあいだ、文書の下に空けておく高さ（ブロック間の余白 + 1行）
+    // 次のブロックの1行目に出すあいだ、文書の下に空けておく高さ（ブロック間の余白 + 1行。本文が無いときは上のブロックが無いので1行だけ）
     val speakingDotsReservedHeight: Int
-        get() = if (speakingDotsPlace == SpeakingDotsPlace.NEW_BLOCK) dp(BLOCK_SPACING_DP) + bodyLineHeight else 0
+        get() {
+            if (speakingDotsPlace != SpeakingDotsPlace.NEW_BLOCK) return 0
+            val spacing = if (blocks.isEmpty()) 0 else dp(BLOCK_SPACING_DP)
+            return spacing + bodyLineHeight
+        }
 
     private fun changeSpeakingDotsPlace(place: SpeakingDotsPlace?) {
         if (place == speakingDotsPlace) return

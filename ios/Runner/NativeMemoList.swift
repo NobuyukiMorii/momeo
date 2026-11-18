@@ -50,8 +50,6 @@ private enum BodyLayout {
     static let paddingBottom: CGFloat = 24
     // 本文1行の高さ（文字サイズに対する倍率）。ヒラギノの leading が上乗せされ、見た目は約2倍になる
     static let lineHeightRatio: CGFloat = 1.5
-    // 本文がまだ無いときに見込む1行の高さ（文字サイズに対する倍率。本文の行の見た目とそろえる）
-    static let emptyLineHeightRatio: CGFloat = 2
     // ブロックとブロックの間の余白
     static let blockSpacing: CGFloat = 24
     // 空のメモにも区切りと1行分の高さを持たせるために置く、幅の無い文字
@@ -943,15 +941,17 @@ private final class MemoDocumentView: UITextView, UITextViewDelegate {
     // ---------------------------------
     // 発話中の「.」の位置（最新のブロックの本文の続き、または次のブロックの1行目）
     // ---------------------------------
-    // 次のブロックの1行目に出すあいだは、ブロック間の余白と1行分の高さを文書の下に空けておく
+    // 次のブロックの1行目に出すあいだは、ブロック間の余白と1行分の高さを文書の下に空けておく（本文が無いときは上のブロックが無いので1行分だけ）
     private var speakingDotsReservedHeight: CGFloat {
-        speakingDotsPlace == .newBlock ? BodyLayout.blockSpacing + lastLineRect.height : 0
+        guard speakingDotsPlace == .newBlock else { return 0 }
+        let spacing = textStorage.length > 0 ? BodyLayout.blockSpacing : 0
+        return spacing + lastLineRect.height
     }
 
-    // 本文の最後の行（まだ本文が無いときは、見込みの高さの行が先頭にあるものとする）
+    // 本文の最後の行（まだ本文が無いときは、最初の本文と同じ高さの行が先頭にあるものとする）
     private var lastLineRect: CGRect {
         guard textStorage.length > 0 else {
-            return CGRect(x: 0, y: 0, width: 0, height: bodySize * BodyLayout.emptyLineHeightRatio)
+            return CGRect(x: 0, y: 0, width: 0, height: firstLineMetrics.height)
         }
         let glyph = layoutManager.glyphIndexForCharacter(at: textStorage.length - 1)
         return layoutManager.lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil)
@@ -959,12 +959,21 @@ private final class MemoDocumentView: UITextView, UITextViewDelegate {
 
     // 行の上端から文字のベースラインまで
     private var lastLineBaselineOffset: CGFloat {
-        guard textStorage.length > 0 else {
-            let font = bodyFont
-            return (bodySize * BodyLayout.emptyLineHeightRatio - font.lineHeight) / 2 + font.ascender
-        }
+        guard textStorage.length > 0 else { return firstLineMetrics.baselineOffset }
         let glyph = layoutManager.glyphIndexForCharacter(at: textStorage.length - 1)
         return layoutManager.location(forGlyphAt: glyph).y
+    }
+
+    // 最初の本文の行の高さとベースライン（本文と同じ属性で1文字を組んで測る。ヒラギノの leading の足され方を計算で真似るとずれるため）
+    private var firstLineMetrics: (height: CGFloat, baselineOffset: CGFloat) {
+        let probeStorage = NSTextStorage(string: "あ", attributes: bodyAttributes(memoId: nil, isLastParagraph: true))
+        let probeLayoutManager = NSLayoutManager()
+        let probeContainer = NSTextContainer(size: CGSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude))
+        probeContainer.lineFragmentPadding = 0
+        probeLayoutManager.addTextContainer(probeContainer)
+        probeStorage.addLayoutManager(probeLayoutManager)
+        let lineRect = probeLayoutManager.lineFragmentRect(forGlyphAt: 0, effectiveRange: nil)
+        return (lineRect.height, probeLayoutManager.location(forGlyphAt: 0).y)
     }
 
     private func layoutSpeakingDots() {
@@ -989,9 +998,10 @@ private final class MemoDocumentView: UITextView, UITextViewDelegate {
                                    availableWidth: containerWidth - textRight,
                                    font: bodyFont, color: bodyColor)
         case .newBlock:
+            // 本文が無くても、カーソル用の空の行が文書の高さに入っているので、その下に出す
             let lineTop = textStorage.length > 0
                 ? textContainerInset.top + lineRect.maxY + BodyLayout.blockSpacing
-                : textContainerInset.top
+                : textContainerInset.top + layoutManager.usedRect(for: textContainer).height
             speakingDotsView.place(x: textContainerInset.left,
                                    baseline: lineTop + lastLineBaselineOffset,
                                    availableWidth: containerWidth,
