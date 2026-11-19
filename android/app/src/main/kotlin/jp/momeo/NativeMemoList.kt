@@ -3,11 +3,13 @@ package jp.momeo
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.ColorFilter
 import android.graphics.Paint
 import android.graphics.PixelFormat
 import android.graphics.Rect
+import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
 import android.graphics.Typeface
@@ -310,12 +312,27 @@ private class NativeMemoList(context: Context, viewId: Int, messenger: BinaryMes
     // 一覧の大きさは変えず（Flutter に縮めさせると、閉じるときに本文が何回かに分けてずれる）、
     // キーボードの動きに1コマずつ合わせて、隠れる分だけ一覧の下を空け、ボタンを持ち上げる
     private var keyboardAnimating = false
+    // 動き始める前にキーボードが出ていたか（閉じる動きかどうかを、動きの始まりで見分けるため）
+    private var keyboardVisibleBeforeAnimation = false
 
     private fun followKeyboard() {
         container.setWindowInsetsAnimationCallback(object :
             WindowInsetsAnimation.Callback(DISPATCH_MODE_CONTINUE_ON_SUBTREE) {
             override fun onPrepare(animation: WindowInsetsAnimation) {
-                if (animation.typeMask and WindowInsets.Type.ime() != 0) keyboardAnimating = true
+                if (animation.typeMask and WindowInsets.Type.ime() == 0) return
+                keyboardAnimating = true
+                keyboardVisibleBeforeAnimation = isKeyboardVisible()
+            }
+
+            // 閉じ始めたら書き終えるので、カーソルとつまみは本文と一緒に動かさず、その場で消す
+            override fun onStart(
+                animation: WindowInsetsAnimation,
+                bounds: WindowInsetsAnimation.Bounds,
+            ): WindowInsetsAnimation.Bounds {
+                if (animation.typeMask and WindowInsets.Type.ime() != 0 && keyboardVisibleBeforeAnimation && !isKeyboardVisible()) {
+                    document.hideCaretNow()
+                }
+                return bounds
             }
 
             override fun onProgress(insets: WindowInsets, runningAnimations: MutableList<WindowInsetsAnimation>): WindowInsets {
@@ -327,6 +344,8 @@ private class NativeMemoList(context: Context, viewId: Int, messenger: BinaryMes
                 if (animation.typeMask and WindowInsets.Type.ime() == 0) return
                 keyboardAnimating = false
                 container.rootWindowInsets?.let { applyKeyboardInsets(it) }
+                // 戻るのスワイプを途中でやめて、キーボードが残ったときは、カーソルを戻す
+                if (isKeyboardVisible()) document.showCaret()
             }
         })
         // 動きを伴わない変化（キーボードの高さの切り替えなど）は、届いた値をそのまま使う。動いている間は、動きの終わりの値が先に届くので使わない
@@ -335,6 +354,9 @@ private class NativeMemoList(context: Context, viewId: Int, messenger: BinaryMes
             insets
         }
     }
+
+    private fun isKeyboardVisible(): Boolean =
+        container.rootWindowInsets?.isVisible(WindowInsets.Type.ime()) == true
 
     private fun applyKeyboardInsets(insets: WindowInsets) {
         val keyboardBottom = insets.getInsets(WindowInsets.Type.ime()).bottom
@@ -653,7 +675,19 @@ private class MemoDocumentView(context: Context, private val scroll: MemoScrollV
         val bottomPadding = scroll.documentPaddingBottom()
         if (paddingTop != topPadding || paddingBottom != bottomPadding) {
             setPadding(paddingLeft, topPadding, paddingRight, bottomPadding)
+            followTextWithHandles()
         }
+    }
+
+    // メモが少なくて下に寄せている間は、キーボードで一覧が縮むと、本文がこの View の中で上へずれる
+    override fun onSizeChanged(width: Int, height: Int, oldWidth: Int, oldHeight: Int) {
+        super.onSizeChanged(width, height, oldWidth, oldHeight)
+        followTextWithHandles()
+    }
+
+    // 本文がこの View の中でずれても、OS はカーソルのつまみを動かさないので、スクロールしたと知らせて付け直させる
+    private fun followTextWithHandles() {
+        if (isFocused) onScrollChanged(scrollX, scrollY, scrollX, scrollY)
     }
 
     // ---------------------------------
@@ -661,7 +695,35 @@ private class MemoDocumentView(context: Context, private val scroll: MemoScrollV
     // ---------------------------------
     override fun onFocusChanged(focused: Boolean, direction: Int, previouslyFocusedRect: Rect?) {
         super.onFocusChanged(focused, direction, previouslyFocusedRect)
+        if (focused) showCaret()
         if (focused) beginEditing() else endEditing()
+    }
+
+    // ---------------------------------
+    // キーボードを閉じ始めたときのカーソルとつまみ
+    // ---------------------------------
+    // OS はキーボードを閉じ始めると、つまみをその時の絵のまま薄くしながら消すので、本文が動いても元の場所に残って見える。
+    //   先に同じ大きさの空の絵へ差し替え、描き直されてから（2コマ後）消す（OS が描くたびに不透明度を戻すので、alpha では消せない）
+    private val caretHandle: Drawable? = textSelectHandle
+    private val hiddenCaretHandle: Drawable? = caretHandle?.let { handle ->
+        val emptyBitmap = Bitmap.createBitmap(max(1, handle.intrinsicWidth), max(1, handle.intrinsicHeight), Bitmap.Config.ARGB_8888)
+        BitmapDrawable(resources, emptyBitmap)
+    }
+
+    fun hideCaretNow(afterHidden: () -> Unit = {}) {
+        hiddenCaretHandle?.let { setTextSelectHandle(it) }
+        postOnAnimation {
+            postOnAnimation {
+                isCursorVisible = false
+                afterHidden()
+            }
+        }
+    }
+
+    // 戻るのスワイプを途中でやめたときと、次に書き始めるときに戻す
+    fun showCaret() {
+        caretHandle?.let { if (textSelectHandle !== it) setTextSelectHandle(it) }
+        isCursorVisible = true
     }
 
     // 書き始める（保存を待っている間は、待ち終えてから始める）
@@ -692,11 +754,13 @@ private class MemoDocumentView(context: Context, private val scroll: MemoScrollV
         return mapOf("editedIds" to editableIds.toList(), "paragraphs" to paragraphs)
     }
 
-    // キーボードをしまうボタン: キーボードを下ろし、編集を終える
+    // キーボードをしまうボタン: つまみを空の絵にしてから、キーボードを下ろし、編集を終える
     fun finishEditing() {
-        val inputMethodManager = context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
-        inputMethodManager.hideSoftInputFromWindow(windowToken, 0)
-        if (isFocused) clearFocus()
+        hideCaretNow {
+            val inputMethodManager = context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+            inputMethodManager.hideSoftInputFromWindow(windowToken, 0)
+            if (isFocused) clearFocus()
+        }
     }
 
     // 背面に回ったら、編集を終えて書いた分を保存する
@@ -1068,16 +1132,20 @@ private class MemoScrollView(context: Context) : ScrollView(context) {
         if (!document.isFocused) return
         val line = textLayout.getLineForOffset(max(0, document.selectionEnd))
         val caretBottom = document.top + document.totalPaddingTop + textLayout.getLineBottom(line)
-        val visibleBottom = scrollY + height - overlap
+        val visibleBottom = scrollY + height - caretAvoidHeight()
         if (caretBottom > visibleBottom) scrollTo(scrollX, min(maxScrollY, scrollY + caretBottom - visibleBottom))
     }
 
-    // 打った文字やカーソルを見せるためのスクロールで、キーボードの裏を見えている範囲に数えない
+    // 打った文字やカーソルを見せるためのスクロールで、キーボードとナビゲーションバーの裏を見えている範囲に数えない
     override fun computeScrollDeltaToGetChildRectOnScreen(rect: Rect): Int {
         val extended = Rect(rect)
-        extended.bottom += keyboardOverlap
+        extended.bottom += if (documentView?.isFocused == true) caretAvoidHeight() else keyboardOverlap
         return super.computeScrollDeltaToGetChildRectOnScreen(extended)
     }
+
+    // カーソルの行を見せるときに下から避ける高さ（文の途中では文書の下の余白が効かないため、ナビゲーションバーの分も含め、iOS と同じく行の下に余白を取る）
+    private fun caretAvoidHeight(): Int =
+        keyboardOverlap + bottomSystemBarOverlap().roundToInt() + dp(BODY_PADDING_BOTTOM_DP).roundToInt()
 
     // ---------------------------------
     // つまみの位置（y は表示範囲の上端から測る）
